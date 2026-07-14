@@ -1,0 +1,3 @@
+# 与原 .claude/settings.json 中允许 WebSearch/WebFetch 的行为对应。
+# 项目被标记为可信后，Codex 会为需要查词或核实时使用实时网页检索。
+web_search = "live"
