@@ -1638,9 +1638,9 @@ body.light-theme .clear-all-tags-chip-btn:hover {
 
         <div class="list-control-row">
           <div class="filter-pills" id="filterPills">
-            <button class="pill-btn active" data-filter="learning" onclick="if(window.app) window.app.setMainFilter('learning', this)">学习中 (<span id="count-learning">0</span>)</button>
+            <button class="pill-btn active" data-filter="learning" onclick="if(window.app) window.app.setMainFilter('learning', this)">学习中 (<span id="count-learning">429</span>)</button>
             <button class="pill-btn" data-filter="mastered" onclick="if(window.app) window.app.setMainFilter('mastered', this)">已掌握 (<span id="count-mastered">0</span>)</button>
-            <button class="pill-btn" data-filter="all" onclick="if(window.app) window.app.setMainFilter('all', this)">全部 (<span id="count-all">0</span>)</button>
+            <button class="pill-btn" data-filter="all" onclick="if(window.app) window.app.setMainFilter('all', this)">全部 (<span id="count-all">429</span>)</button>
           </div>
           <div class="page-size-select-box">
             <span>每页:</span>
@@ -1653,7 +1653,7 @@ body.light-theme .clear-all-tags-chip-btn:hover {
         </div>
         <div class="sub-filter-row" id="subFilterRow">
           <div class="sub-filter-pills" id="subFilterPills">
-            <button class="sub-pill-btn active" data-subfilter="all" onclick="if(window.app) window.app.setSubFilter('all', this)">全部学习中 (<span id="count-sub-all">0</span>)</button>
+            <button class="sub-pill-btn active" data-subfilter="all" onclick="if(window.app) window.app.setSubFilter('all', this)">全部学习中 (<span id="count-sub-all">429</span>)</button>
             <button class="sub-pill-btn" data-subfilter="easy-forget" onclick="if(window.app) window.app.setSubFilter('easy-forget', this)">📌 易忘 (<span id="count-sub-easy-forget">0</span>)</button>
             <button class="sub-pill-btn" data-subfilter="easy-confuse" onclick="if(window.app) window.app.setSubFilter('easy-confuse', this)">🔀 易混 (<span id="count-sub-easy-confuse">0</span>)</button>
           </div>
@@ -10471,6 +10471,72 @@ class JpVocabApp {
     return false;
   }
 
+  getDeletedSet() {
+    try {
+      const raw = SafeStorage.getItem(this.DELETED_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) return new Set(arr);
+      }
+    } catch(e) {}
+    return new Set();
+  }
+
+  recordDeletedWord(target) {
+    if (!target) return;
+    const set = this.getDeletedSet();
+    if (target.id) set.add(String(target.id));
+    if (target.word) set.add(String(target.word).trim().toLowerCase());
+    try {
+      SafeStorage.setItem(this.DELETED_KEY, JSON.stringify(Array.from(set)));
+    } catch(e) {}
+  }
+
+  mergeCloudData(cloudWords) {
+    if (!Array.isArray(cloudWords) || cloudWords.length === 0) return 0;
+    const deletedSet = this.getDeletedSet();
+    
+    // Lookup map for existing local words
+    const localMap = new Map();
+    this.words.forEach(w => {
+      if (w.id) localMap.set(String(w.id), w);
+      if (w.word) localMap.set(String(w.word).trim().toLowerCase(), w);
+    });
+
+    let addedCount = 0;
+    const mergedWords = [...this.words];
+
+    cloudWords.forEach(cw => {
+      if (!cw || (!cw.id && !cw.word)) return;
+      const cid = cw.id ? String(cw.id) : null;
+      const cword = cw.word ? String(cw.word).trim().toLowerCase() : null;
+
+      // 1. Skip deleted words locally - NEVER pull them back!
+      if ((cid && deletedSet.has(cid)) || (cword && deletedSet.has(cword))) {
+        return;
+      }
+
+      // 2. Check if already exists in local
+      const existing = (cid && localMap.get(cid)) || (cword && localMap.get(cword));
+      if (!existing) {
+        // It's a newly added word from cloud! Incrementally merge!
+        mergedWords.push(cw);
+        if (cid) localMap.set(cid, cw);
+        if (cword) localMap.set(cword, cw);
+        addedCount++;
+      } else {
+        // Existing word: sync attributes
+        if (cw.mastered !== undefined && existing.mastered === undefined) {
+          existing.mastered = cw.mastered;
+        }
+      }
+    });
+
+    this.words = mergedWords;
+    this.saveData(); // Save locally and sync merged list back to cloud
+    return addedCount;
+  }
+
   async fetchFromCloud(showToastNotification = true) {
     const syncBtn = document.getElementById('cloudSyncBtn');
     if (syncBtn) syncBtn.classList.add('syncing-active');
@@ -10496,14 +10562,15 @@ class JpVocabApp {
       if (response.ok) {
         const cloudData = await response.json();
         if (cloudData && Array.isArray(cloudData.words) && cloudData.words.length > 0) {
-          this.words = cloudData.words;
-          try {
-            SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
-          } catch(e) {}
+          const addedCount = this.mergeCloudData(cloudData.words);
           this.renderWordList();
           this.updateStats();
           if (showToastNotification) {
-            this.showToast(`🎉 成功同步云端最新数据 (${this.words.length} 个词)！`);
+            if (addedCount > 0) {
+              this.showToast(`🎉 成功同步！增量拉取了 ${addedCount} 个云端新增词！`);
+            } else {
+              this.showToast('☁️ 已是最新词库（已过滤本地删除词）！');
+            }
           }
           return true;
         }
@@ -10528,6 +10595,7 @@ class JpVocabApp {
     window.app = this;
     this.STORAGE_KEY = 'evie_jp_vocab_data_v5000';
     this.THEME_KEY = 'evie_jp_vocab_theme';
+    this.DELETED_KEY = 'evie_jp_vocab_deleted_v1';
     this.words = [];
     this.reviewList = [];
     this.currentReviewIndex = 0;
@@ -10544,7 +10612,7 @@ class JpVocabApp {
     try {
       // Auto purge old obsolete storage keys safely
       SafeStorage.keys().forEach(k => {
-        if (k.startsWith('evie_') && k !== this.STORAGE_KEY) {
+        if (k.startsWith('evie_') && k !== this.STORAGE_KEY && k !== this.THEME_KEY && k !== this.DELETED_KEY) {
           SafeStorage.removeItem(k);
         }
       });
@@ -10584,7 +10652,11 @@ class JpVocabApp {
     }
 
     if (!Array.isArray(this.words) || this.words.length === 0) {
-      this.words = [];
+      if (typeof samples !== 'undefined' && Array.isArray(samples) && samples.length > 0) {
+        this.words = JSON.parse(JSON.stringify(samples));
+      } else {
+        this.words = [];
+      }
       console.log("JP words list is empty! Auto loading sample cards...");
       this.loadSampleData(false);
     }
@@ -11102,6 +11174,10 @@ class JpVocabApp {
 
   deleteWord(id) {
     if (confirm('确定要删除这个日语单词吗？')) {
+      const target = this.words.find(w => w.id === id);
+      if (target) {
+        this.recordDeletedWord(target);
+      }
       this.words = this.words.filter(w => w.id !== id);
       this.saveData();
       this.renderWordList();
@@ -11729,6 +11805,11 @@ class JpVocabApp {
   }
 
   updateStats() {
+    if (!this.words || !Array.isArray(this.words) || this.words.length === 0) {
+      if (typeof samples !== 'undefined' && Array.isArray(samples) && samples.length > 0) {
+        this.words = JSON.parse(JSON.stringify(samples));
+      }
+    }
     try {
       const searchFiltered = this.getSearchFilteredWords ? this.getSearchFilteredWords() : this.words;
       const all = searchFiltered.length;
