@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>卡欧每天学KR💪</title>
+  <title>卡欧随身韩语单词本 KR v5.0</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="卡欧每天学KR💪">
@@ -1493,6 +1493,12 @@ html, body {
 
   <script>
 
+    window.onerror = function(msg, url, lineNo, columnNo, error) {
+      console.warn('Global error caught:', msg, 'at line', lineNo);
+      return true; // Prevents default error popup / freeze
+    };
+    
+
   // ==========================================================================
   // SafeStorage Wrapper for iOS Safari file:// SecurityError DOM Exception 18
   // ==========================================================================
@@ -2460,33 +2466,31 @@ class KrVocabApp {
   }
 
   updateStats() {
-    const searchFiltered = this.getSearchFilteredWords ? this.getSearchFilteredWords() : this.words;
-    const all = searchFiltered.length;
-    const mastered = searchFiltered.filter(w => w.mastered).length;
-    const learningWords = searchFiltered.filter(w => !w.mastered);
-    const learning = learningWords.length;
+    try {
+      const searchFiltered = this.getSearchFilteredWords ? this.getSearchFilteredWords() : this.words;
+      const all = searchFiltered.length;
+      const mastered = searchFiltered.filter(w => w.mastered).length;
+      const learningWords = searchFiltered.filter(w => !w.mastered);
+      const learning = learningWords.length;
 
-    const easyForgetCount = learningWords.filter(w => (w.tags || []).includes('易忘')).length;
-    const easyConfuseCount = learningWords.filter(w => (w.tags || []).includes('易混')).length;
+      const easyForgetCount = learningWords.filter(w => (w.tags || []).includes('易忘')).length;
+      const easyConfuseCount = learningWords.filter(w => (w.tags || []).includes('易混')).length;
 
-    document.getElementById('count-all').textContent = all;
-    document.getElementById('count-learning').textContent = learning;
-    document.getElementById('count-mastered').textContent = mastered;
+      const elAll = document.getElementById('count-all');
+      if (elAll) elAll.textContent = all;
+      const elLearning = document.getElementById('count-learning');
+      if (elLearning) elLearning.textContent = learning;
+      const elMastered = document.getElementById('count-mastered');
+      if (elMastered) elMastered.textContent = mastered;
 
-    const countSubAll = document.getElementById('count-sub-all');
-    if (countSubAll) countSubAll.textContent = learning;
-    const countSubEF = document.getElementById('count-sub-easy-forget');
-    if (countSubEF) countSubEF.textContent = easyForgetCount;
-    const countSubEC = document.getElementById('count-sub-easy-confuse');
-    if (countSubEC) countSubEC.textContent = easyConfuseCount;
-
-    const subFilterRow = document.getElementById('subFilterRow');
-    if (subFilterRow) {
-      if (this.currentFilter === 'learning') {
-        subFilterRow.style.display = 'flex';
-      } else {
-        subFilterRow.style.display = 'none';
-      }
+      const countSubAll = document.getElementById('count-sub-all');
+      if (countSubAll) countSubAll.textContent = learning;
+      const countSubEF = document.getElementById('count-sub-easy-forget');
+      if (countSubEF) countSubEF.textContent = easyForgetCount;
+      const countSubEC = document.getElementById('count-sub-easy-confuse');
+      if (countSubEC) countSubEC.textContent = easyConfuseCount;
+    } catch(e) {
+      console.warn('updateStats safe catch:', e);
     }
   }
 
