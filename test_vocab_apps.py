@@ -229,6 +229,16 @@ class VocabAppTester:
         self.assert_true(smart_sync_methods, f"[{lang_name}] 云端同步-智能合并与本地删除记忆保护机制", "类中缺少 getDeletedSet / recordDeletedWord / mergeCloudData 方法，会导致用户删词后同步被误还原")
 
 
+
+        # ---------------------------------------------------------------------
+        # 测试点 18: 列表中单词卡片 100% 直接展示第一组例句与翻译测试 (Word Card List Direct Example Preview Parity)
+        # ---------------------------------------------------------------------
+        card_ex_preview_css = '.word-example-preview {' in content and '.ex-preview-text {' in content
+        self.assert_true(card_ex_preview_css, f"[{lang_name}] 列表卡片-例句预览 CSS 样式组件健全", "缺少 .word-example-preview 或 .ex-preview-text 样式配置")
+
+        card_ex_preview_render = 'word-example-preview' in content and 'ex-preview-text' in content
+        self.assert_true(card_ex_preview_render, f"[{lang_name}] 列表卡片-直接渲染第一组例句与翻译模板防护", "renderWordList 或 DOM 模板中缺少 word-example-preview 渲染节点")
+
         # ---------------------------------------------------------------------
         # 测试点 17: 全量卡片数据 100% 包含实用例句与例句翻译覆盖率测试 (Every Card Examples Coverage Parity)
         # ---------------------------------------------------------------------
