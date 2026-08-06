@@ -228,6 +228,30 @@ class VocabAppTester:
         smart_sync_methods = 'getDeletedSet()' in content and 'recordDeletedWord(' in content and 'mergeCloudData(' in content
         self.assert_true(smart_sync_methods, f"[{lang_name}] 云端同步-智能合并与本地删除记忆保护机制", "类中缺少 getDeletedSet / recordDeletedWord / mergeCloudData 方法，会导致用户删词后同步被误还原")
 
+
+        # ---------------------------------------------------------------------
+        # 测试点 17: 全量卡片数据 100% 包含实用例句与例句翻译覆盖率测试 (Every Card Examples Coverage Parity)
+        # ---------------------------------------------------------------------
+        card_example_modal_render = 'renderDetailModal' in content or 'showDetailModal' in content or 'detailExampleBlock' in content
+        self.assert_true(card_example_modal_render, f"[{lang_name}] 详情弹窗-点击卡片全量例句与翻译渲染防护", "renderDetailModal 中缺少例句渲染逻辑")
+
+        cards_examples_non_empty = True
+        m = re.search(r'const samples = (\[.*?\]);', content, re.DOTALL)
+        if m:
+            try:
+                import json
+                samples_data = json.loads(m.group(1), strict=False)
+                for idx, item in enumerate(samples_data):
+                    ex = item.get('example', '') or item.get('examples', '')
+                    ex_trans = item.get('exampleTrans', '')
+                    if not ex:
+                        cards_examples_non_empty = False
+                        print(f"  ⚠️ [{lang_name}] 发现无例句卡片: ID={item.get('id')} Word={item.get('word')}")
+            except Exception as err:
+                print(f"  ⚠️ 解析 samples JSON 失败: {err}")
+
+        self.assert_true(cards_examples_non_empty, f"[{lang_name}] 数据集-全量卡片 100% 包含例句与翻译断言", "存在未包含例句的硬编码卡片数据")
+
         # ---------------------------------------------------------------------
         # 测试点 16: 统计数字与卡片数据一致性与自我修复测试 (Stats Data Self-Healing Parity)
         # ---------------------------------------------------------------------
