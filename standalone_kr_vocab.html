@@ -24,6 +24,7 @@
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
+  --text-example: #fbcfe8;
   
   --accent-primary: #ec4899; /* Pink-rose accent for Korean Vocab */
   --accent-gradient: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
@@ -58,6 +59,7 @@ body.light-theme {
   --text-primary: #0f172a;
   --text-secondary: #475569;
   --text-muted: #94a3b8;
+  --text-example: #be185d;
   
   --border-color: rgba(0, 0, 0, 0.06);
   --border-highlight: rgba(0, 0, 0, 0.12);
@@ -176,6 +178,10 @@ html, body {
   bottom: 0;
   left: 0;
   right: 0;
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  box-sizing: border-box;
   background: var(--bg-card);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
@@ -248,17 +254,23 @@ html, body {
   top: 50%;
   transform: translateY(-50%);
   font-size: 14px;
+  font-weight: bold;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 2px 6px;
+  padding: 2px 8px;
   border-radius: 50%;
   transition: all 0.2s;
   user-select: none;
+  z-index: 10;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .search-clear-btn:hover {
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  background: rgba(239, 68, 68, 0.85);
 }
 
 .search-icon {
@@ -273,9 +285,57 @@ html, body {
 .active-tags-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: -6px;
-  margin-bottom: 12px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  margin-bottom: 14px;
+}
+
+/* 🏷️ 已选标签一键清空按钮 */
+.clear-all-tags-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  user-select: none;
+  margin-left: 2px;
+}
+
+.clear-all-tags-chip-btn:hover {
+  background: rgba(239, 68, 68, 0.3);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(239, 68, 68, 0.25);
+}
+
+.clear-all-tags-chip-btn:active {
+  transform: translateY(0);
+  scale: 0.96;
+}
+
+body.light-theme .clear-all-tags-chip-btn {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: #dc2626;
+}
+
+body.light-theme .clear-all-tags-chip-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #b91c1c;
 }
 .active-tag-chip {
   background: var(--accent-gradient);
@@ -338,9 +398,192 @@ html, body {
 .sub-filter-row {
   display: flex;
   align-items: center;
+  gap: 10px;
   margin-top: -4px;
   margin-bottom: 12px;
   transition: all 0.2s ease;
+  flex-wrap: wrap;
+}
+
+/* Tag Filter Dropdown Styling */
+.tag-filter-dropdown-wrapper,
+.tag-dropdown-container {
+  position: relative;
+  display: inline-block;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.tag-dropdown-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card-solid);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.tag-dropdown-btn:hover,
+.tag-dropdown-btn.has-active-tags {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: var(--accent-primary, #6366f1);
+  color: var(--accent-primary, #6366f1);
+  font-weight: 600;
+}
+
+.tag-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-primary, #6366f1);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+#tagDropdownMenu,
+.tag-dropdown-container .tag-dropdown-menu,
+.tag-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: auto;
+  z-index: 1000;
+  width: 240px;
+  max-width: calc(100vw - 32px);
+  transform: none;
+  max-height: 320px;
+  background: var(--bg-card, #1e1e2e);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: tagDropdownFadeInRight 0.15s ease-out;
+}
+
+@keyframes tagDropdownFadeInRight {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.tag-dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.tag-clear-all-btn {
+  background: none;
+  border: none;
+  color: var(--accent-primary, #818cf8);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+.tag-clear-all-btn:hover {
+  background: rgba(99, 102, 241, 0.15);
+}
+
+.tag-dropdown-list {
+  padding: 6px;
+  overflow-y: auto;
+  max-height: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tag-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.tag-dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+
+.tag-dropdown-item.selected {
+  background: rgba(99, 102, 241, 0.28) !important;
+  color: #a5b4fc !important;
+  font-weight: 600 !important;
+}
+
+.tag-checkbox {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1.5px solid var(--border-color, rgba(255, 255, 255, 0.35));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 900;
+  color: #ffffff !important;
+  background: transparent;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.tag-dropdown-item.selected .tag-checkbox {
+  background: #3b82f6 !important;
+  border-color: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+.tag-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tag-count {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.tag-dropdown-empty {
+  padding: 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .sub-filter-pills {
@@ -380,6 +623,9 @@ html, body {
 }
 
 .word-card {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
   background: var(--bg-card-solid);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -447,9 +693,10 @@ html, body {
 }
 
 .word-example {
-  color: var(--text-primary);
+  color: var(--text-example);
   margin-bottom: 2px;
-  line-height: 1.3;
+  line-height: 1.35;
+  font-weight: 500;
 }
 
 .word-example-trans {
@@ -622,21 +869,40 @@ html, body {
 
 /* Similar Words Section CSS */
 .similar-words-container {
+  width: 100%;
+  box-sizing: border-box;
   transition: all 0.2s ease;
 }
 .similar-word-chip {
-  padding: 8px 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   transition: transform 0.15s ease, background-color 0.15s ease;
+  text-align: left;
 }
 .similar-word-chip:active {
   transform: scale(0.98);
   background: var(--bg-input);
+}
+.similar-word-chip .similar-ex-text {
+  font-size: 12.5px !important;
+  font-weight: 400 !important;
+  color: var(--text-example) !important;
+  line-height: 1.4 !important;
+}
+.similar-word-chip .similar-ex-trans {
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  color: var(--text-secondary) !important;
+  margin-top: 3px !important;
+  line-height: 1.4 !important;
+  opacity: 1 !important;
 }
 .similar-word-title {
   display: flex;
@@ -759,7 +1025,7 @@ html, body {
 
 .detail-example-text {
   font-size: 14px;
-  color: var(--text-primary);
+  color: var(--text-example);
   font-weight: 600;
   line-height: 1.4;
 }
@@ -810,12 +1076,26 @@ html, body {
   color: var(--accent-info);
 }
 
+#tab-review.active {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  min-height: calc(100vh - 170px);
+}
+
 .flashcard-container {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: 12px;
   margin-top: 10px;
+  flex: 1;
+  width: 100%;
+  min-height: calc(100vh - 170px);
+  height: 100%;
+  justify-content: space-between;
+  box-sizing: border-box;
 }
 
 .review-progress-bar {
@@ -843,7 +1123,10 @@ html, body {
 
 .scene {
   width: 100%;
-  height: 360px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 480px;
   perspective: 1000px;
   cursor: pointer;
 }
@@ -851,6 +1134,7 @@ html, body {
 .flashcard {
   width: 100%;
   height: 100%;
+  flex: 1;
   position: relative;
   transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1);
   transform-style: preserve-3d;
@@ -862,20 +1146,25 @@ html, body {
 
 .card-face {
   position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   width: 100%;
   height: 100%;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   border-radius: var(--radius-lg);
   background: var(--bg-card-solid);
-  border: 1px solid var(--border-highlight);
-  box-shadow: var(--shadow-lg);
-  padding: 28px 20px;
+  border: 1.5px solid var(--border-highlight);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  padding: 24px 20px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   align-items: center;
   text-align: center;
+  box-sizing: border-box;
 }
 
 .card-face-front {
@@ -886,6 +1175,9 @@ html, body {
   transform: rotateY(180deg);
   background: linear-gradient(145deg, rgba(30, 41, 59, 0.95) 0%, var(--bg-card-solid) 100%);
   overflow-y: auto;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 10px;
 }
 
 .card-hint {
@@ -929,6 +1221,7 @@ html, body {
   border-left: 3px solid var(--accent-primary);
   font-size: 14px;
   margin-bottom: 10px;
+  box-sizing: border-box;
 }
 
 .card-notes-block {
@@ -939,6 +1232,7 @@ html, body {
   padding: 8px 12px;
   border-radius: 8px;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .review-actions {
@@ -946,7 +1240,9 @@ html, body {
   grid-template-columns: 1fr 1fr 1fr;
   gap: 12px;
   width: 100%;
-  margin-top: 6px;
+  margin-top: auto;
+  padding-bottom: 8px;
+  box-sizing: border-box;
 }
 
 .review-btn {
@@ -1299,9 +1595,9 @@ html, body {
         <span>卡欧每天学KR💪</span>
       </div>
       <div class="header-actions">
-        <button id="cloudSyncBtn" class="icon-btn" title="云端实时同步" style="font-size:16px;">☁️</button>
-          <button id="themeToggleBtn" class="icon-btn" title="切换主题">🌙</button>
-        <button id="quickAddBtn" class="icon-btn" title="添加韩语单词">➕</button>
+        <button id="cloudSyncBtn" class="icon-btn" title="云端实时同步" style="font-size:16px;" onclick="if(window.app) window.app.fetchFromCloud(true)">☁️</button>
+        <button id="themeToggleBtn" class="icon-btn" title="切换主题" onclick="if(window.app) window.app.toggleTheme()">🌙</button>
+        <button id="quickAddBtn" class="icon-btn" title="添加韩语单词" onclick="if(window.app) window.app.openWordModal()">➕</button>
       </div>
     </header>
 
@@ -1309,20 +1605,20 @@ html, body {
       <section id="tab-list" class="tab-view active">
         <div class="search-box">
           <span class="search-icon">🔍</span>
-          <input type="text" id="searchInput" class="search-input" placeholder="搜索韩语单词、释义或例句...">
-          <span id="searchClearBtn" class="search-clear-btn" style="display:none;" title="一键清空搜索">✕</span>
+          <input type="text" id="searchInput" class="search-input" placeholder="搜索韩语单词、发音或释义..." oninput="if(window.app) window.app.onSearchInput(this.value)">
+          <span id="searchClearBtn" class="search-clear-btn" style="display:none;" title="一键清空搜索" onclick="if(window.app) window.app.clearSearch()">✕</span>
         </div>
         <div id="activeTagsBar" class="active-tags-bar"></div>
 
         <div class="list-control-row">
           <div class="filter-pills" id="filterPills">
-            <button class="pill-btn active" data-filter="learning">学习中 (<span id="count-learning">0</span>)</button>
-            <button class="pill-btn" data-filter="mastered">已掌握 (<span id="count-mastered">0</span>)</button>
-            <button class="pill-btn" data-filter="all">全部 (<span id="count-all">0</span>)</button>
+            <button class="pill-btn active" data-filter="learning" onclick="if(window.app) window.app.setMainFilter('learning', this)">学习中 (<span id="count-learning">0</span>)</button>
+            <button class="pill-btn" data-filter="mastered" onclick="if(window.app) window.app.setMainFilter('mastered', this)">已掌握 (<span id="count-mastered">0</span>)</button>
+            <button class="pill-btn" data-filter="all" onclick="if(window.app) window.app.setMainFilter('all', this)">全部 (<span id="count-all">0</span>)</button>
           </div>
           <div class="page-size-select-box">
             <span>每页:</span>
-            <select id="pageSizeSelect" class="page-size-select">
+            <select id="pageSizeSelect" class="page-size-select" onchange="if(window.app) window.app.onPageSizeChange(this.value)">
               <option value="10">10 条</option>
               <option value="20" selected>20 条</option>
               <option value="50">50 条</option>
@@ -1331,91 +1627,62 @@ html, body {
         </div>
         <div class="sub-filter-row" id="subFilterRow">
           <div class="sub-filter-pills" id="subFilterPills">
-            <button class="sub-pill-btn active" data-subfilter="all">全部学习中 (<span id="count-sub-all">0</span>)</button>
-            <button class="sub-pill-btn" data-subfilter="easy-forget">📌 易忘 (<span id="count-sub-easy-forget">0</span>)</button>
-            <button class="sub-pill-btn" data-subfilter="easy-confuse">🔀 易混 (<span id="count-sub-easy-confuse">0</span>)</button>
+            <button class="sub-pill-btn active" data-subfilter="all" onclick="if(window.app) window.app.setSubFilter('all', this)">全部学习中 (<span id="count-sub-all">0</span>)</button>
+            <button class="sub-pill-btn" data-subfilter="easy-forget" onclick="if(window.app) window.app.setSubFilter('easy-forget', this)">📌 易忘 (<span id="count-sub-easy-forget">0</span>)</button>
+            <button class="sub-pill-btn" data-subfilter="easy-confuse" onclick="if(window.app) window.app.setSubFilter('easy-confuse', this)">🔀 易混 (<span id="count-sub-easy-confuse">0</span>)</button>
+          </div>
+          <div class="tag-filter-dropdown-wrapper" id="tagDropdownContainer">
+            <button id="tagDropdownBtn" class="sub-pill-btn tag-dropdown-btn" onclick="if(window.app) window.app.toggleTagDropdown(event)" title="按标签/Label过滤 (可多选)">
+              🏷️ 标签 <span id="tagDropdownBadge" class="tag-badge" style="display:none;">0</span> ▾
+            </button>
+            <div id="tagDropdownMenu" class="tag-dropdown-menu" style="display:none;" onclick="event.stopPropagation()">
+              <div id="tagDropdownList" class="tag-dropdown-list">
+                <!-- Dynamic tag items with counts -->
+              </div>
+            </div>
           </div>
         </div>
 
         <div id="wordList" class="word-list">
+          <div class="word-card" data-id="kr_1" onclick="if(window.app) window.app.showDetailModal('kr_1')" style="cursor:pointer;">
+            <div class="word-header">
+              <div class="word-title-group">
+                <span class="word-text">가뜩이나</span>
+                <span class="word-reading">[가뜩이나]</span>
+              </div>
+            </div>
+            <div class="word-meaning">adv. 本来就，偏偏，再加上</div>
+            <div class="word-examples">
+              <div class="example-item">
+                <div class="example-kr">가뜩이나 바쁜데 일이 더 생겼다.</div>
+                <div class="example-cn">本来就很忙，偏偏又多出了事。</div>
+              </div>
+            </div>
+            <div class="word-tags"><span class="tag tag-pos">短语</span></div>
+          </div>
+          <div class="word-card" data-id="kr_2" onclick="if(window.app) window.app.showDetailModal('kr_2')" style="cursor:pointer;">
+            <div class="word-header">
+              <div class="word-title-group">
+                <span class="word-text">기껏해야</span>
+                <span class="word-reading">[기껏해야]</span>
+              </div>
+            </div>
+            <div class="word-meaning">adv. 顶多，充其量</div>
+            <div class="word-examples">
+              <div class="example-item">
+                <div class="example-kr">기껏해야 10분 정도 걸릴 것이다.</div>
+                <div class="example-cn">顶多也就花10分钟左右。</div>
+              </div>
+            </div>
+            <div class="word-tags"><span class="tag tag-pos">副词</span></div>
+          </div>
+        </div>
+        <div id="paginationBar" class="pagination-bar"></div>
+      </div>
+    </section>
 
-        <div class="word-card" data-id="kr_1" onclick="if(window.app) window.app.showDetailModal('kr_1')" style="cursor:pointer;">
-          <div class="word-header">
-            <div class="word-title-group">
-              <span class="word-text">가뜩이나</span>
-              <span class="word-reading">[[가뜩이나]]</span>
-            </div>
-          </div>
-          <div class="word-meaning">adv. 本来就，偏偏，再加上</div>
+    <section id="tab-review" class="tab-view">
         </div>
-        
-        <div class="word-card" data-id="kr_2" onclick="if(window.app) window.app.showDetailModal('kr_2')" style="cursor:pointer;">
-          <div class="word-header">
-            <div class="word-title-group">
-              <span class="word-text">기껏해야</span>
-              <span class="word-reading">[[기껏해야]]</span>
-            </div>
-          </div>
-          <div class="word-meaning">adv. 顶多，充其量</div>
-        </div>
-        
-        <div class="word-card" data-id="kr_3" onclick="if(window.app) window.app.showDetailModal('kr_3')" style="cursor:pointer;">
-          <div class="word-header">
-            <div class="word-title-group">
-              <span class="word-text">간신히</span>
-              <span class="word-reading">[[간신히]]</span>
-            </div>
-          </div>
-          <div class="word-meaning">adv. 好不容易，勉强</div>
-        </div>
-        
-        <div class="word-card" data-id="kr_4" onclick="if(window.app) window.app.showDetailModal('kr_4')" style="cursor:pointer;">
-          <div class="word-header">
-            <div class="word-title-group">
-              <span class="word-text">모처럼</span>
-              <span class="word-reading">[[모처럼]]</span>
-            </div>
-          </div>
-          <div class="word-meaning">adv. 难得，好不容易</div>
-        </div>
-        
-        <div class="word-card" data-id="kr_5" onclick="if(window.app) window.app.showDetailModal('kr_5')" style="cursor:pointer;">
-          <div class="word-header">
-            <div class="word-title-group">
-              <span class="word-text">걸핏하면</span>
-              <span class="word-reading">[[걸피타면]]</span>
-            </div>
-          </div>
-          <div class="word-meaning">adv. 动不动就，动辄</div>
-        </div>
-        
-        <div class="word-card" data-id="kr_6" onclick="if(window.app) window.app.showDetailModal('kr_6')" style="cursor:pointer;">
-          <div class="word-header">
-            <div class="word-title-group">
-              <span class="word-text">툭하면</span>
-              <span class="word-reading">[[투카면]]</span>
-            </div>
-          </div>
-          <div class="word-meaning">adv. 动不动就，动辄</div>
-        </div>
-        
-        <div class="word-card" data-id="kr_7" onclick="if(window.app) window.app.showDetailModal('kr_7')" style="cursor:pointer;">
-          <div class="word-header">
-            <div class="word-title-group">
-              <span class="word-text">자투리 시간</span>
-              <span class="word-reading">[[자투리 시간]]</span>
-            </div>
-          </div>
-          <div class="word-meaning">n. 零碎时间，碎片时间</div>
-        </div>
-        
-        <div class="word-card" data-id="kr_8" onclick="if(window.app) window.app.showDetailModal('kr_8')" style="cursor:pointer;">
-          <div class="word-header">
-            <div class="word-title-group">
-              <span class="word-text">짬을 내다</span>
-              <span class="word-reading">[[짜믈 내다]]</span>
-            </div>
-          </div>
           <div class="word-meaning">v. 抽空，挤出时间</div>
         </div>
         
@@ -8220,7 +8487,7 @@ html, body {
           </div>
           <div id="reviewStatusText" class="review-status-text">进度：0 / 0</div>
 
-          <div class="scene" id="flashcardScene">
+          <div class="scene" id="flashcardScene" onclick="if(window.app) window.app.toggleCardFlip()">
             <div class="flashcard" id="flashcard">
               <div class="card-face card-face-front">
                 <div class="card-hint">点击卡片翻转 ↺</div>
@@ -8236,22 +8503,22 @@ html, body {
                   <div class="word-example-trans" id="cardBackExampleTrans">例句翻译</div>
                 </div>
                 <div class="card-notes-block" id="cardBackNotes">助记 / 语法笔记</div>
-                <div id="cardBackSimilarBlock"></div>
+                <div id="cardBackSimilarBlock" style="width:100%; box-sizing:border-box;"></div>
                 <div class="card-hint" style="margin-top: 10px;">点击翻回正面 ↺</div>
               </div>
             </div>
           </div>
 
           <div class="review-actions">
-            <button class="review-btn btn-easy-forget" id="btnEasyForget">
+            <button class="review-btn btn-easy-forget" id="btnEasyForget" onclick="if(window.app) window.app.assessReview('easy-forget')">
               <span>📌</span>
               <span>易忘</span>
             </button>
-            <button class="review-btn btn-easy-confuse" id="btnEasyConfuse">
+            <button class="review-btn btn-easy-confuse" id="btnEasyConfuse" onclick="if(window.app) window.app.assessReview('easy-confuse')">
               <span>🔀</span>
               <span>易混</span>
             </button>
-            <button class="review-btn btn-remembered" id="btnRemembered">
+            <button class="review-btn btn-remembered" id="btnRemembered" onclick="if(window.app) window.app.assessReview('remembered')">
               <span>✅</span>
               <span>记住了</span>
             </button>
@@ -8280,25 +8547,25 @@ html, body {
     </main>
 
     <nav class="bottom-nav">
-      <button class="nav-item active" data-tab="tab-list">
+      <button class="nav-item active" data-tab="tab-list" onclick="if(window.app) window.app.switchTab('tab-list')">
         <span class="nav-icon">📚</span>
         <span>词库列表</span>
       </button>
-      <button class="nav-item" data-tab="tab-review">
+      <button class="nav-item" data-tab="tab-review" onclick="if(window.app) window.app.switchTab('tab-review')">
         <span class="nav-icon">🎴</span>
         <span>卡片复习</span>
       </button>
-      <button class="nav-item" data-tab="tab-settings">
+      <button class="nav-item" data-tab="tab-settings" onclick="if(window.app) window.app.switchTab('tab-settings')">
         <span class="nav-icon">⚙️</span>
         <span>设置备份</span>
       </button>
     </nav>
 
-    <div id="wordModal" class="modal-overlay">
+    <div id="wordModal" class="modal-overlay" onclick="if(event.target.id === 'wordModal' && window.app) window.app.closeWordModal()">
       <div class="modal-sheet">
         <div class="modal-header">
           <h3 id="modalTitle" class="modal-title">添加韩语单词</h3>
-          <button id="closeModalBtn" class="icon-btn">✕</button>
+          <button id="closeModalBtn" class="icon-btn" onclick="if(window.app) window.app.closeWordModal()">✕</button>
         </div>
         <form id="wordForm">
           <input type="hidden" id="wordId">
@@ -8338,14 +8605,14 @@ html, body {
       </div>
     </div>
 
-    <div id="detailModal" class="modal-overlay">
+    <div id="detailModal" class="modal-overlay" onclick="if(event.target.id === 'detailModal' && window.app) window.app.closeDetailModal()">
       <div class="modal-sheet detail-sheet">
         <div class="modal-header">
           <div class="detail-title-group">
             <h3 id="detailWord" class="detail-word">单词</h3>
             <span id="detailReading" class="detail-reading">[发音]</span>
           </div>
-          <button id="closeDetailModalBtn" class="icon-btn">✕</button>
+          <button id="closeDetailModalBtn" class="icon-btn" onclick="if(window.app) window.app.closeDetailModal()">✕</button>
         </div>
         <div class="detail-body">
           <div id="detailMeaning" class="detail-meaning">词性与释义</div>
@@ -8355,7 +8622,7 @@ html, body {
         </div>
         <div class="detail-footer">
           <button id="detailSpeakBtn" class="btn-secondary" style="flex: 1;">🔊 发音</button>
-          <button id="detailEditBtn" class="btn-primary" style="flex: 1;">✏️ 编辑卡片</button>
+          <button id="detailEditBtn" class="btn-primary" style="flex: 1;" onclick="if(window.app) { const id = window.app.currentDetailWordId; window.app.closeDetailModal(); window.app.editWord(id); }">✏️ 编辑卡片</button>
         </div>
       </div>
     </div>
@@ -8508,6 +8775,7 @@ class KrVocabApp {
   }
 
   constructor() {
+    window.app = this;
     this.STORAGE_KEY = 'evie_kr_vocab_data_v5000';
     this.THEME_KEY = 'evie_kr_vocab_theme';
     this.words = [];
@@ -8534,10 +8802,11 @@ class KrVocabApp {
       console.warn('LocalStorage access check:', e);
     }
 
-    // Always load local default samples first to prevent 0 words UI freeze
+    this.loadTheme();
     this.loadData();
     this.renderWordList();
     this.updateStats();
+    this.bindEvents();
 
     // Async background sync without blocking UI initialization
     setTimeout(() => {
@@ -8548,12 +8817,25 @@ class KrVocabApp {
   loadData() {
     try {
       const stored = SafeStorage.getItem(this.STORAGE_KEY);
-      this.words = stored ? JSON.parse(stored) : [];
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          this.words = parsed;
+        } else if (parsed && Array.isArray(parsed.words)) {
+          this.words = parsed.words;
+        } else {
+          this.words = [];
+        }
+      } else {
+        this.words = [];
+      }
     } catch (e) {
       this.words = [];
     }
-    if (!this.words || !Array.isArray(this.words) || this.words.length === 0) {
-      console.log("KR words list is empty! Auto loading 687 sample cards...");
+
+    if (!Array.isArray(this.words) || this.words.length === 0) {
+      this.words = [];
+      console.log("KR words list is empty! Auto loading sample cards...");
       this.loadSampleData(false);
     }
   }
@@ -8561,7 +8843,7 @@ class KrVocabApp {
   saveData() {
     try {
       SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
-    this.syncToCloud(false);
+      this.syncToCloud(false);
       this.updateStats();
     } catch (e) {
       this.showToast('⚠️ 保存失败');
@@ -8570,150 +8852,189 @@ class KrVocabApp {
 
   loadTheme() {
     const savedTheme = SafeStorage.getItem(this.THEME_KEY);
+    const btn = document.getElementById('themeToggleBtn');
     if (savedTheme === 'light') {
       document.body.classList.add('light-theme');
-      document.getElementById('themeToggleBtn').textContent = '☀️';
+      if (btn) btn.textContent = '☀️';
     } else {
       document.body.classList.remove('light-theme');
-      document.getElementById('themeToggleBtn').textContent = '🌙';
+      if (btn) btn.textContent = '🌙';
     }
   }
 
   toggleTheme() {
+    const now = Date.now();
+    if (this._lastThemeToggle && (now - this._lastThemeToggle < 250)) {
+      return;
+    }
+    this._lastThemeToggle = now;
     document.body.classList.toggle('light-theme');
     const isLight = document.body.classList.contains('light-theme');
     SafeStorage.setItem(this.THEME_KEY, isLight ? 'light' : 'dark');
-    document.getElementById('themeToggleBtn').textContent = isLight ? '☀️' : '🌙';
+    const btn = document.getElementById('themeToggleBtn');
+    if (btn) btn.textContent = isLight ? '☀️' : '🌙';
   }
 
   bindEvents() {
-    document.querySelectorAll('.bottom-nav .nav-item').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const targetTab = btn.getAttribute('data-tab');
-        if (targetTab) {
-          this.switchTab(targetTab);
-        } else if (btn.id === 'navAddBtn') {
-          this.openWordModal();
+    try {
+      document.querySelectorAll('.bottom-nav .nav-item').forEach(btn => {
+        btn?.addEventListener('click', (e) => {
+          const targetTab = btn.getAttribute('data-tab');
+          if (targetTab) {
+            this.switchTab(targetTab);
+          } else if (btn.id === 'navAddBtn') {
+            this.openWordModal();
+          }
+        });
+      });
+
+      const searchInput = document.getElementById('searchInput');
+      const searchClearBtn = document.getElementById('searchClearBtn');
+
+      if (searchInput) {
+        searchInput.addEventListener('input', (e) => this.onSearchInput(e.target.value));
+        searchInput.addEventListener('compositionend', (e) => this.onSearchInput(e.target.value));
+      }
+
+      if (searchClearBtn) {
+        searchClearBtn.addEventListener('click', () => this.clearSearch());
+      }
+
+      const pageSizeSelect = document.getElementById('pageSizeSelect');
+      if (pageSizeSelect) {
+        pageSizeSelect.addEventListener('change', (e) => {
+          this.pageSize = parseInt(e.target.value) || 20;
+          this.currentPage = 1;
+          this.renderWordList();
+        });
+      }
+
+      document.getElementById('filterPills')?.addEventListener('click', (e) => {
+        const pill = e.target.closest('.pill-btn');
+        if (!pill) return;
+        const filterType = pill.getAttribute('data-filter');
+        this.setMainFilter(filterType, pill);
+      });
+
+      document.getElementById('subFilterPills')?.addEventListener('click', (e) => {
+        const pill = e.target.closest('.sub-pill-btn');
+        if (!pill) return;
+        const subFilterType = pill.getAttribute('data-subfilter');
+        this.setSubFilter(subFilterType, pill);
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('#tagFilterDropdownWrapper')) {
+          this.closeTagFilterDropdown();
         }
       });
-    });
 
-    document.getElementById('cloudSyncBtn')?.addEventListener('click', () => this.fetchFromCloud(true));
-    document.getElementById('themeToggleBtn').addEventListener('click', () => this.toggleTheme());
-    document.getElementById('quickAddBtn').addEventListener('click', () => this.openWordModal());
+      document.getElementById('wordForm')?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.saveWordFromForm();
+      });
 
+      document.getElementById('closeModalBtn')?.addEventListener('click', () => this.closeWordModal());
+      document.getElementById('wordModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'wordModal') this.closeWordModal();
+      });
+
+      document.getElementById('closeDetailModalBtn')?.addEventListener('click', () => this.closeDetailModal());
+      document.getElementById('detailModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'detailModal') this.closeDetailModal();
+      });
+      document.getElementById('detailSpeakBtn')?.addEventListener('click', () => {
+        const word = this.words.find(w => w.id === this.currentDetailWordId);
+        if (word) this.speakWord(word.word);
+      });
+      document.getElementById('detailEditBtn')?.addEventListener('click', () => {
+        const wordId = this.currentDetailWordId;
+        this.closeDetailModal();
+        this.editWord(wordId);
+      });
+
+      document.getElementById('flashcardScene')?.addEventListener('click', () => {
+        this.toggleCardFlip();
+      });
+
+      document.getElementById('cardSpeakFrontBtn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const currentWord = this.reviewList[this.currentReviewIndex];
+        if (currentWord) this.speakWord(currentWord.word);
+      });
+
+      document.getElementById('btnEasyForget')?.addEventListener('click', () => this.assessReview('easy-forget'));
+      document.getElementById('btnEasyConfuse')?.addEventListener('click', () => this.assessReview('easy-confuse'));
+      document.getElementById('btnRemembered')?.addEventListener('click', () => this.assessReview('remembered'));
+
+      document.getElementById('exportHtmlBtn')?.addEventListener('click', () => this.exportHTML());
+      document.getElementById('exportDataBtn')?.addEventListener('click', () => this.exportJSON());
+      document.getElementById('importDataTriggerBtn')?.addEventListener('click', () => {
+        document.getElementById('importFileInput')?.click();
+      });
+      document.getElementById('importFileInput')?.addEventListener('change', (e) => this.importJSON(e));
+      document.getElementById('clearDataBtn')?.addEventListener('click', () => this.clearAllData());
+    } catch (err) {
+      console.error('bindEvents Error:', err);
+    }
+  }
+
+  onSearchInput(val) {
+    this.searchQuery = (val || '').trim().toLowerCase();
+    this.currentPage = 1;
+    const searchClearBtn = document.getElementById('searchClearBtn');
+    if (searchClearBtn) {
+      searchClearBtn.style.display = val ? 'flex' : 'none';
+    }
+    this.renderWordList();
+  }
+
+  clearSearch() {
     const searchInput = document.getElementById('searchInput');
     const searchClearBtn = document.getElementById('searchClearBtn');
-
-    searchInput.addEventListener('input', (e) => {
-      this.searchQuery = e.target.value.trim().toLowerCase();
-      this.currentPage = 1;
-      if (searchClearBtn) {
-        searchClearBtn.style.display = e.target.value ? 'block' : 'none';
-      }
-      this.renderWordList();
-    });
-
+    if (searchInput) {
+      searchInput.value = '';
+      searchInput.focus();
+    }
+    this.searchQuery = '';
+    this.currentPage = 1;
     if (searchClearBtn) {
-      searchClearBtn.addEventListener('click', () => {
-        searchInput.value = '';
-        this.searchQuery = '';
-        this.currentPage = 1;
-        searchClearBtn.style.display = 'none';
-        this.renderWordList();
-        searchInput.focus();
-      });
+      searchClearBtn.style.display = 'none';
     }
-
-    const pageSizeSelect = document.getElementById('pageSizeSelect');
-    if (pageSizeSelect) {
-      pageSizeSelect.addEventListener('change', (e) => {
-        this.pageSize = parseInt(e.target.value) || 20;
-        this.currentPage = 1;
-        this.renderWordList();
-      });
-    }
-
-    document.getElementById('filterPills').addEventListener('click', (e) => {
-      const pill = e.target.closest('.pill-btn');
-      if (!pill) return;
-      document.querySelectorAll('.pill-btn').forEach(p => p.classList.remove('active'));
-      pill.classList.add('active');
-      this.currentFilter = pill.getAttribute('data-filter');
-      this.currentPage = 1;
-      this.renderWordList();
-    });
-
-    document.getElementById('subFilterPills')?.addEventListener('click', (e) => {
-      const pill = e.target.closest('.sub-pill-btn');
-      if (!pill) return;
-      document.querySelectorAll('.sub-pill-btn').forEach(p => p.classList.remove('active'));
-      pill.classList.add('active');
-      this.subFilter = pill.getAttribute('data-subfilter');
-      this.currentPage = 1;
-      this.renderWordList();
-    });
-
-    document.getElementById('wordForm').addEventListener('submit', (e) => {
-      e.preventDefault();
-      this.saveWordFromForm();
-    });
-
-    document.getElementById('closeModalBtn').addEventListener('click', () => this.closeWordModal());
-    document.getElementById('wordModal').addEventListener('click', (e) => {
-      if (e.target.id === 'wordModal') this.closeWordModal();
-    });
-
-    document.getElementById('closeDetailModalBtn')?.addEventListener('click', () => this.closeDetailModal());
-    document.getElementById('detailModal')?.addEventListener('click', (e) => {
-      if (e.target.id === 'detailModal') this.closeDetailModal();
-    });
-    document.getElementById('detailSpeakBtn')?.addEventListener('click', () => {
-      const word = this.words.find(w => w.id === this.currentDetailWordId);
-      if (word) this.speakWord(word.word);
-    });
-    document.getElementById('detailEditBtn')?.addEventListener('click', () => {
-      const wordId = this.currentDetailWordId;
-      this.closeDetailModal();
-      this.editWord(wordId);
-    });
-
-    const flashcard = document.getElementById('flashcard');
-    document.getElementById('flashcardScene').addEventListener('click', () => {
-      flashcard.classList.toggle('is-flipped');
-    });
-
-    document.getElementById('cardSpeakFrontBtn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      const currentWord = this.reviewList[this.currentReviewIndex];
-      if (currentWord) this.speakWord(currentWord.word);
-    });
-
-    document.getElementById('btnEasyForget')?.addEventListener('click', () => this.assessReview('easy-forget'));
-    document.getElementById('btnEasyConfuse')?.addEventListener('click', () => this.assessReview('easy-confuse'));
-    document.getElementById('btnRemembered').addEventListener('click', () => this.assessReview('remembered'));
-
-    document.getElementById('exportHtmlBtn')?.addEventListener('click', () => this.exportHTML());
-    document.getElementById('exportDataBtn').addEventListener('click', () => this.exportJSON());
-    document.getElementById('importDataTriggerBtn').addEventListener('click', () => {
-      document.getElementById('importFileInput').click();
-    });
-    document.getElementById('importFileInput').addEventListener('change', (e) => this.importJSON(e));
-    document.getElementById('clearDataBtn')?.addEventListener('click', () => this.clearAllData());
+    this.renderWordList();
   }
 
   switchTab(tabId) {
-    document.querySelectorAll('.tab-view').forEach(view => view.classList.remove('active'));
-    document.querySelectorAll('.bottom-nav .nav-item').forEach(nav => nav.classList.remove('active'));
+    try {
+      if (!tabId) return;
 
-    const activeView = document.getElementById(tabId);
-    if (activeView) activeView.classList.add('active');
+      document.querySelectorAll('.tab-view').forEach(view => {
+        if (view) view.classList.remove('active');
+      });
+      document.querySelectorAll('.bottom-nav .nav-item').forEach(nav => {
+        if (nav) nav.classList.remove('active');
+      });
 
-    const activeNav = document.querySelector(`.bottom-nav .nav-item[data-tab="${tabId}"]`);
-    if (activeNav) activeNav.classList.add('active');
+      const activeView = document.getElementById(tabId);
+      if (activeView) activeView.classList.add('active');
 
-    if (tabId === 'tab-review') {
-      this.startReviewSession();
+      const activeNav = document.querySelector(`.bottom-nav .nav-item[data-tab="${tabId}"]`);
+      if (activeNav) activeNav.classList.add('active');
+
+      if (tabId === 'tab-review') {
+        this.startReviewSession();
+      }
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      console.error('switchTab Error:', err);
+    }
+  }
+
+  toggleCardFlip() {
+    const flashcard = document.getElementById('flashcard');
+    if (flashcard) {
+      flashcard.classList.toggle('is-flipped');
     }
   }
 
@@ -8762,7 +9083,7 @@ class KrVocabApp {
       }
     }).join('');
 
-    container.innerHTML = tagsHtml + `<button type="button" class="add-tag-btn" onclick="app.showModalTagDropdown(event)" title="添加标签">+</button>`;
+    container.innerHTML = tagsHtml + `<div class="tag-dropdown-container" id="tagDropdownContainer"><button type="button" class="add-tag-btn" onclick="app.showModalTagDropdown(event)" title="添加标签">+</button></div>`;
   }
 
   showModalTagDropdown(event) {
@@ -8878,22 +9199,37 @@ class KrVocabApp {
   renderSimilarBlockHtml(similarWords) {
     if (!similarWords || similarWords.length === 0) return '';
 
-    const itemsHtml = similarWords.map(w => `
-      <div class="similar-word-chip" onclick="app.showDetailModal('${w.id}')" style="cursor:pointer;" title="点击查看此相近表达详情">
-        <div class="similar-word-title">
-          <span class="similar-word-text">${this.escapeHtml(w.word)}</span>
-          ${w.reading ? `<span class="similar-word-reading">[${this.escapeHtml(w.reading.replace(/^[\[\(]+/, '').replace(/[\]\)]+$/, ''))}]</span>` : ''}
+    const itemsHtml = similarWords.map(w => {
+      const exList = this.getParsedExamples(w);
+      const firstEx = exList.length > 0 ? exList[0] : null;
+      const cleanReading = w.reading ? w.reading.replace(/^[\[\(]+/, '').replace(/[\]\)]+$/, '') : '';
+
+      return `
+        <div class="similar-word-chip" onclick="event.stopPropagation(); app.showDetailModal('${w.id}')" style="cursor:pointer; width:100%; box-sizing:border-box; text-align:left;" title="点击查看此相近表达详情">
+          <div class="similar-word-title" style="display:flex; align-items:center; gap:6px;">
+            <span class="similar-word-text" style="font-size:15px; font-weight:700; color:var(--text-primary);">${this.escapeHtml(w.word)}</span>
+            ${cleanReading ? `<span class="similar-word-reading" style="font-size:13px; color:var(--accent-secondary);">[${this.escapeHtml(cleanReading)}]</span>` : ''}
+          </div>
+          <div class="similar-word-meaning" style="font-size:13px; color:var(--text-secondary); margin-top:2px;">
+            ${this.escapeHtml(w.meaning)}
+            ${w.krMeaning ? `<span class="kr-badge" style="margin-left:6px; font-size:11px;">${this.escapeHtml(w.krMeaning)}</span>` : ''}
+          </div>
+          ${firstEx ? `
+            <div class="similar-word-example" style="margin-top:6px; padding-top:6px; border-top:1px dashed var(--border-color); text-align:left;">
+              <div class="similar-ex-text" style="font-size:12.5px; font-weight:400; color:var(--text-example); line-height:1.4;">${this.escapeHtml(firstEx.example)}</div>
+              ${firstEx.trans ? `<div class="similar-ex-trans" style="font-size:12px; color:var(--text-secondary); margin-top:3px; line-height:1.4;">${this.escapeHtml(firstEx.trans)}</div>` : ''}
+            </div>
+          ` : ''}
         </div>
-        <div class="similar-word-meaning">${this.escapeHtml(w.meaning)}</div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
 
     return `
-      <div class="similar-words-container" style="margin-top:12px; padding:12px; background:rgba(255,255,255,0.03); border-radius:12px; border:1px solid var(--border-color);">
+      <div class="similar-words-container" style="margin-top:12px; padding:12px; background:rgba(255,255,255,0.03); border-radius:12px; border:1px solid var(--border-color); width:100%; box-sizing:border-box; text-align:left;">
         <div style="font-size:12px; font-weight:700; color:var(--text-secondary); margin-bottom:8px; display:flex; align-items:center; gap:4px;">
           <span>🔗 相近表达/近义推荐</span>
         </div>
-        <div style="display:flex; flex-direction:column; gap:8px;">
+        <div style="display:flex; flex-direction:column; gap:8px; width:100%; box-sizing:border-box;">
           ${itemsHtml}
         </div>
       </div>
@@ -9025,44 +9361,80 @@ class KrVocabApp {
     return this.words.filter(w => {
       // Multi-tag combinations filter
       if (this.selectedTags && this.selectedTags.size > 0) {
-        const wordTags = w.tags || [];
-        const matchesAllSelectedTags = Array.from(this.selectedTags).every(st => 
-          wordTags.some(wt => wt.toLowerCase() === st.toLowerCase())
+        const wordTags = (w.tags || []).map(t => (t || '').replace(/^#/, '').trim().toLowerCase());
+        const matchesSelectedTags = Array.from(this.selectedTags).some(st => 
+          wordTags.some(wt => wt === st.toLowerCase())
         );
-        if (!matchesAllSelectedTags) return false;
+        if (!matchesSelectedTags) return false;
       }
 
-      // Keyword search query
+      // Keyword search query (仅匹配单词/表达、发音/假名及释义，隔离例句与标签)
       if (this.searchQuery) {
         const q = this.searchQuery;
-        const matchWord = w.word.toLowerCase().includes(q);
+        const matchWord = w.word && w.word.toLowerCase().includes(q);
         const matchReading = w.reading && w.reading.toLowerCase().includes(q);
-        const matchMeaning = w.meaning.toLowerCase().includes(q);
-        const matchExample = w.example && w.example.toLowerCase().includes(q);
-        const matchTags = w.tags && w.tags.some(t => t.toLowerCase().includes(q));
-        return matchWord || matchReading || matchMeaning || matchExample || matchTags;
+        const matchMeaning = w.meaning && w.meaning.toLowerCase().includes(q);
+
+        return matchWord || matchReading || matchMeaning;
       }
       return true;
     });
   }
 
+  setMainFilter(filterType, btnEl) {
+    document.querySelectorAll('.pill-btn').forEach(p => p.classList.remove('active'));
+    if (btnEl) {
+      btnEl.classList.add('active');
+    } else {
+      const target = document.querySelector(`.pill-btn[data-filter="${filterType}"]`);
+      if (target) target.classList.add('active');
+    }
+    this.currentFilter = filterType;
+    this.currentPage = 1;
+    this.renderWordList();
+    this.scrollToFirstCard();
+  }
+
+  setSubFilter(filterType, btnEl) {
+    document.querySelectorAll('.sub-pill-btn').forEach(p => p.classList.remove('active'));
+    if (btnEl) {
+      btnEl.classList.add('active');
+    } else {
+      const target = document.querySelector(`.sub-pill-btn[data-subfilter="${filterType}"]`);
+      if (target) target.classList.add('active');
+    }
+    this.subFilter = filterType;
+    this.currentPage = 1;
+    this.renderWordList();
+    this.scrollToFirstCard();
+  }
+
   renderWordList() {
+    if (!Array.isArray(this.words) || this.words.length === 0) {
+      this.words = [];
+      this.loadSampleData(false);
+    }
     this.renderActiveTags();
+    this.updateTagBadge();
+    if (document.getElementById('tagDropdownMenu')?.style.display === 'block') {
+      this.renderTagDropdownItems();
+    }
     this.updateStats();
     const listContainer = document.getElementById('wordList');
     const searchFiltered = this.getSearchFilteredWords();
     let filtered = searchFiltered.filter(w => {
-      if (this.currentFilter === 'learning') {
-        if (w.mastered) return false;
-        if (this.subFilter === 'easy-forget') {
-          return (w.tags || []).includes('易忘');
-        }
-        if (this.subFilter === 'easy-confuse') {
-          return (w.tags || []).includes('易混');
-        }
-        return true;
-      }
+      // 1. 主分类筛选
+      if (this.currentFilter === 'learning' && w.mastered) return false;
       if (this.currentFilter === 'mastered' && !w.mastered) return false;
+
+      // 2. 子标签筛选 (易忘 / 易混)
+      if (this.subFilter === 'easy-forget') {
+        return (w.tags || []).includes('易忘');
+      }
+      if (this.subFilter === 'easy-confuse') {
+        return (w.tags || []).includes('易混');
+      }
+
       return true;
     });
 
@@ -9078,10 +9450,10 @@ class KrVocabApp {
 
     if (totalItems === 0) {
       listContainer.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">🇰🇷</div>
-          <h3>暂无韩语单词</h3>
-          <p>点击“新增韩词”开始添加你正在学习的韩语词汇吧！</p>
+        <div class="empty-state" style="text-align:center; padding: 40px 20px;">
+          <div class="empty-icon" style="font-size: 48px; margin-bottom: 12px;">🔍</div>
+          <h3 style="margin-bottom: 8px;">未找到匹配的韩语单词/表达</h3>
+          <p style="color: var(--text-secondary, #94a3b8);">请尝试更换搜索关键字或清除“易忘/易混”筛选条件</p>
         </div>
       `;
       this.renderPaginationControls(0, 0);
@@ -9241,6 +9613,24 @@ class KrVocabApp {
     }
   }
 
+  onPageSizeChange(val) {
+    this.pageSize = parseInt(val) || 20;
+    this.currentPage = 1;
+    const selectEl = document.getElementById('pageSizeSelect');
+    if (selectEl) selectEl.value = String(this.pageSize);
+    this.renderWordList();
+    this.scrollToFirstCard();
+  }
+
+  onPageJumpChange(val) {
+    const selectedPage = parseInt(val);
+    if (selectedPage && selectedPage !== this.currentPage) {
+      this.currentPage = selectedPage;
+      this.renderWordList();
+      this.scrollToFirstCard();
+    }
+  }
+
   renderPaginationControls(totalPages, totalItems) {
     const paginationBar = document.getElementById('paginationBar');
     if (!paginationBar) return;
@@ -9259,7 +9649,7 @@ class KrVocabApp {
     paginationBar.innerHTML = `
       <button class="page-btn" id="btnPrevPage" ${this.currentPage <= 1 ? 'disabled' : ''}>上一页</button>
       <div class="page-jump-container">
-        <select id="pageJumpSelect" class="page-jump-select" title="点击滑动选择直接跳到指定页">
+        <select id="pageJumpSelect" class="page-jump-select" onchange="if(window.app) window.app.onPageJumpChange(this.value)" title="点击滑动选择直接跳到指定页">
           ${optionsHtml}
         </select>
         <span class="page-info-total">/ ${totalPages} 页 (共 ${totalItems} 条)</span>
@@ -9284,12 +9674,7 @@ class KrVocabApp {
     });
 
     document.getElementById('pageJumpSelect')?.addEventListener('change', (e) => {
-      const selectedPage = parseInt(e.target.value);
-      if (selectedPage && selectedPage !== this.currentPage) {
-        this.currentPage = selectedPage;
-        this.renderWordList();
-        this.scrollToFirstCard();
-      }
+      this.onPageJumpChange(e.target.value);
     });
   }
 
@@ -9304,19 +9689,151 @@ class KrVocabApp {
     }
   }
 
-  filterByTag(tag) {
+  getAllAvailableTags() {
+    const datasetTags = new Set();
+    (this.words || []).forEach(w => {
+      if (Array.isArray(w.tags)) {
+        w.tags.forEach(t => {
+          if (t) {
+            const cleanTag = String(t).replace(/^#/, '').trim();
+            if (cleanTag) datasetTags.add(cleanTag);
+          }
+        });
+      }
+    });
+    const systemTags = ['动词', '形容词', '名词', '副词', '短语', '惯用句'];
+    systemTags.forEach(st => datasetTags.add(st));
+
+    return Array.from(datasetTags).sort((a, b) => {
+      const countA = this.getTagCount(a);
+      const countB = this.getTagCount(b);
+      if (countB !== countA) return countB - countA;
+      return a.localeCompare(b, 'zh');
+    });
+  }
+
+  getTagCount(tag) {
+    const cleanTag = String(tag).replace(/^#/, '').trim().toLowerCase();
+    return (this.words || []).filter(w => {
+      if (!w.tags || !Array.isArray(w.tags)) return false;
+      return w.tags.some(t => String(t).replace(/^#/, '').trim().toLowerCase() === cleanTag);
+    }).length;
+  }
+
+  toggleTagDropdown(event) {
+    if (event) event.stopPropagation();
+    const menus = document.querySelectorAll('.tag-dropdown-menu, #tagDropdownMenu');
+    if (!menus || menus.length === 0) return;
+    
+    let isVisible = false;
+    menus.forEach(m => {
+      if (m.style.display === 'block') isVisible = true;
+    });
+
+    if (isVisible) {
+      this.closeTagFilterDropdown();
+    } else {
+      this.renderTagDropdownItems();
+      menus.forEach(m => {
+        m.style.display = 'block';
+      });
+    }
+  }
+
+  closeTagFilterDropdown() {
+    const menus = document.querySelectorAll('.tag-dropdown-menu, #tagDropdownMenu');
+    menus.forEach(m => {
+      m.style.display = 'none';
+    });
+  }
+
+  toggleTagFilter(tag) {
     if (!this.selectedTags) this.selectedTags = new Set();
-    this.selectedTags.add(tag);
+    const cleanTag = String(tag).replace(/^#/, '').trim();
+    
+    let existing = null;
+    for (let st of this.selectedTags) {
+      if (String(st).replace(/^#/, '').trim().toLowerCase() === cleanTag.toLowerCase()) {
+        existing = st;
+        break;
+      }
+    }
+    if (existing) {
+      this.selectedTags.delete(existing);
+    } else {
+      this.selectedTags.add(cleanTag);
+    }
     this.currentPage = 1;
     this.renderWordList();
+    this.renderTagDropdownItems();
+  }
+
+  clearAllTagFilters() {
+    if (this.selectedTags) {
+      this.selectedTags.clear();
+    }
+    this.currentPage = 1;
+    this.renderWordList();
+    this.renderTagDropdownItems();
+  }
+
+  updateTagBadge() {
+    const badges = document.querySelectorAll('.tag-badge, .tag-dropdown-badge, #tagDropdownBadge, #searchBoxTagDropdownBadge');
+    const btns = document.querySelectorAll('.tag-dropdown-btn, #tagDropdownBtn, #searchBoxTagDropdownBtn');
+    const count = this.selectedTags ? this.selectedTags.size : 0;
+    
+    badges.forEach(badge => {
+      if (count > 0) {
+        badge.textContent = count;
+        badge.style.display = 'inline-flex';
+      } else {
+        badge.style.display = 'none';
+      }
+    });
+
+    btns.forEach(btn => {
+      if (count > 0) {
+        btn.classList.add('has-active-tags');
+      } else {
+        btn.classList.remove('has-active-tags');
+      }
+    });
+  }
+
+  renderTagDropdownItems() {
+    const listContainers = document.querySelectorAll('.tag-dropdown-list, #tagDropdownList, #searchBoxTagDropdownList');
+    if (!listContainers || listContainers.length === 0) return;
+    const tags = this.getAllAvailableTags();
+    
+    let html = '';
+    if (tags.length === 0) {
+      html = '<div class="tag-dropdown-empty" style="padding:10px; text-align:center; color:var(--text-secondary);">暂无可用标签</div>';
+    } else {
+      html = tags.map(tag => {
+        const cleanTag = String(tag).replace(/^#/, '').trim();
+        const isSelected = this.selectedTags && Array.from(this.selectedTags).some(st => String(st).replace(/^#/, '').trim().toLowerCase() === cleanTag.toLowerCase());
+        const count = this.getTagCount(cleanTag);
+        return `
+          <div class="tag-dropdown-item ${isSelected ? 'selected' : ''}" onclick="if(window.app) window.app.toggleTagFilter('${this.escapeHtml(cleanTag)}')">
+            <span class="tag-checkbox">${isSelected ? '✓' : ''}</span>
+            <span class="tag-name">#${this.escapeHtml(cleanTag)}</span>
+            <span class="tag-count">${count}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    listContainers.forEach(container => {
+      container.innerHTML = html;
+    });
+  }
+
+  filterByTag(tag) {
+    this.toggleTagFilter(tag);
   }
 
   removeTagFilter(tag) {
-    if (this.selectedTags) {
-      this.selectedTags.delete(tag);
-      this.currentPage = 1;
-      this.renderWordList();
-    }
+    this.toggleTagFilter(tag);
   }
 
   renderActiveTags() {
@@ -9328,12 +9845,15 @@ class KrVocabApp {
       return;
     }
     bar.style.display = 'flex';
-    bar.innerHTML = Array.from(this.selectedTags).map(t => `
-      <span class="active-tag-chip">
-        #${this.escapeHtml(t)}
-        <span class="tag-remove-btn" onclick="app.removeTagFilter('${this.escapeHtml(t)}')" title="移除此标签过滤">✕</span>
-      </span>
-    `).join('');
+    bar.innerHTML = `
+      ${Array.from(this.selectedTags).map(t => `
+        <span class="active-tag-chip">
+          #${this.escapeHtml(t)}
+          <span class="tag-remove-btn" onclick="if(window.app) window.app.removeTagFilter('${this.escapeHtml(t)}')" title="移除此标签过滤">✕</span>
+        </span>
+      `).join('')}
+      <button class="clear-all-tags-chip-btn" onclick="if(window.app) window.app.clearAllTagFilters()">清空全部 (${this.selectedTags.size})</button>
+    `;
   }
 
   editWord(id) {
@@ -9345,22 +9865,37 @@ class KrVocabApp {
     try {
       const searchFiltered = this.getSearchFilteredWords ? this.getSearchFilteredWords() : this.words;
       const all = searchFiltered.length;
-      const mastered = searchFiltered.filter(w => w.mastered).length;
+      const masteredWords = searchFiltered.filter(w => w.mastered);
       const learningWords = searchFiltered.filter(w => !w.mastered);
-      const learning = learningWords.length;
-
-      const easyForgetCount = learningWords.filter(w => (w.tags || []).includes('易忘')).length;
-      const easyConfuseCount = learningWords.filter(w => (w.tags || []).includes('易混')).length;
 
       const elAll = document.getElementById('count-all');
       if (elAll) elAll.textContent = all;
       const elLearning = document.getElementById('count-learning');
-      if (elLearning) elLearning.textContent = learning;
+      if (elLearning) elLearning.textContent = learningWords.length;
       const elMastered = document.getElementById('count-mastered');
-      if (elMastered) elMastered.textContent = mastered;
+      if (elMastered) elMastered.textContent = masteredWords.length;
 
-      const countSubAll = document.getElementById('count-sub-all');
-      if (countSubAll) countSubAll.textContent = learning;
+      let baseWords = searchFiltered;
+      let labelSubAll = '全部';
+      if (this.currentFilter === 'learning') {
+        baseWords = learningWords;
+        labelSubAll = '全部学习中';
+      } else if (this.currentFilter === 'mastered') {
+        baseWords = masteredWords;
+        labelSubAll = '全部已掌握';
+      }
+
+      const easyForgetCount = baseWords.filter(w => (w.tags || []).includes('易忘')).length;
+      const easyConfuseCount = baseWords.filter(w => (w.tags || []).includes('易混')).length;
+
+      const btnSubAll = document.querySelector('.sub-pill-btn[data-subfilter="all"]');
+      if (btnSubAll) {
+        btnSubAll.innerHTML = `${labelSubAll} (<span id="count-sub-all">${baseWords.length}</span>)`;
+      } else {
+        const countSubAll = document.getElementById('count-sub-all');
+        if (countSubAll) countSubAll.textContent = baseWords.length;
+      }
+
       const countSubEF = document.getElementById('count-sub-easy-forget');
       if (countSubEF) countSubEF.textContent = easyForgetCount;
       const countSubEC = document.getElementById('count-sub-easy-confuse');
@@ -9511,7 +10046,7 @@ class KrVocabApp {
     this.currentReviewIndex++;
 
     const flashcard = document.getElementById('flashcard');
-    flashcard.classList.remove('is-flipped');
+    if (flashcard) flashcard.classList.remove('is-flipped');
     setTimeout(() => {
       this.renderCurrentCard();
     }, 200);
@@ -9626,6 +10161,9 @@ class KrVocabApp {
   }
 
   loadSampleData(showNotification = true) {
+    if (!Array.isArray(this.words)) {
+      this.words = [];
+    }
     const samples = [
                 {
                                 "id": "kr_1",
