@@ -1492,6 +1492,45 @@ html, body {
   </div>
 
   <script>
+
+  // ==========================================================================
+  // SafeStorage Wrapper for iOS Safari file:// SecurityError DOM Exception 18
+  // ==========================================================================
+  class SafeStorageWrapper {
+    constructor() {
+      this.memoryStore = {};
+    }
+    getItem(key) {
+      try {
+        return localStorage.getItem(key);
+      } catch (e) {
+        return this.memoryStore[key] || null;
+      }
+    }
+    setItem(key, value) {
+      try {
+        localStorage.setItem(key, value);
+      } catch (e) {
+        this.memoryStore[key] = String(value);
+      }
+    }
+    removeItem(key) {
+      try {
+        localStorage.removeItem(key);
+      } catch (e) {
+        delete this.memoryStore[key];
+      }
+    }
+    keys() {
+      try {
+        return Object.keys(localStorage);
+      } catch (e) {
+        return Object.keys(this.memoryStore);
+      }
+    }
+  }
+  const SafeStorage = new SafeStorageWrapper();
+
 class KrVocabApp {
   
   // ==========================================================================
@@ -1564,7 +1603,7 @@ class KrVocabApp {
         if (cloudData && Array.isArray(cloudData.words) && cloudData.words.length > 0) {
           this.words = cloudData.words;
           try {
-            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
+            SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
           } catch(e) {}
           this.renderWordList();
           this.updateStats();
@@ -1608,9 +1647,9 @@ class KrVocabApp {
   init() {
     try {
       // Auto purge old obsolete storage keys safely
-      Object.keys(localStorage).forEach(k => {
+      SafeStorage.keys().forEach(k => {
         if (k.startsWith('evie_') && k !== this.STORAGE_KEY) {
-          localStorage.removeItem(k);
+          SafeStorage.removeItem(k);
         }
       });
     } catch (e) {
@@ -1630,7 +1669,7 @@ class KrVocabApp {
 
   loadData() {
     try {
-      const stored = localStorage.getItem(this.STORAGE_KEY);
+      const stored = SafeStorage.getItem(this.STORAGE_KEY);
       this.words = stored ? JSON.parse(stored) : [];
     } catch (e) {
       this.words = [];
@@ -1639,7 +1678,7 @@ class KrVocabApp {
 
   saveData() {
     try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
+      SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
     this.syncToCloud(false);
       this.updateStats();
     } catch (e) {
@@ -1648,7 +1687,7 @@ class KrVocabApp {
   }
 
   loadTheme() {
-    const savedTheme = localStorage.getItem(this.THEME_KEY);
+    const savedTheme = SafeStorage.getItem(this.THEME_KEY);
     if (savedTheme === 'light') {
       document.body.classList.add('light-theme');
       document.getElementById('themeToggleBtn').textContent = '☀️';
@@ -1661,7 +1700,7 @@ class KrVocabApp {
   toggleTheme() {
     document.body.classList.toggle('light-theme');
     const isLight = document.body.classList.contains('light-theme');
-    localStorage.setItem(this.THEME_KEY, isLight ? 'light' : 'dark');
+    SafeStorage.setItem(this.THEME_KEY, isLight ? 'light' : 'dark');
     document.getElementById('themeToggleBtn').textContent = isLight ? '☀️' : '🌙';
   }
 
