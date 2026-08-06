@@ -1498,7 +1498,7 @@ class KrVocabApp {
   // Cloud Realtime Sync Engine (JSONBlob REST API Integration)
   // ==========================================================================
   get CLOUD_BLOB_ID() {
-    return '019fd111-9a74-72ff-98eb-9dbe989a545c';
+    return '019fd115-4fa8-7690-b1ff-e73cd8a3dd25';
   }
 
   async syncToCloud(showToastNotification = false) {
@@ -1538,42 +1538,51 @@ class KrVocabApp {
   }
 
   async fetchFromCloud(showToastNotification = true) {
-    try {
-      const syncBtn = document.getElementById('cloudSyncBtn');
-      if (syncBtn) syncBtn.classList.add('syncing-active');
+    const syncBtn = document.getElementById('cloudSyncBtn');
+    if (syncBtn) syncBtn.classList.add('syncing-active');
 
+    if (showToastNotification) {
+      this.showToast('☁️ 正在连接云端同步最新词库...');
+    }
+
+    try {
       const url = `https://jsonblob.com/api/jsonBlob/${this.CLOUD_BLOB_ID}`;
       const response = await fetch(url, {
         method: 'GET',
         headers: { 'Accept': 'application/json' }
       });
 
-      if (syncBtn) syncBtn.classList.remove('syncing-active');
-
       if (response.ok) {
         const cloudData = await response.json();
         if (cloudData && Array.isArray(cloudData.words) && cloudData.words.length > 0) {
-          // Merge or update local data with cloud data
           this.words = cloudData.words;
-          this.saveData();
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
           this.renderWordList();
           this.updateStats();
           if (showToastNotification) {
-            this.showToast(`☁️ 已强力拉取云端最新数据 (${this.words.length} 个词)！`);
+            this.showToast(`🎉 成功同步云端最新数据 (${this.words.length} 个词)！`);
           }
           return true;
         }
       }
+      if (showToastNotification) {
+        this.showToast('☁️ 当前已是最新词库数据！');
+      }
     } catch (err) {
       console.warn('Fetch from cloud error:', err);
-      const syncBtn = document.getElementById('cloudSyncBtn');
-      if (syncBtn) syncBtn.classList.remove('syncing-active');
+      if (showToastNotification) {
+        this.showToast('☁️ 当前为离线模式，展示本地词库');
+      }
+    } finally {
+      if (syncBtn) {
+        setTimeout(() => syncBtn.classList.remove('syncing-active'), 600);
+      }
     }
     return false;
   }
 
   constructor() {
-    this.STORAGE_KEY = 'evie_kr_vocab_data_v34';
+    this.STORAGE_KEY = 'evie_kr_vocab_data_v5000';
     this.THEME_KEY = 'evie_kr_vocab_theme';
     this.words = [];
     this.reviewList = [];

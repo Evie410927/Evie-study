@@ -1514,7 +1514,7 @@ class JpVocabApp {
   // Cloud Realtime Sync Engine (JSONBlob REST API Integration)
   // ==========================================================================
   get CLOUD_BLOB_ID() {
-    return '019fd111-b0db-751a-8be8-a28a307efdc1';
+    return '019fd11f-c603-7033-b9dd-807e1554c295';
   }
 
   async syncToCloud(showToastNotification = false) {
@@ -1554,42 +1554,51 @@ class JpVocabApp {
   }
 
   async fetchFromCloud(showToastNotification = true) {
-    try {
-      const syncBtn = document.getElementById('cloudSyncBtn');
-      if (syncBtn) syncBtn.classList.add('syncing-active');
+    const syncBtn = document.getElementById('cloudSyncBtn');
+    if (syncBtn) syncBtn.classList.add('syncing-active');
 
+    if (showToastNotification) {
+      this.showToast('☁️ 正在连接云端同步最新词库...');
+    }
+
+    try {
       const url = `https://jsonblob.com/api/jsonBlob/${this.CLOUD_BLOB_ID}`;
       const response = await fetch(url, {
         method: 'GET',
         headers: { 'Accept': 'application/json' }
       });
 
-      if (syncBtn) syncBtn.classList.remove('syncing-active');
-
       if (response.ok) {
         const cloudData = await response.json();
         if (cloudData && Array.isArray(cloudData.words) && cloudData.words.length > 0) {
-          // Merge or update local data with cloud data
           this.words = cloudData.words;
-          this.saveData();
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
           this.renderWordList();
           this.updateStats();
           if (showToastNotification) {
-            this.showToast(`☁️ 已强力拉取云端最新数据 (${this.words.length} 个词)！`);
+            this.showToast(`🎉 成功同步云端最新数据 (${this.words.length} 个词)！`);
           }
           return true;
         }
       }
+      if (showToastNotification) {
+        this.showToast('☁️ 当前已是最新词库数据！');
+      }
     } catch (err) {
       console.warn('Fetch from cloud error:', err);
-      const syncBtn = document.getElementById('cloudSyncBtn');
-      if (syncBtn) syncBtn.classList.remove('syncing-active');
+      if (showToastNotification) {
+        this.showToast('☁️ 当前为离线模式，展示本地词库');
+      }
+    } finally {
+      if (syncBtn) {
+        setTimeout(() => syncBtn.classList.remove('syncing-active'), 600);
+      }
     }
     return false;
   }
 
   constructor() {
-    this.STORAGE_KEY = 'evie_jp_vocab_data_v3000';
+    this.STORAGE_KEY = 'evie_jp_vocab_data_v5000';
     this.THEME_KEY = 'evie_jp_vocab_theme';
     this.words = [];
     this.reviewList = [];
@@ -9094,6 +9103,21 @@ class JpVocabApp {
                         "reviewCount": 0,
                         "createdAt": 1722800425000,
                         "krMeaning": "다투다"
+            },
+            {
+                        "id": "jp_card_1785920274337",
+                        "word": "達成感",
+                        "reading": "たっせいかん",
+                        "meaning": "n. 成就感",
+                        "krMeaning": "성취감",
+                        "tags": [
+                                    "名词"
+                        ],
+                        "example": "目標を達成したとき、大きな達成感を味わった。\nこの仕事は大変だが、その分達成感も大きい。\nチーム全員で困難を乗り越え、達成感を分かち合った。",
+                        "exampleTrans": "实现了目标的时候，体会到了巨大的成就感。\n这项工作虽然辛苦，但相对地成就感也很大。\n团队全员一起跨越了困难，分享了成就感。",
+                        "mastered": false,
+                        "reviewCount": 0,
+                        "createdAt": 1785920274337
             }
 ];
 
