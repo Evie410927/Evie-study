@@ -1547,16 +1547,25 @@ class KrVocabApp {
 
     try {
       const url = `https://jsonblob.com/api/jsonBlob/${this.CLOUD_BLOB_ID}`;
+      
+      // Use controller timeout to prevent iOS fetch hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
       const response = await fetch(url, {
         method: 'GET',
-        headers: { 'Accept': 'application/json' }
+        headers: { 'Accept': 'application/json' },
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const cloudData = await response.json();
         if (cloudData && Array.isArray(cloudData.words) && cloudData.words.length > 0) {
           this.words = cloudData.words;
-          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
+          try {
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
+          } catch(e) {}
           this.renderWordList();
           this.updateStats();
           if (showToastNotification) {
@@ -1569,13 +1578,13 @@ class KrVocabApp {
         this.showToast('☁️ 当前已是最新词库数据！');
       }
     } catch (err) {
-      console.warn('Fetch from cloud error:', err);
+      console.warn('iOS Sandbox / Fetch error:', err);
       if (showToastNotification) {
-        this.showToast('☁️ 当前为离线模式，展示本地词库');
+        this.showToast('☁️ 已展示本地词库，联网后可点击☁️同步');
       }
     } finally {
       if (syncBtn) {
-        setTimeout(() => syncBtn.classList.remove('syncing-active'), 600);
+        setTimeout(() => syncBtn.classList.remove('syncing-active'), 500);
       }
     }
     return false;
@@ -1597,47 +1606,26 @@ class KrVocabApp {
   }
 
   init() {
-    // Force clear old version caches
-    localStorage.removeItem('evie_kr_vocab_data_v1');
-    localStorage.removeItem('evie_kr_vocab_data_v2');
-    localStorage.removeItem('evie_kr_vocab_data_v3');
-    localStorage.removeItem('evie_kr_vocab_data_v4');
-    localStorage.removeItem('evie_kr_vocab_data_v5');
-    localStorage.removeItem('evie_kr_vocab_data_v6');
-    localStorage.removeItem('evie_kr_vocab_data_v7');
-    localStorage.removeItem('evie_kr_vocab_data_v8');
-    localStorage.removeItem('evie_kr_vocab_data_v9');
-    localStorage.removeItem('evie_kr_vocab_data_v10');
-    localStorage.removeItem('evie_kr_vocab_data_v11');
-    localStorage.removeItem('evie_kr_vocab_data_v12');
-    localStorage.removeItem('evie_kr_vocab_data_v13');
-    localStorage.removeItem('evie_kr_vocab_data_v14');
-    localStorage.removeItem('evie_kr_vocab_data_v15');
-    localStorage.removeItem('evie_kr_vocab_data_v16');
-    localStorage.removeItem('evie_kr_vocab_data_v17');
-    localStorage.removeItem('evie_kr_vocab_data_v18');
-    localStorage.removeItem('evie_kr_vocab_data_v19');
-    localStorage.removeItem('evie_kr_vocab_data_v20');
-    localStorage.removeItem('evie_kr_vocab_data_v21');
-    localStorage.removeItem('evie_kr_vocab_data_v22');
-    localStorage.removeItem('evie_kr_vocab_data_v23');
-    localStorage.removeItem('evie_kr_vocab_data_v24');
-    localStorage.removeItem('evie_kr_vocab_data_v25');
-    localStorage.removeItem('evie_kr_vocab_data_v26');
-    localStorage.removeItem('evie_kr_vocab_data_v27');
-    localStorage.removeItem('evie_kr_vocab_data_v28');
-    localStorage.removeItem('evie_kr_vocab_data_v29');
-    localStorage.removeItem('evie_kr_vocab_data_v30');
-    localStorage.removeItem('evie_kr_vocab_data_v31');
-    localStorage.removeItem('evie_kr_vocab_data_v32');
-    localStorage.removeItem('evie_kr_vocab_data_v33');
+    try {
+      // Auto purge old obsolete storage keys safely
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith('evie_') && k !== this.STORAGE_KEY) {
+          localStorage.removeItem(k);
+        }
+      });
+    } catch (e) {
+      console.warn('LocalStorage access check:', e);
+    }
+
+    // Always load local default samples first to prevent 0 words UI freeze
     this.loadData();
-    this.fetchFromCloud(false);
-    this.loadSampleData(false);
-    this.loadTheme();
-    this.bindEvents();
     this.renderWordList();
     this.updateStats();
+
+    // Async background sync without blocking UI initialization
+    setTimeout(() => {
+      this.fetchFromCloud(false).catch(err => console.warn('Background sync silent warning:', err));
+    }, 300);
   }
 
   loadData() {
