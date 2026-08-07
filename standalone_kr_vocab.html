@@ -16634,7 +16634,8 @@ function createSupabaseSyncMethods(language) {
           <p style="margin:0 0 14px;color:var(--text-secondary,#94a3b8);font-size:13px;line-height:1.6;">电脑和手机使用同一邮箱与密码，即可同步所有编辑。</p>
           <input id="cloudAuthEmail" type="email" autocomplete="email" placeholder="邮箱" style="width:100%;padding:11px 12px;margin-bottom:10px;border-radius:10px;border:1px solid var(--border-color,#334155);background:var(--bg-primary,#0f172a);color:inherit;box-sizing:border-box;">
           <input id="cloudAuthPassword" type="password" autocomplete="current-password" placeholder="密码（至少 6 位）" style="width:100%;padding:11px 12px;margin-bottom:14px;border-radius:10px;border:1px solid var(--border-color,#334155);background:var(--bg-primary,#0f172a);color:inherit;box-sizing:border-box;">
-          <div style="display:flex;gap:10px;"><button id="cloudSignInBtn" type="button" onclick="if(window.app) window.app.submitCloudAuth('signin')" style="flex:1;padding:10px;border:0;border-radius:10px;background:var(--accent-primary,#ec4899);color:white;font-weight:700;cursor:pointer;">登录并同步</button><button id="cloudSignUpBtn" type="button" onclick="if(window.app) window.app.submitCloudAuth('signup')" style="flex:1;padding:10px;border:1px solid var(--border-color,#475569);border-radius:10px;background:transparent;color:inherit;font-weight:700;cursor:pointer;">首次注册</button></div>
+          <div id="cloudAuthStatus" role="status" aria-live="polite" style="display:none;margin:-2px 0 12px;padding:9px 10px;border-radius:9px;background:rgba(15,23,42,.55);font-size:13px;line-height:1.5;word-break:break-word;"></div>
+          <div style="display:flex;gap:10px;"><button id="cloudSignInBtn" type="button" onclick="event.preventDefault(); if(window.app) window.app.submitCloudAuth('signin')" style="flex:1;padding:10px;border:0;border-radius:10px;background:var(--accent-primary,#ec4899);color:white;font-weight:700;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;">登录并同步</button><button id="cloudSignUpBtn" type="button" onclick="event.preventDefault(); if(window.app) window.app.submitCloudAuth('signup')" style="flex:1;padding:10px;border:1px solid var(--border-color,#475569);border-radius:10px;background:transparent;color:inherit;font-weight:700;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;">首次注册</button></div>
         </div>`;
         document.body.appendChild(modal);
       }
@@ -16648,28 +16649,41 @@ function createSupabaseSyncMethods(language) {
       if (modal) modal.style.display = 'none';
     },
 
+    setCloudAuthStatus(message, tone = 'info') {
+      const statusEl = document.getElementById('cloudAuthStatus');
+      if (!statusEl) return;
+      statusEl.textContent = message || '';
+      statusEl.style.display = message ? 'block' : 'none';
+      statusEl.style.color = tone === 'error' ? '#fda4af' : tone === 'success' ? '#86efac' : 'var(--text-secondary,#cbd5e1)';
+    },
+
     async submitCloudAuth(mode) {
       const emailEl = document.getElementById('cloudAuthEmail');
       const passwordEl = document.getElementById('cloudAuthPassword');
       const email = emailEl ? emailEl.value.trim() : '';
       const password = passwordEl ? passwordEl.value : '';
-      if (!email || password.length < 6) { this.showToast('⚠️ 请输入邮箱和至少 6 位密码'); return false; }
+      if (!email || password.length < 6) { this.setCloudAuthStatus('⚠️ 请输入有效邮箱和至少 6 位密码', 'error'); return false; }
       const buttons = [document.getElementById('cloudSignInBtn'), document.getElementById('cloudSignUpBtn')].filter(Boolean);
+      const originalLabels = buttons.map(button => button.textContent);
       buttons.forEach(button => { button.disabled = true; });
+      this.setCloudAuthStatus(mode === 'signup' ? '⏳ 正在注册账号，请稍候…' : '⏳ 正在登录并连接云端，请稍候…');
+      const activeButton = mode === 'signup' ? document.getElementById('cloudSignUpBtn') : document.getElementById('cloudSignInBtn');
+      if (activeButton) activeButton.textContent = mode === 'signup' ? '注册中…' : '登录中…';
       try {
         const path = mode === 'signup' ? 'signup' : 'token?grant_type=password';
         const data = await this.cloudAuthRequest(path, { email, password });
         const sessionData = data.session || data;
-        if (!sessionData.access_token) { this.showToast('📮 注册成功，请先到邮箱确认后再登录'); return false; }
+        if (!sessionData.access_token) { this.setCloudAuthStatus('📮 注册请求已提交，请到邮箱点击确认链接，然后返回这里登录。', 'success'); return false; }
         this.saveCloudSession(sessionData);
         if (passwordEl) passwordEl.value = '';
+        this.setCloudAuthStatus('✅ 登录成功，正在同步词库…', 'success');
         this.closeCloudAuthModal();
         this.showToast('✅ 云同步登录成功');
         return await this.syncWithSupabase(true);
       } catch (e) {
-        this.showToast(`⚠️ ${e.message || '登录失败'}`);
+        this.setCloudAuthStatus(`⚠️ ${e.message || (mode === 'signup' ? '注册失败' : '登录失败')}`, 'error');
         return false;
-      } finally { buttons.forEach(button => { button.disabled = false; }); }
+      } finally { buttons.forEach((button, index) => { button.disabled = false; button.textContent = originalLabels[index]; }); }
     },
 
     getDeletedRecords() {

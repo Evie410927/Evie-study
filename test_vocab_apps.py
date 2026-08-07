@@ -70,9 +70,10 @@ class VocabAppTester:
         cloud_auth = all(token in content for token in (
             "cloudAuthModal", "cloudAuthEmail", "cloudAuthPassword",
             "submitCloudAuth('signin')", "submitCloudAuth('signup')",
-            "token?grant_type=refresh_token",
+            "token?grant_type=refresh_token", "cloudAuthStatus", "setCloudAuthStatus",
+            "正在注册账号", "注册请求已提交", "button.disabled = false",
         ))
-        self.assert_true(cloud_auth, f"[{lang_name}] 云同步-同账号登录注册与过期令牌刷新", "缺少电脑/手机共用账号的登录、注册或 refresh token 续期逻辑")
+        self.assert_true(cloud_auth, f"[{lang_name}] 云同步-同账号登录注册、弹窗内可见状态与过期令牌刷新", "缺少登录注册、弹窗内状态反馈、按钮恢复或 refresh token 续期逻辑")
 
         per_word_sync = all(token in content for token in (
             "word_id", "payload", "updated_at", "deleted_at",
@@ -820,6 +821,48 @@ class VocabAppTester:
                 cloud_auth_visible,
                 f"[{lang_name}] 浏览器真实点击-云朵打开账号登录而非静默假同步",
                 "未登录时点击 #cloudSyncBtn 没有展示可操作的云同步登录界面",
+            )
+
+            driver.execute_script("""
+                window.__originalCloudAuthRequest = window.app.cloudAuthRequest;
+                window.__signupProbe = null;
+                window.app.cloudAuthRequest = async function(path, body) {
+                  window.__signupProbe = {path, body};
+                  await new Promise(resolve => setTimeout(resolve, 80));
+                  return {user:{id:'pending-email-confirmation'}, session:null};
+                };
+                document.getElementById('cloudAuthEmail').value = 'signup-test@example.com';
+                document.getElementById('cloudAuthPassword').value = 'safe-test-password';
+            """)
+            driver.find_element(By.ID, 'cloudSignUpBtn').click()
+            WebDriverWait(driver, 5).until(
+                lambda active_driver: '注册请求已提交' in active_driver.find_element(By.ID, 'cloudAuthStatus').text
+            )
+            signup_result = driver.execute_script("""
+                const probe = window.__signupProbe;
+                const status = document.getElementById('cloudAuthStatus');
+                const button = document.getElementById('cloudSignUpBtn');
+                window.app.cloudAuthRequest = window.__originalCloudAuthRequest;
+                return {
+                  requested: !!probe && probe.path === 'signup' && probe.body.email === 'signup-test@example.com',
+                  statusVisible: !!status && status.style.display === 'block' && status.textContent.includes('注册请求已提交'),
+                  buttonRestored: !!button && !button.disabled && button.textContent === '首次注册'
+                };
+            """)
+            self.assert_true(
+                bool(signup_result and signup_result.get('requested')),
+                f"[{lang_name}] 浏览器真实点击-首次注册按钮确实发起 signup 请求",
+                "点击 #cloudSignUpBtn 后没有调用云端 signup 接口",
+            )
+            self.assert_true(
+                bool(signup_result and signup_result.get('statusVisible')),
+                f"[{lang_name}] 浏览器真实点击-注册结果在登录弹窗内部清晰可见",
+                "注册结果仍被弹窗遮挡或没有写入 #cloudAuthStatus",
+            )
+            self.assert_true(
+                bool(signup_result and signup_result.get('buttonRestored')),
+                f"[{lang_name}] 浏览器真实点击-注册完成后按钮恢复可再次操作",
+                "注册请求结束后 #cloudSignUpBtn 仍处于禁用或加载状态",
             )
             driver.execute_script("window.app.closeCloudAuthModal()")
 
