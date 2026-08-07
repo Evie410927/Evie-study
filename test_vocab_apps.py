@@ -23,6 +23,7 @@ if hasattr(sys.stdout, 'reconfigure'):
 
 KR_FILE = r"C:\Users\NCC Technology\Evie-study\standalone_kr_vocab.html"
 JP_FILE = r"C:\Users\NCC Technology\Evie-study\standalone_jp_vocab.html"
+SUPABASE_SQL_FILE = r"C:\Users\NCC Technology\Evie-study\supabase_vocab_sync.sql"
 
 class VocabAppTester:
     def __init__(self):
@@ -57,6 +58,59 @@ class VocabAppTester:
         # ---------------------------------------------------------------------
         btn_cloud_sync = bool(re.search(r'id="cloudSyncBtn"[^>]*onclick="[^"]*fetchFromCloud', content))
         self.assert_true(btn_cloud_sync, f"[{lang_name}] Header-☁️云端同步按钮兜底点击", "cloudSyncBtn 缺少行内 fetchFromCloud 兜底绑定")
+
+        # Supabase 双端同步回归矩阵：覆盖账号隔离、全字段编辑、删除与冲突合并。
+        supabase_configured = (
+            "https://orxkrmiqboumwbneworn.supabase.co" in content
+            and "sb_publishable_YrhTciM7PjyCIJvdmu5OlA_I1fgsyU4" in content
+            and "service_role" not in content
+        )
+        self.assert_true(supabase_configured, f"[{lang_name}] 云同步-Supabase Project URL 与安全 Publishable key 配置", "Supabase 配置缺失或错误暴露 service_role 高权限密钥")
+
+        cloud_auth = all(token in content for token in (
+            "cloudAuthModal", "cloudAuthEmail", "cloudAuthPassword",
+            "submitCloudAuth('signin')", "submitCloudAuth('signup')",
+            "token?grant_type=refresh_token",
+        ))
+        self.assert_true(cloud_auth, f"[{lang_name}] 云同步-同账号登录注册与过期令牌刷新", "缺少电脑/手机共用账号的登录、注册或 refresh token 续期逻辑")
+
+        per_word_sync = all(token in content for token in (
+            "word_id", "payload", "updated_at", "deleted_at",
+            "on_conflict=user_id,language,word_id", "resolution=merge-duplicates",
+        ))
+        self.assert_true(per_word_sync, f"[{lang_name}] 云同步-逐词条全量 payload Upsert", "云端同步没有按 word_id 保存完整卡片字段或缺少 Upsert 防重复")
+
+        edit_tracking = all(token in content for token in (
+            "wordFingerprint", "markLocallyChangedWords", "word.updatedAt = now",
+            "if (this.markLocallyChangedWords) this.markLocallyChangedWords()",
+        ))
+        self.assert_true(edit_tracking, f"[{lang_name}] 云同步-释义/例句/Tag/掌握状态等所有编辑统一更新时间追踪", "saveData 未通过全卡片指纹捕获所有字段修改")
+
+        tombstone_sync = all(token in content for token in (
+            "getDeletedRecords", "saveDeletedRecords", "recordDeletedWord",
+            "deletedAt: Date.now()", "cloudDeletedAt >= localUpdatedAt",
+        ))
+        self.assert_true(tombstone_sync, f"[{lang_name}] 云同步-删除 Tombstone 跨设备传播并防止复活", "删除记录未携带时间戳，或云端删除不能覆盖旧的本地卡片")
+
+        conflict_merge = all(token in content for token in (
+            "cloudUpdatedAt > localUpdatedAt", "localDeletedAt >= cloudUpdatedAt",
+            "mergeCloudRows", "syncWithSupabase",
+        ))
+        self.assert_true(conflict_merge, f"[{lang_name}] 云同步-双设备 Last-Write-Wins 冲突合并", "缺少本地/云端更新时间比较，可能整库覆盖丢数据")
+
+        sync_lock = "this._cloudSyncing" in content and "this._cloudSyncPending" in content
+        self.assert_true(sync_lock, f"[{lang_name}] 云同步-并发请求锁与待同步补偿", "连续编辑可能并发上传并产生覆盖竞争")
+
+        explicit_error = "PGRST205" in content and "supabase_vocab_sync.sql" in content and "云同步失败" in content
+        self.assert_true(explicit_error, f"[{lang_name}] 云同步-缺表/断网/鉴权失败显式提示", "云端异常仍可能被误报为已经同步成功")
+
+        lang_code = "kr" if lang_name == "韩语" else "jp"
+        other_lang = "jp" if lang_code == "kr" else "kr"
+        storage_isolation = f"k.startsWith('evie_{lang_code}_')" in content and f"k.startsWith('evie_{other_lang}_')" not in content
+        self.assert_true(storage_isolation, f"[{lang_name}] 本地存储-KR/JP 清理范围隔离", "当前页面可能误删另一语言页面的 localStorage 数据")
+
+        mirrored_mixin = f"Object.assign({'Kr' if lang_code == 'kr' else 'Jp'}VocabApp.prototype, createSupabaseSyncMethods('{lang_code}'))" in content
+        self.assert_true(mirrored_mixin, f"[{lang_name}] 云同步-语言隔离且 KR/JP 共用镜像同步引擎", "同步引擎未正确挂载到当前语言应用")
 
         btn_theme_toggle = bool(re.search(r'id="themeToggleBtn"[^>]*onclick="[^"]*toggleTheme', content))
         self.assert_true(btn_theme_toggle, f"[{lang_name}] Header-🌙/☀️主题切换按钮兜底点击", "themeToggleBtn 缺少行内 toggleTheme 兜底绑定")
@@ -739,7 +793,8 @@ class VocabAppTester:
             time.sleep(0.5)
 
             required_methods = (
-                'toggleTheme', 'openWordModal', 'showDetailModal', 'switchTab'
+                'toggleTheme', 'openWordModal', 'showDetailModal', 'switchTab',
+                'syncWithSupabase', 'mergeCloudRows', 'submitCloudAuth'
             )
             app_ready = driver.execute_script(
                 "return !!window.app && arguments[0].every("
@@ -750,6 +805,79 @@ class VocabAppTester:
                 app_ready,
                 f"[{lang_name}] 浏览器运行期-window.app 初始化且核心交互方法可调用",
                 "window.app 未正确实例化，或 toggleTheme/openWordModal/showDetailModal/switchTab 缺失",
+            )
+
+            driver.find_element(By.ID, 'cloudSyncBtn').click()
+            WebDriverWait(driver, 5).until(
+                lambda active_driver: active_driver.execute_script(
+                    "const m=document.getElementById('cloudAuthModal'); return !!m && m.style.display==='flex';"
+                )
+            )
+            cloud_auth_visible = driver.execute_script(
+                "return !!document.getElementById('cloudAuthEmail') && !!document.getElementById('cloudAuthPassword');"
+            )
+            self.assert_true(
+                cloud_auth_visible,
+                f"[{lang_name}] 浏览器真实点击-云朵打开账号登录而非静默假同步",
+                "未登录时点击 #cloudSyncBtn 没有展示可操作的云同步登录界面",
+            )
+            driver.execute_script("window.app.closeCloudAuthModal()")
+
+            merge_result = driver.execute_script("""
+                const app = window.app;
+                const originalWords = app.words;
+                const originalDeleted = app.getDeletedRecords();
+                const prefix = originalWords[0] && String(originalWords[0].id).startsWith('jp_') ? 'jp' : 'kr';
+                try {
+                  app.words = [
+                    {id: prefix + '_sync_edit', word:'编辑测试', meaning:'旧释义', example:'旧例句', tags:['旧Tag'], mastered:false, updatedAt:100},
+                    {id: prefix + '_sync_newer', word:'本地较新', meaning:'保留本地', tags:[], mastered:false, updatedAt:300},
+                    {id: prefix + '_sync_delete', word:'删除测试', meaning:'待删除', tags:[], mastered:false, updatedAt:100}
+                  ];
+                  app.saveDeletedRecords({});
+                  app.refreshWordFingerprints();
+                  const changed = app.mergeCloudRows([
+                    {word_id:prefix + '_sync_edit', updated_at:200, deleted_at:null, payload:{id:prefix + '_sync_edit', word:'编辑测试', meaning:'云端释义', example:'云端例句', tags:['云端Tag'], mastered:true}},
+                    {word_id:prefix + '_sync_newer', updated_at:200, deleted_at:null, payload:{id:prefix + '_sync_newer', word:'本地较新', meaning:'错误覆盖', tags:['云端Tag'], mastered:true}},
+                    {word_id:prefix + '_sync_delete', updated_at:400, deleted_at:400, payload:{id:prefix + '_sync_delete', word:'删除测试'}}
+                  ]);
+                  const edited = app.words.find(w => w.id === prefix + '_sync_edit');
+                  const newer = app.words.find(w => w.id === prefix + '_sync_newer');
+                  const deletedGone = !app.words.some(w => w.id === prefix + '_sync_delete');
+                  const allFields = edited && edited.meaning === '云端释义' && edited.example === '云端例句' && edited.tags.includes('云端Tag') && edited.mastered === true;
+                  const localWins = newer && newer.meaning === '保留本地' && newer.mastered === false;
+                  const before = Number(edited.updatedAt || 0);
+                  edited.tags.push('本地新增Tag');
+                  app.markLocallyChangedWords();
+                  const localEditTracked = Number(edited.updatedAt || 0) > before;
+                  return {changed, allFields, localWins, deletedGone, localEditTracked};
+                } finally {
+                  app.words = originalWords;
+                  app.saveDeletedRecords(originalDeleted);
+                  app.persistSyncedData();
+                  app.renderWordList();
+                  app.updateStats();
+                }
+            """)
+            self.assert_true(
+                bool(merge_result and merge_result.get('allFields')),
+                f"[{lang_name}] 浏览器双设备模拟-释义/例句/Tag/掌握状态完整同步",
+                "云端较新卡片没有完整覆盖所有可编辑字段",
+            )
+            self.assert_true(
+                bool(merge_result and merge_result.get('localWins')),
+                f"[{lang_name}] 浏览器双设备模拟-本地较新版本不被旧云端覆盖",
+                "冲突合并没有保留更新时间更晚的本地编辑",
+            )
+            self.assert_true(
+                bool(merge_result and merge_result.get('deletedGone')),
+                f"[{lang_name}] 浏览器双设备模拟-云端删除同步到本地",
+                "另一设备产生的删除记录没有移除本地旧卡片",
+            )
+            self.assert_true(
+                bool(merge_result and merge_result.get('localEditTracked')),
+                f"[{lang_name}] 浏览器双设备模拟-本地任意字段编辑更新时间自动刷新",
+                "Tag 等编辑没有更新卡片 updatedAt，无法可靠上传",
             )
 
             browser_logs = driver.get_log('browser')
@@ -816,11 +944,30 @@ class VocabAppTester:
             if driver:
                 driver.quit()
 
+    def test_supabase_schema(self):
+        """检查部署所需的 Supabase 表、RLS 与最小权限 SQL。"""
+        print("\n  >>> [Supabase] 数据库结构与权限测试...")
+        exists = os.path.exists(SUPABASE_SQL_FILE)
+        self.assert_true(exists, "[Supabase] 一次性建表 SQL 文件存在", "缺少 supabase_vocab_sync.sql")
+        if not exists:
+            return
+        with open(SUPABASE_SQL_FILE, 'r', encoding='utf-8') as sql_file:
+            sql = sql_file.read()
+        schema_fields = all(field in sql for field in ('user_id uuid', 'language text', 'word_id text', 'payload jsonb', 'updated_at bigint', 'deleted_at bigint'))
+        self.assert_true(schema_fields, "[Supabase] vocab_items 逐词条同步字段完整", "建表 SQL 缺少身份、语言、payload、更新时间或删除时间字段")
+        primary_key = 'primary key (user_id, language, word_id)' in sql
+        self.assert_true(primary_key, "[Supabase] 用户+语言+词条复合主键防重复", "vocab_items 缺少与前端 on_conflict 对齐的复合主键")
+        rls_enabled = 'enable row level security' in sql and sql.count('(select auth.uid()) = user_id') >= 4
+        self.assert_true(rls_enabled, "[Supabase] RLS 启用且增删改查均按用户隔离", "RLS 未启用或四类操作权限未完整限制为 auth.uid()")
+        anon_revoked = 'revoke all on table public.vocab_items from anon' in sql and 'to authenticated' in sql
+        self.assert_true(anon_revoked, "[Supabase] 匿名访问撤销，仅登录用户可同步", "anon 仍可能直接访问私人词库数据")
+
 
     def run_all(self):
         print("\n[INIT] 启动单词本应用全量自动化测试流程...")
         self.test_file(KR_FILE, "韩语")
         self.test_file(JP_FILE, "日语")
+        self.test_supabase_schema()
         self.test_browser_interactions(KR_FILE, "韩语")
         self.test_browser_interactions(JP_FILE, "日语")
 

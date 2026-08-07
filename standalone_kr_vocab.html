@@ -16558,6 +16558,284 @@ body::-webkit-scrollbar,
   }
   const SafeStorage = new SafeStorageWrapper();
 
+const SUPABASE_CONFIG = Object.freeze({
+  url: 'https://orxkrmiqboumwbneworn.supabase.co',
+  publishableKey: 'sb_publishable_YrhTciM7PjyCIJvdmu5OlA_I1fgsyU4',
+  sessionKey: 'evie_supabase_session_v1'
+});
+
+function createSupabaseSyncMethods(language) {
+  return {
+    getCloudSession() {
+      try {
+        const raw = SafeStorage.getItem(SUPABASE_CONFIG.sessionKey);
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) { return null; }
+    },
+
+    saveCloudSession(data) {
+      if (!data || !data.access_token) return null;
+      const session = {
+        access_token: data.access_token,
+        refresh_token: data.refresh_token || '',
+        expires_at: data.expires_at || Math.floor(Date.now() / 1000) + Number(data.expires_in || 3600),
+        user: data.user || null
+      };
+      SafeStorage.setItem(SUPABASE_CONFIG.sessionKey, JSON.stringify(session));
+      return session;
+    },
+
+    decodeCloudUser(accessToken) {
+      try {
+        let encoded = String(accessToken || '').split('.')[1] || '';
+        encoded = encoded.replace(/-/g, '+').replace(/_/g, '/');
+        encoded = encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=');
+        const payload = JSON.parse(decodeURIComponent(escape(atob(encoded))));
+        return payload && payload.sub ? payload : null;
+      } catch (e) { return null; }
+    },
+
+    async cloudAuthRequest(path, body) {
+      const response = await fetch(`${SUPABASE_CONFIG.url}/auth/v1/${path}`, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_CONFIG.publishableKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {})
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const error = new Error(data.msg || data.message || data.error_description || '登录失败');
+        error.status = response.status;
+        throw error;
+      }
+      return data;
+    },
+
+    async getValidCloudSession(showAuthModal = true) {
+      const session = this.getCloudSession();
+      if (session && session.access_token && Number(session.expires_at || 0) > Math.floor(Date.now() / 1000) + 60) return session;
+      if (session && session.refresh_token) {
+        try {
+          const refreshed = await this.cloudAuthRequest('token?grant_type=refresh_token', { refresh_token: session.refresh_token });
+          return this.saveCloudSession(refreshed);
+        } catch (e) { SafeStorage.removeItem(SUPABASE_CONFIG.sessionKey); }
+      }
+      if (showAuthModal) this.openCloudAuthModal();
+      return null;
+    },
+
+    openCloudAuthModal() {
+      let modal = document.getElementById('cloudAuthModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'cloudAuthModal';
+        modal.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(5,10,24,.78);display:none;align-items:center;justify-content:center;padding:20px;';
+        modal.innerHTML = `<div style="width:min(390px,100%);background:var(--bg-secondary,#1e293b);border:1px solid var(--border-color,#334155);border-radius:18px;padding:22px;color:var(--text-primary,#f8fafc);box-shadow:0 20px 55px rgba(0,0,0,.45);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><strong style="font-size:18px;">☁️ 登录云同步</strong><button type="button" onclick="if(window.app) window.app.closeCloudAuthModal()" style="border:0;background:transparent;color:inherit;font-size:22px;cursor:pointer;">×</button></div>
+          <p style="margin:0 0 14px;color:var(--text-secondary,#94a3b8);font-size:13px;line-height:1.6;">电脑和手机使用同一邮箱与密码，即可同步所有编辑。</p>
+          <input id="cloudAuthEmail" type="email" autocomplete="email" placeholder="邮箱" style="width:100%;padding:11px 12px;margin-bottom:10px;border-radius:10px;border:1px solid var(--border-color,#334155);background:var(--bg-primary,#0f172a);color:inherit;box-sizing:border-box;">
+          <input id="cloudAuthPassword" type="password" autocomplete="current-password" placeholder="密码（至少 6 位）" style="width:100%;padding:11px 12px;margin-bottom:14px;border-radius:10px;border:1px solid var(--border-color,#334155);background:var(--bg-primary,#0f172a);color:inherit;box-sizing:border-box;">
+          <div style="display:flex;gap:10px;"><button id="cloudSignInBtn" type="button" onclick="if(window.app) window.app.submitCloudAuth('signin')" style="flex:1;padding:10px;border:0;border-radius:10px;background:var(--accent-primary,#ec4899);color:white;font-weight:700;cursor:pointer;">登录并同步</button><button id="cloudSignUpBtn" type="button" onclick="if(window.app) window.app.submitCloudAuth('signup')" style="flex:1;padding:10px;border:1px solid var(--border-color,#475569);border-radius:10px;background:transparent;color:inherit;font-weight:700;cursor:pointer;">首次注册</button></div>
+        </div>`;
+        document.body.appendChild(modal);
+      }
+      modal.style.display = 'flex';
+      const emailInput = document.getElementById('cloudAuthEmail');
+      if (emailInput) setTimeout(() => emailInput.focus(), 20);
+    },
+
+    closeCloudAuthModal() {
+      const modal = document.getElementById('cloudAuthModal');
+      if (modal) modal.style.display = 'none';
+    },
+
+    async submitCloudAuth(mode) {
+      const emailEl = document.getElementById('cloudAuthEmail');
+      const passwordEl = document.getElementById('cloudAuthPassword');
+      const email = emailEl ? emailEl.value.trim() : '';
+      const password = passwordEl ? passwordEl.value : '';
+      if (!email || password.length < 6) { this.showToast('⚠️ 请输入邮箱和至少 6 位密码'); return false; }
+      const buttons = [document.getElementById('cloudSignInBtn'), document.getElementById('cloudSignUpBtn')].filter(Boolean);
+      buttons.forEach(button => { button.disabled = true; });
+      try {
+        const path = mode === 'signup' ? 'signup' : 'token?grant_type=password';
+        const data = await this.cloudAuthRequest(path, { email, password });
+        const sessionData = data.session || data;
+        if (!sessionData.access_token) { this.showToast('📮 注册成功，请先到邮箱确认后再登录'); return false; }
+        this.saveCloudSession(sessionData);
+        if (passwordEl) passwordEl.value = '';
+        this.closeCloudAuthModal();
+        this.showToast('✅ 云同步登录成功');
+        return await this.syncWithSupabase(true);
+      } catch (e) {
+        this.showToast(`⚠️ ${e.message || '登录失败'}`);
+        return false;
+      } finally { buttons.forEach(button => { button.disabled = false; }); }
+    },
+
+    getDeletedRecords() {
+      try {
+        const parsed = JSON.parse(SafeStorage.getItem(this.DELETED_KEY) || '{}');
+        if (parsed && !Array.isArray(parsed) && typeof parsed === 'object') return parsed;
+        const migrated = {};
+        if (Array.isArray(parsed)) parsed.filter(id => String(id).startsWith(`${language}_`)).forEach(id => { migrated[String(id)] = { id: String(id), deletedAt: 1 }; });
+        return migrated;
+      } catch (e) { return {}; }
+    },
+
+    saveDeletedRecords(records) { SafeStorage.setItem(this.DELETED_KEY, JSON.stringify(records || {})); },
+    getDeletedSet() { return new Set(Object.keys(this.getDeletedRecords())); },
+
+    recordDeletedWord(target) {
+      if (!target || !target.id) return;
+      const records = this.getDeletedRecords();
+      records[String(target.id)] = { id: String(target.id), word: target.word || '', deletedAt: Date.now() };
+      this.saveDeletedRecords(records);
+    },
+
+    wordFingerprint(word) {
+      if (!word) return '';
+      const copy = { ...word };
+      delete copy.updatedAt;
+      return JSON.stringify(copy);
+    },
+
+    refreshWordFingerprints() {
+      this._wordFingerprints = new Map();
+      (this.words || []).forEach(word => { if (word && word.id) this._wordFingerprints.set(String(word.id), this.wordFingerprint(word)); });
+    },
+
+    markLocallyChangedWords() {
+      const previous = this._wordFingerprints || new Map();
+      const now = Date.now();
+      (this.words || []).forEach(word => {
+        if (!word || !word.id) return;
+        if (!previous.has(String(word.id)) || previous.get(String(word.id)) !== this.wordFingerprint(word)) word.updatedAt = now;
+      });
+      this.refreshWordFingerprints();
+    },
+
+    persistSyncedData() {
+      SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words || []));
+      this.refreshWordFingerprints();
+    },
+
+    cloudHeaders(accessToken, extra = {}) {
+      return { 'apikey': SUPABASE_CONFIG.publishableKey, 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'Accept': 'application/json', ...extra };
+    },
+
+    async fetchCloudRows(accessToken) {
+      const query = `select=word_id,payload,updated_at,deleted_at&language=eq.${language}`;
+      const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/vocab_items?${query}`, { headers: this.cloudHeaders(accessToken) });
+      const data = await response.json().catch(() => []);
+      if (!response.ok) {
+        const error = new Error(data.message || data.hint || `云端读取失败 (${response.status})`);
+        error.status = response.status; error.code = data.code; throw error;
+      }
+      return Array.isArray(data) ? data : [];
+    },
+
+    mergeCloudRows(rows) {
+      const localMap = new Map((this.words || []).filter(w => w && w.id).map(w => [String(w.id), w]));
+      const deleted = this.getDeletedRecords();
+      let changedCount = 0;
+      (rows || []).forEach(row => {
+        const id = String(row && row.word_id || '');
+        if (!id) return;
+        const cloudUpdatedAt = Number(row.updated_at || 0);
+        const cloudDeletedAt = Number(row.deleted_at || 0);
+        const localWord = localMap.get(id);
+        const localUpdatedAt = Number(localWord && (localWord.updatedAt || localWord.createdAt) || 0);
+        const localDeletedAt = Number(deleted[id] && deleted[id].deletedAt || 0);
+        if (cloudDeletedAt > 0) {
+          if (cloudDeletedAt >= localUpdatedAt && cloudDeletedAt >= localDeletedAt) {
+            if (localWord) changedCount++;
+            localMap.delete(id);
+            deleted[id] = { id, word: row.payload && row.payload.word || '', deletedAt: cloudDeletedAt };
+          }
+          return;
+        }
+        if (localDeletedAt >= cloudUpdatedAt) return;
+        if (deleted[id] && cloudUpdatedAt > localDeletedAt) delete deleted[id];
+        if (!localWord || cloudUpdatedAt > localUpdatedAt) {
+          const payload = row.payload && typeof row.payload === 'object' ? { ...row.payload } : null;
+          if (payload) { payload.id = payload.id || id; payload.updatedAt = cloudUpdatedAt; localMap.set(id, payload); changedCount++; }
+        }
+      });
+      this.words = Array.from(localMap.values());
+      this.saveDeletedRecords(deleted);
+      this.persistSyncedData();
+      return changedCount;
+    },
+
+    buildCloudRows(userId) {
+      const activeRows = (this.words || []).filter(w => w && w.id).map(word => ({ user_id: userId, language, word_id: String(word.id), payload: word, updated_at: Number(word.updatedAt || word.createdAt || 1), deleted_at: null }));
+      const deletedRows = Object.values(this.getDeletedRecords()).filter(item => item && item.id).map(item => ({ user_id: userId, language, word_id: String(item.id), payload: { id: String(item.id), word: item.word || '' }, updated_at: Number(item.deletedAt || 1), deleted_at: Number(item.deletedAt || 1) }));
+      return activeRows.concat(deletedRows);
+    },
+
+    async upsertCloudRows(accessToken, userId) {
+      const rows = this.buildCloudRows(userId);
+      for (let index = 0; index < rows.length; index += 50) {
+        const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/vocab_items?on_conflict=user_id,language,word_id`, {
+          method: 'POST',
+          headers: this.cloudHeaders(accessToken, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+          body: JSON.stringify(rows.slice(index, index + 50))
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          const error = new Error(data.message || data.hint || `云端写入失败 (${response.status})`);
+          error.status = response.status; error.code = data.code; throw error;
+        }
+      }
+      return rows.length;
+    },
+
+    async syncWithSupabase(showToastNotification = true) {
+      if (this._cloudSyncing) {
+        this._cloudSyncPending = true;
+        if (showToastNotification) this.showToast('☁️ 正在同步，请稍候...');
+        return false;
+      }
+      this._cloudSyncing = true;
+      const syncBtn = document.getElementById('cloudSyncBtn');
+      if (syncBtn) syncBtn.classList.add('syncing-active');
+      if (showToastNotification) this.showToast('☁️ 正在双向同步所有编辑...');
+      try {
+        const session = await this.getValidCloudSession(showToastNotification);
+        if (!session) return false;
+        const jwtUser = this.decodeCloudUser(session.access_token);
+        const userId = session.user && session.user.id || jwtUser && jwtUser.sub;
+        if (!userId) throw new Error('无法识别云同步账号，请重新登录');
+        const cloudRows = await this.fetchCloudRows(session.access_token);
+        const changedCount = this.mergeCloudRows(cloudRows);
+        const uploadedCount = await this.upsertCloudRows(session.access_token, userId);
+        this.renderWordList();
+        this.updateStats();
+        if (showToastNotification) this.showToast(`✅ 双向同步成功：更新 ${changedCount} 项，校验 ${uploadedCount} 项`);
+        return true;
+      } catch (err) {
+        console.warn('Supabase sync error:', err);
+        if (err && err.status === 401) SafeStorage.removeItem(SUPABASE_CONFIG.sessionKey);
+        if (showToastNotification) {
+          const schemaMissing = err && (err.status === 404 || err.code === 'PGRST205');
+          this.showToast(schemaMissing ? '⚠️ 云同步表尚未创建，请先执行 supabase_vocab_sync.sql' : `⚠️ 云同步失败：${err.message || '请检查网络'}`);
+        }
+        return false;
+      } finally {
+        this._cloudSyncing = false;
+        if (syncBtn) setTimeout(() => syncBtn.classList.remove('syncing-active'), 500);
+        if (this._cloudSyncPending) {
+          this._cloudSyncPending = false;
+          setTimeout(() => this.syncWithSupabase(false), 50);
+        }
+      }
+    },
+
+    async syncToCloud(showToastNotification = false) { return this.syncWithSupabase(showToastNotification); },
+    async fetchFromCloud(showToastNotification = true) { return this.syncWithSupabase(showToastNotification); }
+  };
+}
+
 class KrVocabApp {
   
   // ==========================================================================
@@ -16744,7 +17022,7 @@ class KrVocabApp {
     try {
       // Auto purge old obsolete storage keys safely
       SafeStorage.keys().forEach(k => {
-        if (k.startsWith('evie_') && k !== this.STORAGE_KEY && k !== this.THEME_KEY && k !== this.DELETED_KEY) {
+        if (k.startsWith('evie_kr_') && k !== this.STORAGE_KEY && k !== this.THEME_KEY && k !== this.DELETED_KEY && k !== SUPABASE_CONFIG.sessionKey) {
           SafeStorage.removeItem(k);
         }
       });
@@ -16808,10 +17086,12 @@ class KrVocabApp {
         SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
       } catch (e) {}
     }
+    if (this.refreshWordFingerprints) this.refreshWordFingerprints();
   }
 
   saveData() {
     try {
+      if (this.markLocallyChangedWords) this.markLocallyChangedWords();
       SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
       this.syncToCloud(false);
       this.updateStats();
@@ -37586,6 +37866,8 @@ class KrVocabApp {
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   }
 }
+
+Object.assign(KrVocabApp.prototype, createSupabaseSyncMethods('kr'));
 
 let app;
 document.addEventListener('DOMContentLoaded', () => {
