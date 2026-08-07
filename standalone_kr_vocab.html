@@ -16623,6 +16623,40 @@ function createSupabaseSyncMethods(language) {
       return null;
     },
 
+    getCloudRedirectUrl() {
+      const onlineBase = 'https://evie410927.github.io/Evie-study/';
+      if (location.protocol === 'https:' && location.hostname === 'evie410927.github.io') {
+        return `${location.origin}${location.pathname}`;
+      }
+      return `${onlineBase}standalone_${language}_vocab.html`;
+    },
+
+    consumeCloudAuthCallback() {
+      try {
+        const hash = String(location.hash || '').replace(/^#/, '');
+        if (!hash) return false;
+        const params = new URLSearchParams(hash);
+        const accessToken = params.get('access_token');
+        const authError = params.get('error_description');
+        if (authError) {
+          this.showToast(`⚠️ 邮箱确认失败：${authError}`);
+          return false;
+        }
+        if (!accessToken) return false;
+        this.saveCloudSession({
+          access_token: accessToken,
+          refresh_token: params.get('refresh_token') || '',
+          expires_in: Number(params.get('expires_in') || 3600)
+        });
+        if (history && history.replaceState) history.replaceState({}, document.title, `${location.pathname}${location.search}`);
+        this.showToast('✅ 邮箱确认完成，已登录云同步');
+        return true;
+      } catch (e) {
+        console.warn('Cloud auth callback error:', e);
+        return false;
+      }
+    },
+
     openCloudAuthModal() {
       let modal = document.getElementById('cloudAuthModal');
       if (!modal) {
@@ -16670,7 +16704,8 @@ function createSupabaseSyncMethods(language) {
       const activeButton = mode === 'signup' ? document.getElementById('cloudSignUpBtn') : document.getElementById('cloudSignInBtn');
       if (activeButton) activeButton.textContent = mode === 'signup' ? '注册中…' : '登录中…';
       try {
-        const path = mode === 'signup' ? 'signup' : 'token?grant_type=password';
+        const redirectUrl = this.getCloudRedirectUrl();
+        const path = mode === 'signup' ? `signup?redirect_to=${encodeURIComponent(redirectUrl)}` : 'token?grant_type=password';
         const data = await this.cloudAuthRequest(path, { email, password });
         const sessionData = data.session || data;
         if (!sessionData.access_token) { this.setCloudAuthStatus('📮 注册请求已提交，请到邮箱点击确认链接，然后返回这里登录。', 'success'); return false; }
@@ -17049,6 +17084,7 @@ class KrVocabApp {
     this.renderWordList();
     this.updateStats();
     this.bindEvents();
+    if (this.consumeCloudAuthCallback) this.consumeCloudAuthCallback();
 
     // Async background sync without blocking UI initialization
     setTimeout(() => {

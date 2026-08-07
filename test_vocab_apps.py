@@ -72,6 +72,8 @@ class VocabAppTester:
             "submitCloudAuth('signin')", "submitCloudAuth('signup')",
             "token?grant_type=refresh_token", "cloudAuthStatus", "setCloudAuthStatus",
             "正在注册账号", "注册请求已提交", "button.disabled = false",
+            "getCloudRedirectUrl", "signup?redirect_to=", "consumeCloudAuthCallback",
+            "邮箱确认完成，已登录云同步",
         ))
         self.assert_true(cloud_auth, f"[{lang_name}] 云同步-同账号登录注册、弹窗内可见状态与过期令牌刷新", "缺少登录注册、弹窗内状态反馈、按钮恢复或 refresh token 续期逻辑")
 
@@ -844,7 +846,8 @@ class VocabAppTester:
                 const button = document.getElementById('cloudSignUpBtn');
                 window.app.cloudAuthRequest = window.__originalCloudAuthRequest;
                 return {
-                  requested: !!probe && probe.path === 'signup' && probe.body.email === 'signup-test@example.com',
+                  requested: !!probe && probe.path.startsWith('signup?redirect_to=') && probe.body.email === 'signup-test@example.com',
+                  redirectCorrect: !!probe && decodeURIComponent(probe.path.split('redirect_to=')[1] || '').includes('evie410927.github.io/Evie-study/standalone_' + (window.app.words[0] && String(window.app.words[0].id).startsWith('jp_') ? 'jp' : 'kr') + '_vocab.html'),
                   statusVisible: !!status && status.style.display === 'block' && status.textContent.includes('注册请求已提交'),
                   buttonRestored: !!button && !button.disabled && button.textContent === '首次注册'
                 };
@@ -855,6 +858,11 @@ class VocabAppTester:
                 "点击 #cloudSignUpBtn 后没有调用云端 signup 接口",
             )
             self.assert_true(
+                bool(signup_result and signup_result.get('redirectCorrect')),
+                f"[{lang_name}] 浏览器真实点击-确认邮件 redirect_to 指向当前 GitHub Pages 页面",
+                "signup 请求仍会把邮箱确认链接导向 localhost 或错误语言页面",
+            )
+            self.assert_true(
                 bool(signup_result and signup_result.get('statusVisible')),
                 f"[{lang_name}] 浏览器真实点击-注册结果在登录弹窗内部清晰可见",
                 "注册结果仍被弹窗遮挡或没有写入 #cloudAuthStatus",
@@ -863,6 +871,27 @@ class VocabAppTester:
                 bool(signup_result and signup_result.get('buttonRestored')),
                 f"[{lang_name}] 浏览器真实点击-注册完成后按钮恢复可再次操作",
                 "注册请求结束后 #cloudSignUpBtn 仍处于禁用或加载状态",
+            )
+
+            callback_result = driver.execute_script("""
+                const app = window.app;
+                const originalSave = app.saveCloudSession;
+                let captured = null;
+                app.saveCloudSession = data => { captured = data; return data; };
+                location.hash = '#access_token=callback-test-token&refresh_token=callback-refresh&expires_in=3600&type=signup';
+                const consumed = app.consumeCloudAuthCallback();
+                app.saveCloudSession = originalSave;
+                return {consumed, captured, hashCleared: !location.hash};
+            """)
+            self.assert_true(
+                bool(callback_result and callback_result.get('consumed') and callback_result.get('captured', {}).get('access_token') == 'callback-test-token'),
+                f"[{lang_name}] 浏览器邮箱回跳-自动保存 Supabase 登录会话",
+                "确认邮件返回页面后没有消费 access_token 并完成登录",
+            )
+            self.assert_true(
+                bool(callback_result and callback_result.get('hashCleared')),
+                f"[{lang_name}] 浏览器邮箱回跳-登录后清除地址栏敏感 token",
+                "邮箱确认 token 仍残留在地址栏 hash 中",
             )
             driver.execute_script("window.app.closeCloudAuthModal()")
 
