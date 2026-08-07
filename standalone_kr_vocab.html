@@ -18148,7 +18148,7 @@ class KrVocabApp {
 
   getAllAvailableTags() {
     const datasetTags = new Set();
-    const posTags = new Set(['动词', '形容词', '名词', '副词', '短语', '惯用句', '代词', '数词', '感叹词', '冠词', '介词', '连词', '助词']);
+    const posTags = new Set(['动词', '形容词', '名词', '副词', '短语', '惯用句', '接续词', '连体词', '形容动词', '感叹词', '代词', '数词', '语法', '句型', '词汇', '助词', '助动词', '俗语', '成语', '冠词', '介词', '连词']);
     (this.words || []).forEach(w => {
       if (w.tags && Array.isArray(w.tags)) {
         w.tags.forEach(t => {

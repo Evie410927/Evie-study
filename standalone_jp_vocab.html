@@ -3836,30 +3836,18 @@ class JpVocabApp {
     const listEls = document.querySelectorAll('.tag-dropdown-list, #tagDropdownList, #searchBoxTagDropdownList');
     if (!listEls || listEls.length === 0) return;
 
-    // 统计全局所有存在的 Tag 及其出现频次
-    const tagCountMap = new Map();
-    this.words.forEach(w => {
-      if (Array.isArray(w.tags)) {
-        w.tags.forEach(t => {
-          if (t && t.trim()) {
-            const cleanTag = t.trim().replace(/^#/, '');
-            tagCountMap.set(cleanTag, (tagCountMap.get(cleanTag) || 0) + 1);
-          }
-        });
-      }
-    });
-
-    if (tagCountMap.size === 0) {
+    // 顶部筛选只展示用户自定义 Tag；系统词性 Tag 继续保留在卡片底部。
+    const sortedTags = this.getAllAvailableTags();
+    if (sortedTags.length === 0) {
       listEls.forEach(el => {
         el.innerHTML = `<div class="tag-dropdown-empty" style="padding:10px; text-align:center; color:var(--text-secondary);">暂无可用标签</div>`;
       });
       return;
     }
 
-    const sortedTags = Array.from(tagCountMap.entries()).sort((a, b) => b[1] - a[1]);
     let html = '';
-
-    sortedTags.forEach(([tag, count]) => {
+    sortedTags.forEach(tag => {
+      const count = this.getTagCount(tag);
       const isSelected = this.selectedTags && Array.from(this.selectedTags).some(st => String(st).replace(/^#/, '').trim().toLowerCase() === tag.toLowerCase());
       html += `
         <div class="tag-dropdown-item ${isSelected ? 'selected' : ''}" onclick="window.app.toggleTagFilter('${this.escapeHtml(tag)}', event)">
@@ -3990,7 +3978,7 @@ class JpVocabApp {
 
   getAllAvailableTags() {
     const datasetTags = new Set();
-    const posTags = new Set(['动词', '形容词', '名词', '副词', '短语', '惯用句', '代词', '数词', '感叹词', '冠词', '介词', '连词', '助词']);
+    const posTags = new Set(['动词', '形容词', '名词', '副词', '短语', '惯用句', '接续词', '连体词', '形容动词', '感叹词', '代词', '数词', '语法', '句型', '词汇', '助词', '助动词', '俗语', '成语', '冠词', '介词', '连词']);
     (this.words || []).forEach(w => {
       if (w.tags && Array.isArray(w.tags)) {
         w.tags.forEach(t => {

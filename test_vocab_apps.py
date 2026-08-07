@@ -287,8 +287,13 @@ class VocabAppTester:
         tag_methods_exist = 'toggleTagDropdown(' in content and 'toggleTagFilter(' in content and 'clearAllTagFilters(' in content and 'updateTagBadge(' in content and 'renderTagDropdownItems(' in content
         self.assert_true(tag_methods_exist, f"[{lang_name}] 标签筛选-多选切换与清空方法集健全", "类中缺少 toggleTagFilter/clearAllTagFilters/updateTagBadge/renderTagDropdownItems 方法")
 
-        custom_tag_only_filter = 'posTags' in content and '!posTags.has(' in content
-        self.assert_true(custom_tag_only_filter, f"[{lang_name}] 标签筛选-下拉菜单仅精准显示自定义 Tag (排除系统词性 Tag)", "getAllAvailableTags 缺少 posTags 黑名单过滤，导致预设词性 Tag 混入自定义标签下拉菜单中")
+        required_system_pos_tags = ('动词', '形容词', '名词', '副词', '短语', '惯用句', '接续词', '连体词', '形容动词', '语法', '句型', '词汇', '助词', '助动词')
+        custom_tag_only_filter = (
+            'posTags' in content
+            and '!posTags.has(' in content
+            and all(f"'{tag}'" in content for tag in required_system_pos_tags)
+        )
+        self.assert_true(custom_tag_only_filter, f"[{lang_name}] 标签筛选-下拉菜单仅显示自定义 Tag，完整排除 KR/JP 系统词性 Tag", "getAllAvailableTags 的系统词性集合不完整，词汇/接续词/连体词/形容动词等可能混入顶部标签列表")
 
         similar_ex_trans_clarity = ('.similar-word-chip .similar-ex-trans {' in content and 'color: var(--text-secondary)' in content) or ('similar-ex-trans' in content and 'color:var(--text-secondary)' in content)
         self.assert_true(similar_ex_trans_clarity, f"[{lang_name}] 相近表达-例句原文高亮与例句中文翻译层次色配置", ".similar-ex-trans 缺少 color: var(--text-secondary) 层次色配置，导致与例句原文难以区分")
@@ -841,6 +846,47 @@ class VocabAppTester:
                 app_ready,
                 f"[{lang_name}] 浏览器运行期-window.app 初始化且核心交互方法可调用",
                 "window.app 未正确实例化，或 toggleTheme/openWordModal/showDetailModal/switchTab 缺失",
+            )
+
+            custom_tag_dropdown_result = driver.execute_script("""
+                const app = window.app;
+                const originalWords = app.words;
+                try {
+                  const systemTags = ['词汇', '动词', '形容词', '副词', '接续词', '连体词', '形容动词', '名词', '短语', '惯用句', '语法', '句型', '助词', '助动词'];
+                  app.words = systemTags.map((tag, index) => ({
+                    id: 'tag_filter_probe_' + index,
+                    word: 'probe_' + index,
+                    meaning: '测试',
+                    tags: index === 0 ? [tag, '我的自定义标签'] : (index === 1 ? [tag, '#第二个自定义标签'] : [tag]),
+                    mastered: false
+                  }));
+                  const available = app.getAllAvailableTags();
+                  if (typeof app.renderTagDropdownMenu === 'function') app.renderTagDropdownMenu();
+                  else app.renderTagDropdownItems();
+                  const rendered = Array.from(document.querySelectorAll('#tagDropdownList .tag-name'))
+                    .map(el => el.textContent.replace(/^#/, '').trim());
+                  return {
+                    available,
+                    rendered,
+                    onlyCustom: available.length === 2
+                      && available.includes('我的自定义标签')
+                      && available.includes('第二个自定义标签')
+                      && rendered.length === 2
+                      && rendered.includes('我的自定义标签')
+                      && rendered.includes('第二个自定义标签')
+                      && !systemTags.some(tag => available.includes(tag) || rendered.includes(tag))
+                  };
+                } finally {
+                  app.words = originalWords;
+                  app.renderWordList();
+                  if (typeof app.renderTagDropdownMenu === 'function') app.renderTagDropdownMenu();
+                  else app.renderTagDropdownItems();
+                }
+            """)
+            self.assert_true(
+                bool(custom_tag_dropdown_result and custom_tag_dropdown_result.get('onlyCustom')),
+                f"[{lang_name}] 浏览器标签下拉-只渲染用户自定义 Tag，系统词性全部排除",
+                f"标签列表错误：{custom_tag_dropdown_result}",
             )
 
             driver.find_element(By.ID, 'cloudSyncBtn').click()
