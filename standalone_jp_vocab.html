@@ -3162,14 +3162,11 @@ class JpVocabApp {
     }
 
     if (!Array.isArray(this.words) || this.words.length === 0) {
-      if (typeof samples !== 'undefined' && Array.isArray(samples) && samples.length > 0) {
-        this.words = JSON.parse(JSON.stringify(samples));
-      } else {
-        this.words = [];
-      }
       console.log("JP words list is empty! Auto loading sample cards...");
-      this.loadSampleData(false);
     }
+
+    // Always reconcile built-in cards so a non-empty browser cache also receives newly shipped words.
+    this.loadSampleData(false);
 
     // 强制全量修复/归一化例句结构：确保所有例句与翻译对应精准无脱节
     if (Array.isArray(this.words)) {
@@ -17201,15 +17198,21 @@ class JpVocabApp {
   }
 ];
 
+    const deletedRecords = this.getDeletedRecords ? this.getDeletedRecords() : {};
+    const deletedIds = new Set(Object.keys(deletedRecords || {}));
+    const deletedWords = new Set(Object.values(deletedRecords || {}).map(item => item && item.word).filter(Boolean));
     let count = 0;
+    let changed = false;
     samples.forEach(item => {
+      if (deletedIds.has(String(item.id)) || deletedWords.has(item.word)) return;
       if (!this.words.some(w => w.word === item.word)) {
         this.words.push(item);
         count++;
+        changed = true;
       }
     });
 
-    this.saveData();
+    if (changed) this.saveData();
     this.renderWordList();
     this.updateStats();
     if (showNotification) {

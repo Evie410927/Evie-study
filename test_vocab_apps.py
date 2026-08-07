@@ -588,6 +588,20 @@ class VocabAppTester:
         self.assert_true(dom_static_counts_ok, f"[{lang_name}] 静态DOM-HTML 默认数字标签 (#count-all={count_all_m.group(1) if count_all_m else 'N/A'}) 与 samples 数据源 100% 精确一致", counts_error_msg)
 
         # ---------------------------------------------------------------------
+        # 测试点 42A: 非空浏览器缓存也必须合并新版内置词条，并尊重用户删除记录
+        # ---------------------------------------------------------------------
+        load_data_m = re.search(r'\n  loadData\(\)\s*\{(.*?)\n  saveData\(\)', content, re.DOTALL)
+        load_data_body = load_data_m.group(1) if load_data_m else ''
+        cached_data_upgrade = (
+            'Always reconcile built-in cards' in load_data_body
+            and 'this.loadSampleData(false);' in load_data_body
+            and 'deletedIds.has(String(item.id))' in content
+            and 'deletedWords.has(item.word)' in content
+            and 'if (changed) this.saveData();' in content
+        )
+        self.assert_true(cached_data_upgrade, f"[{lang_name}] 数据升级-非空浏览器缓存自动补入新版内置词条且不复活已删除词", "loadData 未无条件合并内置 samples，或 loadSampleData 未尊重删除记录/按变化保存")
+
+        # ---------------------------------------------------------------------
         # 测试点 43: 释义纯净度 (meaning 字段 100% 隔离方括号 [...] 读音)
         # ---------------------------------------------------------------------
         meaning_pure = True

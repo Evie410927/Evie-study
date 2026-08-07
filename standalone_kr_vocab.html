@@ -1897,9 +1897,9 @@ body::-webkit-scrollbar,
         <div class="list-control-row">
           <div class="filter-pills-group" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
             <div class="filter-pills" id="filterPills">
-              <button class="pill-btn active" data-filter="learning" onclick="if(window.app) window.app.setMainFilter('learning', this)">学习中 (<span id="count-learning">688</span>)</button>
+              <button class="pill-btn active" data-filter="learning" onclick="if(window.app) window.app.setMainFilter('learning', this)">学习中 (<span id="count-learning">689</span>)</button>
               <button class="pill-btn" data-filter="mastered" onclick="if(window.app) window.app.setMainFilter('mastered', this)">已掌握 (<span id="count-mastered">0</span>)</button>
-              <button class="pill-btn" data-filter="all" onclick="if(window.app) window.app.setMainFilter('all', this)">全部 (<span id="count-all">688</span>)</button>
+              <button class="pill-btn" data-filter="all" onclick="if(window.app) window.app.setMainFilter('all', this)">全部 (<span id="count-all">689</span>)</button>
             </div>
             <div class="tag-filter-dropdown-wrapper" id="tagDropdownContainer">
               <button id="tagDropdownBtn" class="pill-btn tag-dropdown-btn" onclick="if(window.app) window.app.toggleTagDropdown(event)" title="按标签/Label过滤 (可多选)" style="display: inline-flex; align-items: center; gap: 4px;">
@@ -16371,6 +16371,25 @@ body::-webkit-scrollbar,
             <button class="action-btn delete-btn" onclick="if(window.app) window.app.deleteWord('kr_686')" title="删除">🗑️</button>
           </div>
         </div>
+<div class="word-card" data-id="kr_687" onclick="if(window.app) window.app.showDetailModal('kr_687')" style="cursor:pointer;">
+          <div class="word-header">
+            <div class="word-title-group">
+              <span class="word-text">자칫하면</span>
+              <span class="word-reading">[자치타면]</span>
+            </div>
+          </div>
+          <div class="word-meaning">adv. 稍有不慎就，弄不好就</div>
+          <div class="word-example-preview">
+            <div class="ex-preview-text">빗길에서는 자칫하면 큰 사고가 날 수 있으니 천천히 운전하세요.</div>
+          </div>
+          <div class="word-tags-row"><span class="tag-badge">#副词</span> <button class="add-inline-tag-btn" onclick="event.stopPropagation(); if(window.app) window.app.showInlineTagInput(this, 'kr_687')">+</button></div>
+          <div class="word-actions" onclick="event.stopPropagation();">
+            <button class="action-btn voice-btn" onclick="if(window.app) window.app.speak('자칫하면')" title="发音">🔊</button>
+            <button class="action-btn status-btn status-learning" onclick="if(window.app) window.app.toggleMastered('kr_687')">🔄 学习中</button>
+            <button class="action-btn edit-btn" onclick="if(window.app) window.app.editWord('kr_687')" title="编辑">✏️</button>
+            <button class="action-btn delete-btn" onclick="if(window.app) window.app.deleteWord('kr_687')" title="删除">🗑️</button>
+          </div>
+        </div>
       </div>
       <div id="paginationBar" class="pagination-bar word-list-inline-pagination" style="margin-top: 2px; margin-bottom: 0px;"></div>
       <!-- 悬浮直达顶部/底部常驻按钮（仅在词库列表页显示） -->
@@ -17132,14 +17151,11 @@ class KrVocabApp {
     }
 
     if (!Array.isArray(this.words) || this.words.length === 0) {
-      if (typeof samples !== 'undefined' && Array.isArray(samples) && samples.length > 0) {
-        this.words = JSON.parse(JSON.stringify(samples));
-      } else {
-        this.words = [];
-      }
       console.log("KR words list is empty! Auto loading sample cards...");
-      this.loadSampleData(false);
     }
+
+    // Always reconcile built-in cards so a non-empty browser cache also receives newly shipped words.
+    this.loadSampleData(false);
 
     // 强制全量修复/归一化例句结构：确保所有例句与翻译对应精准无脱节
     if (Array.isArray(this.words)) {
@@ -37892,15 +37908,53 @@ class KrVocabApp {
         "cn": "在别人面前被指责，感到非常丢脸。"
       }
     ]
+  },
+  {
+    "id": "kr_687",
+    "word": "자칫하면",
+    "reading": "[자치타면]",
+    "meaning": "adv. 稍有不慎就，弄不好就",
+    "example": "빗길에서는 자칫하면 큰 사고가 날 수 있으니 천천히 운전하세요.\n그 말을 그대로 전하면 자칫하면 상대방이 오해할 수도 있어요.\n이 문제를 가볍게 생각하다가는 자칫하면 상황이 더 나빠질 수 있어요.",
+    "exampleTrans": "雨天路滑，稍有不慎就可能发生重大事故，请慢慢驾驶。\n如果把那句话原样转达，弄不好会让对方产生误会。\n如果轻视这个问题，稍有不慎情况可能会进一步恶化。",
+    "tags": [
+      "副词"
+    ],
+    "notes": "",
+    "relatedWords": [
+      "하마터면",
+      "까딱하면"
+    ],
+    "mastered": false,
+    "createdAt": 1786060800000,
+    "examples": [
+      {
+        "kr": "빗길에서는 자칫하면 큰 사고가 날 수 있으니 천천히 운전하세요.",
+        "cn": "雨天路滑，稍有不慎就可能发生重大事故，请慢慢驾驶。"
+      },
+      {
+        "kr": "그 말을 그대로 전하면 자칫하면 상대방이 오해할 수도 있어요.",
+        "cn": "如果把那句话原样转达，弄不好会让对方产生误会。"
+      },
+      {
+        "kr": "이 문제를 가볍게 생각하다가는 자칫하면 상황이 더 나빠질 수 있어요.",
+        "cn": "如果轻视这个问题，稍有不慎情况可能会进一步恶化。"
+      }
+    ]
   }
 ];
 
+    const deletedRecords = this.getDeletedRecords ? this.getDeletedRecords() : {};
+    const deletedIds = new Set(Object.keys(deletedRecords || {}));
+    const deletedWords = new Set(Object.values(deletedRecords || {}).map(item => item && item.word).filter(Boolean));
     let count = 0;
+    let changed = false;
     samples.forEach(item => {
+      if (deletedIds.has(String(item.id)) || deletedWords.has(item.word)) return;
       const idx = this.words.findIndex(w => w.word === item.word);
       if (idx === -1) {
         this.words.push(item);
         count++;
+        changed = true;
       } else {
         // Upgrade existing card if it holds outdated placeholder example or fewer example lines
         const old = this.words[idx];
@@ -37908,11 +37962,12 @@ class KrVocabApp {
         const itemExLines = (item.example || '').split('\n').filter(Boolean);
         if (oldExLines.length < itemExLines.length || !old.example || old.example.includes('표현을 정확하게') || old.meaning.includes('核心') || old.meaning.includes('色彩的') || old.meaning.includes('干，做') || old.exampleTrans.includes('发生了') || old.exampleTrans.includes('显得非常') || old.meaning.startsWith('韩语') || /[가-힣]/.test(old.meaning) || /[가-힣]/.test(old.exampleTrans)) {
           this.words[idx] = { ...old, example: item.example, exampleTrans: item.exampleTrans, meaning: item.meaning, reading: item.reading, tags: item.tags };
+          changed = true;
         }
       }
     });
 
-    this.saveData();
+    if (changed) this.saveData();
     this.renderWordList();
     if (showNotification) {
       this.showToast(`🎉 成功载入 ${count} 个韩语常用单词！`);
@@ -57226,6 +57281,38 @@ document.addEventListener('DOMContentLoaded', () => {
         "cn": "在别人面前被指责，感到非常丢脸。"
       }
     ]
+  },
+  {
+    "id": "kr_687",
+    "word": "자칫하면",
+    "reading": "[자치타면]",
+    "meaning": "adv. 稍有不慎就，弄不好就",
+    "example": "빗길에서는 자칫하면 큰 사고가 날 수 있으니 천천히 운전하세요.\n그 말을 그대로 전하면 자칫하면 상대방이 오해할 수도 있어요.\n이 문제를 가볍게 생각하다가는 자칫하면 상황이 더 나빠질 수 있어요.",
+    "exampleTrans": "雨天路滑，稍有不慎就可能发生重大事故，请慢慢驾驶。\n如果把那句话原样转达，弄不好会让对方产生误会。\n如果轻视这个问题，稍有不慎情况可能会进一步恶化。",
+    "tags": [
+      "副词"
+    ],
+    "notes": "",
+    "relatedWords": [
+      "하마터면",
+      "까딱하면"
+    ],
+    "mastered": false,
+    "createdAt": 1786060800000,
+    "examples": [
+      {
+        "kr": "빗길에서는 자칫하면 큰 사고가 날 수 있으니 천천히 운전하세요.",
+        "cn": "雨天路滑，稍有不慎就可能发生重大事故，请慢慢驾驶。"
+      },
+      {
+        "kr": "그 말을 그대로 전하면 자칫하면 상대방이 오해할 수도 있어요.",
+        "cn": "如果把那句话原样转达，弄不好会让对方产生误会。"
+      },
+      {
+        "kr": "이 문제를 가볍게 생각하다가는 자칫하면 상황이 더 나빠질 수 있어요.",
+        "cn": "如果轻视这个问题，稍有不慎情况可能会进一步恶化。"
+      }
+    ]
   }
 ];
         
@@ -57233,7 +57320,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window.addEventListener('DOMContentLoaded', function() {
           var listContainer = document.getElementById('wordList');
           if (listContainer && (!listContainer.children || listContainer.children.length === 0)) {
-            console.log("Executing fail-safe DOM hard-render for 687 cards...");
+            console.log("Executing fail-safe DOM hard-render for 689 cards...");
             if (window.app && window.app.words && window.app.words.length > 0) {
               window.app.renderWordList();
             } else {
