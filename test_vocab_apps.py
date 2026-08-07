@@ -14,6 +14,8 @@
 import os
 import re
 import sys
+import time
+from pathlib import Path
 
 # 强制标准输出使用 UTF-8
 if hasattr(sys.stdout, 'reconfigure'):
@@ -437,10 +439,10 @@ class VocabAppTester:
         self.assert_true(inline_quick_chips, f"[{lang_name}] 交互-行内打字编辑器快捷标签芯片 📌易忘/🔀易混 事件绑定防护", "缺少 .inline-quick-tag-chip 快捷标签芯片或 addQuickTag 绑定")
 
         # ---------------------------------------------------------------------
-        # 测试点 38: .word-list / #wordList 容器 padding-bottom 115px 避让底部固定 Tab 与 fixed 分页栏隔离防护
+        # 测试点 38: .word-list / #wordList 容器 padding-bottom 62px 紧凑避让底部固定 Tab
         # ---------------------------------------------------------------------
-        wordlist_padding_bottom = '.word-list' in content and 'padding-bottom: 115px !important;' in content
-        self.assert_true(wordlist_padding_bottom, f"[{lang_name}] 样式-.word-list 容器 padding-bottom 115px 避让底部固定 Tab 与 fixed 分页栏", "CSS 中缺少 .word-list 的 padding-bottom: 115px !important 避让配置，会导致最后一个卡片的 Tag 栏被遮挡")
+        wordlist_padding_bottom = '.word-list' in content and 'padding-bottom: 62px !important;' in content
+        self.assert_true(wordlist_padding_bottom, f"[{lang_name}] 样式-.word-list 容器 padding-bottom 62px 紧凑避让底部 Tab", "CSS 中缺少 .word-list 的 padding-bottom: 62px !important 紧凑避让配置")
 
         # ---------------------------------------------------------------------
         # 测试点 39: 置顶与置底直达按钮高度定位 (Top & Bottom Buttons Elevated Height)
@@ -587,14 +589,80 @@ class VocabAppTester:
         # ---------------------------------------------------------------------
         # 测试点 54: 入口初始化 window.app 与 window.vocabApp 健全挂载防护
         # ---------------------------------------------------------------------
-        app_mount_ok = 'window.app = new VocabApp()' in content and 'window.vocabApp = window.app' in content
+        expected_app_class = 'JpVocabApp' if lang_name == '日语' else 'KrVocabApp'
+        app_mount_ok = f'window.app = new {expected_app_class}()' in content and 'window.vocabApp = window.app' in content
         self.assert_true(app_mount_ok, f"[{lang_name}] 逻辑-入口 DOMContentLoaded 事件中 window.app 与 window.vocabApp 双重挂载防护", "缺少 window.vocabApp = window.app 挂载，会导致以 vocabApp 调用的函数报错")
+
+        # ---------------------------------------------------------------------
+        # 测试点 56: 目标图紧凑布局与卡片底部左右分栏
+        # ---------------------------------------------------------------------
+        compact_target_layout = (
+            'padding: 10px 12px 0 0;' in content
+            and 'padding-right: 10px;' in content
+            and 'min-height: 36px;' in content
+        )
+        self.assert_true(compact_target_layout, f"[{lang_name}] 目标图样式-贴边主区域与紧凑搜索栏", "主区域、列表右侧或搜索框高度未按目标图紧凑布局")
+
+        footer_split_layout = (
+            '.word-footer {' in content
+            and 'justify-content: space-between;' in content
+            and '.card-actions {' in content
+            and 'margin-left: auto;' in content
+            and 'justify-content: flex-end;' in content
+        )
+        self.assert_true(footer_split_layout, f"[{lang_name}] 目标图样式-Tag 左置且操作按钮右置同排", "word-footer/card-actions 缺少左右分栏布局")
 
         # ---------------------------------------------------------------------
         # 测试点 55: 入口 DOMContentLoaded 事件中 app = window.app 挂载防护 (防止内联 app.func 抛 ReferenceError)
         # ---------------------------------------------------------------------
         global_app_assign = 'app = window.app;' in content
         self.assert_true(global_app_assign, f"[{lang_name}] 逻辑-入口 DOMContentLoaded 事件中 app = window.app 显式赋值", "缺少 app = window.app 赋值，会导致模板中 app.xxx 调用抛出 ReferenceError 引起卡片按钮点不动")
+
+        # ---------------------------------------------------------------------
+        # 测试点 57: 昨日稳定版与当前版差异回归矩阵
+        # ---------------------------------------------------------------------
+        preview_body_clickable = (
+            '<div class="word-example-preview">' in content
+            and 'class="ex-preview-text"' in content
+            and 'class="ex-preview-trans"' in content
+        )
+        self.assert_true(preview_body_clickable, f"[{lang_name}] 基线差异-例句与翻译使用统一预览结构且卡片主体可点击", "运行时例句预览未统一，或仍可能吞掉卡片详情点击")
+
+        dropdown_outside_close = (
+            "document.addEventListener('click', (e) =>" in content
+            and 'this.closeTagFilterDropdown();' in content
+        )
+        self.assert_true(dropdown_outside_close, f"[{lang_name}] 基线差异-点击标签下拉外部自动关闭", "缺少 document click 外部区域关闭 Tag 下拉逻辑")
+
+        global_tag_handlers = all(token in content for token in (
+            '(window.app||window.vocabApp).showModalInlineTagInput(event)',
+            '(window.app||window.vocabApp).handleModalInlineTagKeydown(event)',
+            '(window.app||window.vocabApp).showInlineTagInput(event',
+            '(window.app||window.vocabApp).handleInlineTagKeydown(event',
+        ))
+        self.assert_true(global_tag_handlers, f"[{lang_name}] 基线差异-Tag 行内编辑事件统一使用全局安全实例", "Modal/卡片 Tag 事件仍依赖不稳定的裸 app 变量")
+
+        tag_normalization_safe = (
+            "String(t).replace(/^#/, '').trim()" in content
+            and ('!posTags.has(clean)' in content or '!posTags.has(cleanTag)' in content)
+        )
+        self.assert_true(tag_normalization_safe, f"[{lang_name}] 基线差异-自定义 Tag 去井号归一化并排除词性标签", "getAllAvailableTags 缺少稳定的 Tag 归一化/词性排除")
+
+        inline_pagination_exact = (
+            'class="pagination-bar word-list-inline-pagination"' in content
+            and 'margin-top: 0px; margin-bottom: 2px;' in content
+            and 'margin-top: 0 !important;' in content
+        )
+        self.assert_true(inline_pagination_exact, f"[{lang_name}] 基线差异-分页保持 wordList 末尾内联紧凑结构", "分页回退为 fixed 或内联间距不符合镜像规范")
+
+        fallback_click_syntax_safe = (
+            "showDetailModal('' + w.id + '')" not in content
+            and 'showDetailModal(w.id)' in content
+        )
+        self.assert_true(fallback_click_syntax_safe, f"[{lang_name}] 基线差异-兜底卡片 onclick 不含引号逃逸错误", "兜底卡片点击仍存在拼接引号错误")
+
+        learning_status_visual = "w.mastered ? '✅ 已掌握' : '🔄 学习中'" in content
+        self.assert_true(learning_status_visual, f"[{lang_name}] 目标图样式-卡片状态按钮按当前状态显示学习中/已掌握", "运行时状态文案与参考图不一致")
 
         # ---------------------------------------------------------------------
         # 触发语言专属特有检测点
@@ -644,11 +712,117 @@ class VocabAppTester:
         has_ja_jp_tts = "utterance.lang = 'ja-JP';" in content
         self.assert_true(has_ja_jp_tts, "[日语专属] 语音-speakWord 发音引擎语言设置为 ja-JP", "utterance.lang 未设置为 ja-JP，导致日语发音引擎失效或读错")
 
+    def test_browser_interactions(self, filepath, lang_name):
+        """在真实浏览器中执行 JS 并点击核心控件，防止静态字符串断言假通过。"""
+        print("\n  --------------------------------------------------")
+        print(f"  >>> [{lang_name}] 真实浏览器交互测试（Selenium + Chrome）...")
+        print("  --------------------------------------------------")
+
+        driver = None
+        try:
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+
+            options = Options()
+            options.add_argument('--headless=new')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--window-size=430,932')
+            options.set_capability('goog:loggingPrefs', {'browser': 'ALL'})
+            driver = webdriver.Chrome(options=options)
+            driver.get(Path(filepath).resolve().as_uri())
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, '.word-card'))
+            )
+            time.sleep(0.5)
+
+            required_methods = (
+                'toggleTheme', 'openWordModal', 'showDetailModal', 'switchTab'
+            )
+            app_ready = driver.execute_script(
+                "return !!window.app && arguments[0].every("
+                "name => typeof window.app[name] === 'function');",
+                list(required_methods),
+            )
+            self.assert_true(
+                app_ready,
+                f"[{lang_name}] 浏览器运行期-window.app 初始化且核心交互方法可调用",
+                "window.app 未正确实例化，或 toggleTheme/openWordModal/showDetailModal/switchTab 缺失",
+            )
+
+            browser_logs = driver.get_log('browser')
+            fatal_markers = ('Uncaught', 'SyntaxError', 'ReferenceError', 'TypeError', 'VocabApp init error')
+            fatal_logs = [
+                entry.get('message', '') for entry in browser_logs
+                if any(marker in entry.get('message', '') for marker in fatal_markers)
+            ]
+            self.assert_true(
+                not fatal_logs,
+                f"[{lang_name}] 浏览器运行期-JavaScript 无致命初始化/语法错误",
+                fatal_logs[0][:500] if fatal_logs else "发现 JavaScript 致命错误",
+            )
+
+            before_theme = driver.find_element(By.TAG_NAME, 'body').get_attribute('class')
+            driver.find_element(By.ID, 'themeToggleBtn').click()
+            time.sleep(0.2)
+            after_theme = driver.find_element(By.TAG_NAME, 'body').get_attribute('class')
+            self.assert_true(
+                before_theme != after_theme,
+                f"[{lang_name}] 浏览器真实点击-主题切换按钮立即生效",
+                "点击 #themeToggleBtn 后 body 主题 class 未变化",
+            )
+
+            driver.find_element(By.ID, 'quickAddBtn').click()
+            time.sleep(0.2)
+            word_modal_active = 'active' in driver.find_element(By.ID, 'wordModal').get_attribute('class').split()
+            self.assert_true(
+                word_modal_active,
+                f"[{lang_name}] 浏览器真实点击-加词按钮打开编辑弹窗",
+                "点击 #quickAddBtn 后 #wordModal 未进入 active 状态",
+            )
+            driver.execute_script("document.getElementById('wordModal')?.classList.remove('active')")
+
+            first_card = driver.find_element(By.CSS_SELECTOR, '.word-card')
+            driver.execute_script('arguments[0].scrollIntoView({block: "center"})', first_card)
+            first_card.click()
+            time.sleep(0.2)
+            detail_modal_active = 'active' in driver.find_element(By.ID, 'detailModal').get_attribute('class').split()
+            self.assert_true(
+                detail_modal_active,
+                f"[{lang_name}] 浏览器真实点击-单词卡片打开详情弹窗",
+                "点击第一张 .word-card 后 #detailModal 未进入 active 状态",
+            )
+            driver.execute_script("document.getElementById('detailModal')?.classList.remove('active')")
+
+            review_tab = driver.find_element(By.CSS_SELECTOR, '.nav-item[data-tab="tab-review"]')
+            driver.execute_script('arguments[0].scrollIntoView({block: "center"})', review_tab)
+            review_tab.click()
+            time.sleep(0.2)
+            review_active = 'active' in driver.find_element(By.ID, 'tab-review').get_attribute('class').split()
+            self.assert_true(
+                review_active,
+                f"[{lang_name}] 浏览器真实点击-底部卡片复习 Tab 切换生效",
+                "点击复习 Tab 后 #tab-review 未进入 active 状态",
+            )
+        except Exception as err:
+            self.assert_true(
+                False,
+                f"[{lang_name}] 浏览器真实交互测试可执行",
+                f"Selenium/Chrome 执行失败: {type(err).__name__}: {err}",
+            )
+        finally:
+            if driver:
+                driver.quit()
+
 
     def run_all(self):
         print("\n[INIT] 启动单词本应用全量自动化测试流程...")
         self.test_file(KR_FILE, "韩语")
         self.test_file(JP_FILE, "日语")
+        self.test_browser_interactions(KR_FILE, "韩语")
+        self.test_browser_interactions(JP_FILE, "日语")
 
         print("\n==================================================")
         print(f"[RESULT] 测试总结: 通过 {self.passed_count} 项 | 失败 {self.failed_count} 项")
