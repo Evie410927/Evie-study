@@ -159,7 +159,7 @@ html, body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 10px 12px 0 0;
+  padding: 10px 12px 44px 0;
   position: relative;
 }
 
@@ -196,8 +196,8 @@ html, body {
   border-top: 1px solid var(--border-color);
   display: flex;
   justify-content: space-around;
-  padding: 4px 12px calc(var(--safe-bottom) + 4px) !important;
-  height: 50px !important;
+  padding: 2px 10px calc(var(--safe-bottom) + 2px) !important;
+  height: 44px !important;
   z-index: 100;
 }
 
@@ -205,12 +205,12 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px !important;
+  gap: 0 !important;
   color: var(--text-muted);
   text-decoration: none;
-  font-size: 11px !important;
+  font-size: 10px !important;
   font-weight: 500;
-  padding: 3px 10px !important;
+  padding: 1px 8px !important;
   border-radius: var(--radius-md);
   transition: all 0.2s ease;
   cursor: pointer;
@@ -654,7 +654,7 @@ body.light-theme .clear-all-tags-chip-btn:hover {
   -webkit-overflow-scrolling: touch;
   margin-top: 2px !important;
   padding-right: 10px;
-  padding-bottom: 62px !important;
+  padding-bottom: 4px !important;
 }
 
 /* 专属粉色高亮拖动滑动条：全量卡片列表 #wordList、卡片复习背面 .card-face-back 及全量内联滚动容器 */
@@ -877,6 +877,25 @@ body::-webkit-scrollbar,
   color: var(--text-muted);
   gap: 12px;
   width: 100%;
+}
+
+/* 单词列表滚动轨道两端箭头：顶部向上、底部向下 */
+#wordList::-webkit-scrollbar-button:single-button:vertical {
+  display: block !important;
+  width: 8px !important;
+  height: 12px !important;
+  background-color: rgba(30, 41, 59, 0.96) !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  background-size: 8px 8px !important;
+}
+
+#wordList::-webkit-scrollbar-button:single-button:vertical:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23ec4899' d='M4 1 7 6H1z'/%3E%3C/svg%3E") !important;
+}
+
+#wordList::-webkit-scrollbar-button:single-button:vertical:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23ec4899' d='m1 2 3 5 3-5z'/%3E%3C/svg%3E") !important;
 }
 
 .word-tags {
@@ -1762,7 +1781,8 @@ body::-webkit-scrollbar,
   right: auto !important;
   width: 100%;
   max-width: 600px;
-  margin: 10px auto 2px !important;
+  margin: 2px auto 0 !important;
+  flex-shrink: 0 !important;
   box-sizing: border-box;
   z-index: 10;
   background: var(--bg-card);
@@ -1774,9 +1794,9 @@ body::-webkit-scrollbar,
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 6px 12px !important;
-  height: 48px !important;
+  gap: 5px;
+  padding: 2px 8px !important;
+  height: 36px !important;
 }
 
 .word-list-inline-pagination {
@@ -1788,16 +1808,16 @@ body::-webkit-scrollbar,
   z-index: 10 !important;
   width: 100% !important;
   margin-top: 0 !important;
-  margin-bottom: 2px !important;
+  margin-bottom: 0 !important;
 }
 
 .page-btn {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
-  padding: 6px 14px;
+  padding: 3px 10px;
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -1824,7 +1844,7 @@ body::-webkit-scrollbar,
 .page-jump-container {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .page-jump-select {
@@ -1833,8 +1853,8 @@ body::-webkit-scrollbar,
   color: var(--accent-primary);
   font-weight: 600;
   border-radius: var(--radius-sm);
-  padding: 4px 8px;
-  font-size: 13px;
+  padding: 2px 6px;
+  font-size: 12px;
   outline: none;
   cursor: pointer;
   transition: all 0.2s;
@@ -1846,7 +1866,7 @@ body::-webkit-scrollbar,
 }
 
 .page-info-total {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
   font-weight: 500;
 }
@@ -2378,9 +2398,9 @@ body::-webkit-scrollbar,
             </div>
           </div>
         </div>
-<div id="paginationBar" class="pagination-bar word-list-inline-pagination" style="margin-top: 0px; margin-bottom: 2px;"></div>
-        </div>
-<!-- 悬浮直达顶部/底部常驻按钮（仅在词库列表页显示） -->
+      </div>
+      <div id="paginationBar" class="pagination-bar word-list-inline-pagination" style="margin-top: 2px; margin-bottom: 0px;"></div>
+      <!-- 悬浮直达顶部/底部常驻按钮（仅在词库列表页显示） -->
       <button id="scrollToTopBtn" class="scroll-track-btn top-btn" title="一键直达当前页面单词列表最顶端卡片" onclick="if(window.app) (window.vocabApp||window.app).scrollToListTop()">▲</button>
       <button id="scrollToBottomBtn" class="scroll-track-btn bottom-btn" title="一键直达当前页面单词列表最底端卡片" onclick="if(window.app) (window.vocabApp||window.app).scrollToListBottom()">▼</button>
     </section>
@@ -4172,7 +4192,7 @@ class JpVocabApp {
           </div>
         </div>
       `;
-    }).join('') + '<div id="paginationBar" class="pagination-bar word-list-inline-pagination" style="margin-top: 0px; margin-bottom: 2px;"></div>';
+    }).join('');
 
     this.renderPaginationControls(totalPages, totalItems);
     this.updateListNavigationVisibility(true);
@@ -4408,13 +4428,6 @@ class JpVocabApp {
       wl.scrollTop = 0;
       wl.scrollTo({ top: 0, behavior: 'smooth' });
     }
-    const firstCard = document.querySelector('#wordList .word-card');
-    if (firstCard) {
-      firstCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    if (document.documentElement) document.documentElement.scrollTop = 0;
-    if (document.body) document.body.scrollTop = 0;
   }
 
   scrollToListBottom() {
@@ -4422,12 +4435,6 @@ class JpVocabApp {
     if (wl) {
       wl.scrollTop = wl.scrollHeight;
       wl.scrollTo({ top: wl.scrollHeight, behavior: 'smooth' });
-    }
-    const pag = document.getElementById('paginationBar');
-    if (pag) {
-      pag.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } else {
-      window.scrollTo({ top: document.body.scrollHeight || document.documentElement.scrollHeight, behavior: 'smooth' });
     }
   }
 

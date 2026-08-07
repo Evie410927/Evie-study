@@ -355,22 +355,34 @@ class VocabAppTester:
         self.assert_true(scroll_btns_tab_list_only, f"[{lang_name}] 交互-置顶/置底按钮仅在【词库列表】Tab显隐控制防护", "switchTab 中缺少对 #scrollToTopBtn 和 #scrollToBottomBtn 仅在 tab-list 页面显隐的切换逻辑")
 
         # ---------------------------------------------------------------------
-        # 测试点 18: 一键置底 scrollToListBottom 以分页工具栏为终点测试 (Scroll To Bottom Pagination Bar Target)
+        # 测试点 18: 一键置顶/置底仅滚动 #wordList，不带动固定分页栏或整个页面
         # ---------------------------------------------------------------------
         has_scroll_api = 'scrollToListTop' in content and 'scrollToListBottom' in content
         self.assert_true(has_scroll_api, f"[{lang_name}] 逻辑-scrollToListTop 与 scrollToListBottom 一键直达 API 健全", "JS 中缺少 scrollToListTop 或 scrollToListBottom 函数")
 
-        scroll_to_pagination_target = 'scrollToListBottom' in content and 'paginationBar' in content and 'scrollIntoView' in content
-        self.assert_true(scroll_to_pagination_target, f"[{lang_name}] 逻辑-scrollToListBottom 置底函数以 #paginationBar 分页工具栏为终点显式露出一键直达", "scrollToListBottom 缺少对 paginationBar 的 scrollIntoView 定位，会导致滑到底部时分页栏被裁剪")
+        list_only_scroll = (
+            'wl.scrollTop = wl.scrollHeight' in content
+            and "pag.scrollIntoView({ behavior: 'smooth', block: 'center' })" not in content
+            and "firstCard.scrollIntoView({ behavior: 'smooth', block: 'start' })" not in content
+        )
+        self.assert_true(list_only_scroll, f"[{lang_name}] 逻辑-置顶/置底按钮仅滚动 #wordList，分页栏与页面保持固定", "置顶/置底逻辑仍会 scrollIntoView 带动固定分页栏或整个页面")
 
         # ---------------------------------------------------------------------
-        # 测试点 19: 底部导航栏紧凑高度 50px 与粉色拖动滑动条高亮测试
+        # 测试点 19: 底部导航栏紧凑高度 44px 与粉色拖动滑动条高亮测试
         # ---------------------------------------------------------------------
-        compact_bottom_nav_css = 'height: 50px !important;' in content or 'height: 50px;' in content
-        self.assert_true(compact_bottom_nav_css, f"[{lang_name}] 样式-底部导航栏高度紧凑化 50px 压低间距", "CSS 中 .bottom-nav 缺少 height: 50px !important 紧凑化配置")
+        compact_bottom_nav_css = 'height: 44px !important;' in content or 'height: 44px;' in content
+        self.assert_true(compact_bottom_nav_css, f"[{lang_name}] 样式-底部导航栏高度紧凑化至 44px", "CSS 中 .bottom-nav 缺少 height: 44px !important 紧凑化配置")
 
         pink_scrollbar_css = '#wordList::-webkit-scrollbar-thumb' in content and 'var(--accent-primary, #ec4899)' in content
         self.assert_true(pink_scrollbar_css, f"[{lang_name}] 样式-粉色高亮拖动滑动条 ::-webkit-scrollbar-thumb 渲染配置", "CSS 中缺少 #wordList::-webkit-scrollbar-thumb 粉色高亮拖动滑动条配置")
+
+        scrollbar_endpoint_arrows = all(token in content for token in (
+            '#wordList::-webkit-scrollbar-button:single-button:vertical:decrement',
+            '#wordList::-webkit-scrollbar-button:single-button:vertical:increment',
+            "d='M4 1 7 6H1z'",
+            "d='m1 2 3 5 3-5z'",
+        ))
+        self.assert_true(scrollbar_endpoint_arrows, f"[{lang_name}] 样式-列表滚动条顶部向上箭头与底部向下箭头成对显示", "#wordList 滚动条缺少顶部 decrement 或底部 increment 箭头")
 
         # ---------------------------------------------------------------------
         # 测试点 20: 卡片底部 Tag 行内打字加标签交互组件防护 (Inline Tag Input Component Test)
@@ -388,10 +400,15 @@ class VocabAppTester:
         self.assert_true(word_list_isolated_scroll, f"[{lang_name}] 布局-#wordList 独立滚动与搜索/Tag控件置顶固定不动", "缺少 #wordList 独立滚动或 flex-shrink: 0 防压缩设置")
 
         # ---------------------------------------------------------------------
-        # 测试点 21: renderWordList 列表重绘时 #paginationBar 节点自动重建防护测试
+        # 测试点 21: #paginationBar 为 #wordList 外部持久兄弟节点，列表重绘不能删除它
         # ---------------------------------------------------------------------
-        has_pagination_rebuild = 'id="paginationBar"' in content and 'word-list-inline-pagination' in content and 'renderPaginationControls' in content
-        self.assert_true(has_pagination_rebuild, f"[{lang_name}] 逻辑-renderWordList 重绘列表时自动重建 #paginationBar 节点，彻底杜绝分页栏丢失 Bug", "renderWordList 拼接中缺少 #paginationBar 动态重建节点，会导致 innerHTML 重绘后分页栏丢失")
+        persistent_pagination = (
+            content.count('id="paginationBar"') == 1
+            and 'word-list-inline-pagination' in content
+            and "}).join('') + '<div id=\"paginationBar\"'" not in content
+            and 'renderPaginationControls' in content
+        )
+        self.assert_true(persistent_pagination, f"[{lang_name}] 结构-分页栏为 wordList 外部唯一持久节点，列表重绘不丢失", "#paginationBar 仍在 renderWordList 中动态拼接、重复出现或缺失")
 
         # ---------------------------------------------------------------------
         # 测试点 22: 翻页工具栏固定悬浮与强常驻 (Never Hide Pagination Bar) 防护测试
@@ -475,10 +492,16 @@ class VocabAppTester:
         self.assert_true(cluster_by_sim, f"[{lang_name}] 算法-clusterBySimilarity 复习卡片语义与 Tag 聚类出词算法", "缺少 clusterBySimilarity 方法或未在 startReviewSession 中调用")
 
         # ---------------------------------------------------------------------
-        # 测试点 33: 内联分页工具条定位与 word-list-inline-pagination 容器包含断言
+        # 测试点 33: 分页工具条位于独立滚动列表之外并保持紧凑固定
         # ---------------------------------------------------------------------
-        inline_pagination_css = '.pagination-bar' in content and 'word-list-inline-pagination' in content and 'id="paginationBar"' in content
-        self.assert_true(inline_pagination_css, f"[{lang_name}] 结构-内联分页工具条 word-list-inline-pagination 在 #wordList 末尾嵌套防护", "缺少 .pagination-bar CSS 规则或 word-list-inline-pagination 类名")
+        fixed_pagination_footer = all(token in content for token in (
+            '.pagination-bar {',
+            'word-list-inline-pagination',
+            'id="paginationBar"',
+            'flex-shrink: 0 !important;',
+            'height: 36px !important;',
+        ))
+        self.assert_true(fixed_pagination_footer, f"[{lang_name}] 结构-分页栏为滚动列表外的 36px 固定页脚", "分页栏缺少独立固定布局、flex 防压缩或 36px 紧凑高度")
 
         # ---------------------------------------------------------------------
         # 测试点 34: 详情弹窗相近表达跳转历史栈与返回上一词条 API 防护 (Detail Modal Navigation Stack & goBackDetailModal)
@@ -505,10 +528,10 @@ class VocabAppTester:
         self.assert_true(inline_quick_chips, f"[{lang_name}] 交互-行内打字编辑器快捷标签芯片 📌易忘/🔀易混 事件绑定防护", "缺少 .inline-quick-tag-chip 快捷标签芯片或 addQuickTag 绑定")
 
         # ---------------------------------------------------------------------
-        # 测试点 38: .word-list / #wordList 容器 padding-bottom 62px 紧凑避让底部固定 Tab
+        # 测试点 38: .word-list 使用极小底边距，把空间留给单词卡片
         # ---------------------------------------------------------------------
-        wordlist_padding_bottom = '.word-list' in content and 'padding-bottom: 62px !important;' in content
-        self.assert_true(wordlist_padding_bottom, f"[{lang_name}] 样式-.word-list 容器 padding-bottom 62px 紧凑避让底部 Tab", "CSS 中缺少 .word-list 的 padding-bottom: 62px !important 紧凑避让配置")
+        wordlist_padding_bottom = '.word-list' in content and 'padding-bottom: 4px !important;' in content
+        self.assert_true(wordlist_padding_bottom, f"[{lang_name}] 样式-.word-list 底边距压缩至 4px", "CSS 中缺少 .word-list 的 padding-bottom: 4px !important 紧凑配置")
 
         # ---------------------------------------------------------------------
         # 测试点 39: 置顶与置底直达按钮高度定位 (Top & Bottom Buttons Elevated Height)
@@ -663,7 +686,7 @@ class VocabAppTester:
         # 测试点 56: 目标图紧凑布局与卡片底部左右分栏
         # ---------------------------------------------------------------------
         compact_target_layout = (
-            'padding: 10px 12px 0 0;' in content
+            'padding: 10px 12px 44px 0;' in content
             and 'padding-right: 10px;' in content
             and 'min-height: 36px;' in content
         )
@@ -714,12 +737,13 @@ class VocabAppTester:
         )
         self.assert_true(tag_normalization_safe, f"[{lang_name}] 基线差异-自定义 Tag 去井号归一化并排除词性标签", "getAllAvailableTags 缺少稳定的 Tag 归一化/词性排除")
 
-        inline_pagination_exact = (
+        detached_pagination_exact = (
             'class="pagination-bar word-list-inline-pagination"' in content
-            and 'margin-top: 0px; margin-bottom: 2px;' in content
+            and 'style="margin-top: 2px; margin-bottom: 0px;"' in content
             and 'margin-top: 0 !important;' in content
+            and 'height: 36px !important;' in content
         )
-        self.assert_true(inline_pagination_exact, f"[{lang_name}] 基线差异-分页保持 wordList 末尾内联紧凑结构", "分页回退为 fixed 或内联间距不符合镜像规范")
+        self.assert_true(detached_pagination_exact, f"[{lang_name}] 基线差异-分页保持 wordList 外部紧凑固定结构", "分页栏未从滚动列表中分离，或紧凑间距不符合镜像规范")
 
         fallback_click_syntax_safe = (
             "showDetailModal('' + w.id + '')" not in content
@@ -999,6 +1023,54 @@ class VocabAppTester:
                 all(restored_state.get(key) for key in ('hasCards', 'paginationVisible', 'topVisible', 'bottomVisible')),
                 f"[{lang_name}] 浏览器结果恢复-分页栏和置顶/置底按钮重新显示",
                 "清除空结果条件后导航控件没有随卡片一起恢复",
+            )
+
+            fixed_list_layout = driver.execute_script("""
+                const list = document.getElementById('wordList');
+                const pagination = document.getElementById('paginationBar');
+                const bottomNav = document.querySelector('.bottom-nav');
+                const tabList = document.getElementById('tab-list');
+                if (!list || !pagination || !bottomNav || !tabList) return null;
+                list.scrollTop = 0;
+                const before = {
+                  paginationTop: pagination.getBoundingClientRect().top,
+                  navTop: bottomNav.getBoundingClientRect().top
+                };
+                list.scrollTop = list.scrollHeight;
+                const listRect = list.getBoundingClientRect();
+                const pageRect = pagination.getBoundingClientRect();
+                const navRect = bottomNav.getBoundingClientRect();
+                const after = {paginationTop: pageRect.top, navTop: navRect.top};
+                return {
+                  paginationOutsideList: pagination.parentElement === tabList && pagination.previousElementSibling === list,
+                  listActuallyScrollable: list.scrollHeight > list.clientHeight && list.scrollTop > 0,
+                  paginationDoesNotScroll: Math.abs(before.paginationTop - after.paginationTop) < 1,
+                  bottomNavDoesNotScroll: Math.abs(before.navTop - after.navTop) < 1,
+                  scrollbarEndsAtPagination: listRect.bottom <= pageRect.top + 3,
+                  paginationAboveTabs: pageRect.bottom <= navRect.top + 3,
+                  paginationCompact: pageRect.height <= 38,
+                  bottomNavCompact: navRect.height <= 46
+                };
+            """)
+            self.assert_true(
+                bool(fixed_list_layout and fixed_list_layout.get('paginationOutsideList')),
+                f"[{lang_name}] 浏览器布局-分页栏是 #wordList 外部相邻固定栏",
+                "#paginationBar 仍嵌套在可滚动 #wordList 内，滑动时会被带走",
+            )
+            self.assert_true(
+                bool(fixed_list_layout and fixed_list_layout.get('listActuallyScrollable') and fixed_list_layout.get('paginationDoesNotScroll') and fixed_list_layout.get('bottomNavDoesNotScroll')),
+                f"[{lang_name}] 浏览器滚动-仅单词列表滚动，分页栏和底部 Tab 均保持固定",
+                "滚动 #wordList 时分页栏或底部 Tab 发生位移，或列表未形成独立滚动区",
+            )
+            self.assert_true(
+                bool(fixed_list_layout and fixed_list_layout.get('scrollbarEndsAtPagination') and fixed_list_layout.get('paginationAboveTabs')),
+                f"[{lang_name}] 浏览器边界-滚动条止于分页栏上沿且分页栏不遮挡底部 Tab",
+                "#wordList 滚动区域、分页栏和底部 Tab 的垂直边界重叠或错位",
+            )
+            self.assert_true(
+                bool(fixed_list_layout and fixed_list_layout.get('paginationCompact') and fixed_list_layout.get('bottomNavCompact')),
+                f"[{lang_name}] 浏览器尺寸-分页栏不高于 38px、底部 Tab 不高于 46px",
+                "分页栏或底部 Tab 仍然过高，挤占单词列表空间",
             )
 
             browser_logs = driver.get_log('browser')
