@@ -3344,9 +3344,11 @@ class JpVocabApp {
       const bottomBtn = document.getElementById('scrollToBottomBtn');
       const paginationBar = document.getElementById('paginationBar');
       const isListTab = (tabId === 'tab-list');
-      if (topBtn) topBtn.style.display = isListTab ? 'flex' : 'none';
-      if (bottomBtn) bottomBtn.style.display = isListTab ? 'flex' : 'none';
-      if (paginationBar) paginationBar.style.display = isListTab ? 'flex' : 'none';
+      const hasListItems = !!document.querySelector('#wordList .word-card');
+      const showListNavigation = isListTab && hasListItems;
+      if (topBtn) topBtn.style.setProperty('display', showListNavigation ? 'flex' : 'none', 'important');
+      if (bottomBtn) bottomBtn.style.setProperty('display', showListNavigation ? 'flex' : 'none', 'important');
+      if (paginationBar) paginationBar.style.display = showListNavigation ? 'flex' : 'none';
 
       if (tabId === 'tab-review') {
         this.startReviewSession();
@@ -4116,6 +4118,7 @@ class JpVocabApp {
           <p>请尝试切换筛选标签或搜索其他词汇</p>
         </div>
       `;
+      this.updateListNavigationVisibility(false);
       return;
     }
 
@@ -4172,6 +4175,19 @@ class JpVocabApp {
     }).join('') + '<div id="paginationBar" class="pagination-bar word-list-inline-pagination" style="margin-top: 0px; margin-bottom: 2px;"></div>';
 
     this.renderPaginationControls(totalPages, totalItems);
+    this.updateListNavigationVisibility(true);
+  }
+
+  updateListNavigationVisibility(hasItems) {
+    const listTab = document.getElementById('tab-list');
+    const isListTab = !listTab || listTab.classList.contains('active');
+    const shouldShow = Boolean(hasItems && isListTab);
+    const paginationBar = document.getElementById('paginationBar');
+    const topBtn = document.getElementById('scrollToTopBtn');
+    const bottomBtn = document.getElementById('scrollToBottomBtn');
+    if (paginationBar) paginationBar.style.display = shouldShow ? 'flex' : 'none';
+    if (topBtn) topBtn.style.setProperty('display', shouldShow ? 'flex' : 'none', 'important');
+    if (bottomBtn) bottomBtn.style.setProperty('display', shouldShow ? 'flex' : 'none', 'important');
   }
 
     renderWordTagsHtml(word) {
@@ -4330,6 +4346,11 @@ class JpVocabApp {
   renderPaginationControls(totalPages, totalItems) {
     const paginationBar = document.getElementById('paginationBar');
     if (!paginationBar) return;
+    if (totalItems <= 0) {
+      paginationBar.innerHTML = '';
+      paginationBar.style.display = 'none';
+      return;
+    }
 
     const safeTotalPages = Math.max(1, totalPages);
     let optionsHtml = '';

@@ -396,14 +396,23 @@ class VocabAppTester:
         # ---------------------------------------------------------------------
         # 测试点 22: 翻页工具栏固定悬浮与强常驻 (Never Hide Pagination Bar) 防护测试
         # ---------------------------------------------------------------------
-        pagination_always_flex = ('paginationBar.style.display = \'flex\'' in content or 'paginationBar.style.display = isListTab' in content) and 'safeTotalPages = Math.max(1, totalPages)' in content
-        self.assert_true(pagination_always_flex, f"[{lang_name}] 逻辑-翻页工具栏强常驻显示，即使 1 页 (totalPages<=1) 也保持 display:flex", "renderPaginationControls 中缺少 safeTotalPages 保底，会导致 1 页时分页栏被错误隐藏")
+        pagination_always_flex = 'paginationBar.style.display = \'flex\'' in content and 'safeTotalPages = Math.max(1, totalPages)' in content and 'if (totalItems <= 0)' in content
+        self.assert_true(pagination_always_flex, f"[{lang_name}] 逻辑-翻页工具栏有结果时常驻、0 条时隐藏", "renderPaginationControls 未区分 0 条空结果与至少 1 条有效结果")
 
         pagination_inline_css = 'position: relative' in content and 'z-index: 10' in content
         self.assert_true(pagination_inline_css, f"[{lang_name}] 样式-翻页工具栏采用 relative 相对定位内联流式布局 (防止 fixed 浮层遮挡与撕裂卡片按钮点击)", "CSS 中缺少 .pagination-bar 的 position: relative !important 相对定位")
 
-        switch_tab_pagination = 'const paginationBar = document.getElementById(\'paginationBar\');' in content and 'paginationBar.style.display = isListTab ? \'flex\' : \'none\';' in content
-        self.assert_true(switch_tab_pagination, f"[{lang_name}] 逻辑-switchTab 自动切换非列表 Tab 时隐藏分页工具栏", "switchTab 方法中缺少对 #paginationBar 的 isListTab 显显控制")
+        switch_tab_pagination = 'const paginationBar = document.getElementById(\'paginationBar\');' in content and 'showListNavigation = isListTab && hasListItems' in content
+        self.assert_true(switch_tab_pagination, f"[{lang_name}] 逻辑-switchTab 按列表 Tab 与实际卡片数量联动导航显隐", "switchTab 未同时判断当前是否在列表页以及是否存在卡片")
+
+        empty_navigation_hidden = all(token in content for token in (
+            'updateListNavigationVisibility(false)',
+            'updateListNavigationVisibility(true)',
+            'const shouldShow = Boolean(hasItems && isListTab)',
+            "if (topBtn) topBtn.style.setProperty('display', shouldShow ? 'flex' : 'none', 'important')",
+            "if (bottomBtn) bottomBtn.style.setProperty('display', shouldShow ? 'flex' : 'none', 'important')",
+        )) and 'this.renderPaginationControls(0, 0)' not in content
+        self.assert_true(empty_navigation_hidden, f"[{lang_name}] 空结果-隐藏分页栏与置顶/置底按钮并支持恢复", "空结果分支仍渲染分页，或没有统一隐藏三个列表导航控件")
 
         # ---------------------------------------------------------------------
         # 测试点 23: 卡片底部 Tag 栏与操作按钮栏 (朗读/掌握/编辑/删除) 100% 完整保留防护测试
@@ -950,6 +959,46 @@ class VocabAppTester:
                 bool(merge_result and merge_result.get('localEditTracked')),
                 f"[{lang_name}] 浏览器双设备模拟-本地任意字段编辑更新时间自动刷新",
                 "Tag 等编辑没有更新卡片 updatedAt，无法可靠上传",
+            )
+
+            empty_navigation_result = driver.execute_script("""
+                const app = window.app;
+                const originalSearch = app.searchQuery;
+                app.searchQuery = '__codex_empty_result_navigation_test__';
+                app.currentPage = 1;
+                app.renderWordList();
+                const paginationWhenEmpty = document.getElementById('paginationBar');
+                const topBtn = document.getElementById('scrollToTopBtn');
+                const bottomBtn = document.getElementById('scrollToBottomBtn');
+                const emptyState = {
+                  noCards: !document.querySelector('#wordList .word-card'),
+                  paginationHidden: !paginationWhenEmpty || getComputedStyle(paginationWhenEmpty).display === 'none',
+                  topHidden: !!topBtn && getComputedStyle(topBtn).display === 'none',
+                  bottomHidden: !!bottomBtn && getComputedStyle(bottomBtn).display === 'none'
+                };
+                app.searchQuery = originalSearch;
+                app.currentPage = 1;
+                app.renderWordList();
+                const paginationRestored = document.getElementById('paginationBar');
+                const restoredState = {
+                  hasCards: !!document.querySelector('#wordList .word-card'),
+                  paginationVisible: !!paginationRestored && getComputedStyle(paginationRestored).display === 'flex',
+                  topVisible: getComputedStyle(topBtn).display === 'flex',
+                  bottomVisible: getComputedStyle(bottomBtn).display === 'flex'
+                };
+                return {emptyState, restoredState};
+            """)
+            empty_state = empty_navigation_result.get('emptyState', {}) if empty_navigation_result else {}
+            restored_state = empty_navigation_result.get('restoredState', {}) if empty_navigation_result else {}
+            self.assert_true(
+                all(empty_state.get(key) for key in ('noCards', 'paginationHidden', 'topHidden', 'bottomHidden')),
+                f"[{lang_name}] 浏览器空结果-分页栏和置顶/置底按钮全部隐藏",
+                "筛选结果为 0 时仍有分页栏、置顶按钮或置底按钮可见",
+            )
+            self.assert_true(
+                all(restored_state.get(key) for key in ('hasCards', 'paginationVisible', 'topVisible', 'bottomVisible')),
+                f"[{lang_name}] 浏览器结果恢复-分页栏和置顶/置底按钮重新显示",
+                "清除空结果条件后导航控件没有随卡片一起恢复",
             )
 
             browser_logs = driver.get_log('browser')
