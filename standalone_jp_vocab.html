@@ -1912,9 +1912,9 @@ body::-webkit-scrollbar,
         <div class="list-control-row">
           <div class="filter-pills-group" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
             <div class="filter-pills" id="filterPills">
-              <button class="pill-btn active" data-filter="learning" onclick="if(window.app) window.app.setMainFilter('learning', this)">学习中 (<span id="count-learning">429</span>)</button>
+              <button class="pill-btn active" data-filter="learning" onclick="if(window.app) window.app.setMainFilter('learning', this)">学习中 (<span id="count-learning">430</span>)</button>
               <button class="pill-btn" data-filter="mastered" onclick="if(window.app) window.app.setMainFilter('mastered', this)">已掌握 (<span id="count-mastered">0</span>)</button>
-              <button class="pill-btn" data-filter="all" onclick="if(window.app) window.app.setMainFilter('all', this)">全部 (<span id="count-all">429</span>)</button>
+              <button class="pill-btn" data-filter="all" onclick="if(window.app) window.app.setMainFilter('all', this)">全部 (<span id="count-all">430</span>)</button>
             </div>
             <div class="tag-filter-dropdown-wrapper" id="tagDropdownContainer">
               <button id="tagDropdownBtn" class="pill-btn tag-dropdown-btn" onclick="if(window.app) window.app.toggleTagDropdown(event)" title="按标签/Label过滤 (可多选)" style="display: inline-flex; align-items: center; gap: 4px;">
@@ -17195,6 +17195,36 @@ class JpVocabApp {
         "cn": "脸上流露出了安心的表情，松了一口气。"
       }
     ]
+  },
+  {
+    "id": "jp_user_430",
+    "word": "幼い",
+    "reading": "[おさない]",
+    "meaning": "adj. 年幼的，幼小的；幼稚的，不成熟的",
+    "krMeaning": "어리다 / 유치하다",
+    "tags": [
+      "形容词"
+    ],
+    "notes": "",
+    "example": "幼い子どもが一人で道に迷っていた。\n彼女は幼い頃から音楽に親しんできた。\nそんな幼い考えでは、周りを納得させられない。",
+    "exampleTrans": "一个年幼的孩子独自在路上迷路了。\n她从小就经常接触音乐。\n那种幼稚的想法无法说服周围的人。",
+    "mastered": false,
+    "reviewCount": 0,
+    "createdAt": 1786060801000,
+    "examples": [
+      {
+        "jp": "幼い子どもが一人で道に迷っていた。",
+        "cn": "一个年幼的孩子独自在路上迷路了。"
+      },
+      {
+        "jp": "彼女は幼い頃から音楽に親しんできた。",
+        "cn": "她从小就经常接触音乐。"
+      },
+      {
+        "jp": "そんな幼い考えでは、周りを納得させられない。",
+        "cn": "那种幼稚的想法无法说服周围的人。"
+      }
+    ]
   }
 ];
 
@@ -29700,6 +29730,36 @@ document.addEventListener('DOMContentLoaded', () => {
         "cn": "脸上流露出了安心的表情，松了一口气。"
       }
     ]
+  },
+  {
+    "id": "jp_user_430",
+    "word": "幼い",
+    "reading": "[おさない]",
+    "meaning": "adj. 年幼的，幼小的；幼稚的，不成熟的",
+    "krMeaning": "어리다 / 유치하다",
+    "tags": [
+      "形容词"
+    ],
+    "notes": "",
+    "example": "幼い子どもが一人で道に迷っていた。\n彼女は幼い頃から音楽に親しんできた。\nそんな幼い考えでは、周りを納得させられない。",
+    "exampleTrans": "一个年幼的孩子独自在路上迷路了。\n她从小就经常接触音乐。\n那种幼稚的想法无法说服周围的人。",
+    "mastered": false,
+    "reviewCount": 0,
+    "createdAt": 1786060801000,
+    "examples": [
+      {
+        "jp": "幼い子どもが一人で道に迷っていた。",
+        "cn": "一个年幼的孩子独自在路上迷路了。"
+      },
+      {
+        "jp": "彼女は幼い頃から音楽に親しんできた。",
+        "cn": "她从小就经常接触音乐。"
+      },
+      {
+        "jp": "そんな幼い考えでは、周りを納得させられない。",
+        "cn": "那种幼稚的想法无法说服周围的人。"
+      }
+    ]
   }
 ];
         
@@ -29707,7 +29767,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window.addEventListener('DOMContentLoaded', function() {
           var listContainer = document.getElementById('wordList');
           if (listContainer && (!listContainer.children || listContainer.children.length === 0)) {
-            console.log("Executing fail-safe DOM hard-render for 427 cards...");
+            console.log("Executing fail-safe DOM hard-render for 430 cards...");
             if (window.app && window.app.words && window.app.words.length > 0) {
               window.app.renderWordList();
             } else {
