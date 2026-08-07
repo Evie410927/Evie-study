@@ -1745,27 +1745,40 @@ body::-webkit-scrollbar,
 }
 
 .pagination-bar {
-  position: fixed !important;
-  bottom: 50px !important;
-  left: 0;
-  right: 0;
+  position: relative !important;
+  bottom: auto !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
   width: 100%;
   max-width: 600px;
-  margin: 0 auto;
+  margin: 10px auto 2px !important;
   box-sizing: border-box;
-  z-index: 99;
+  z-index: 10;
   background: var(--bg-card);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border-top: 1px solid var(--border-color);
   border-bottom: 1px solid var(--border-color);
-  border-radius: 0 !important;
+  border-radius: var(--radius-md) !important;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   padding: 6px 12px !important;
   height: 48px !important;
+}
+
+.word-list-inline-pagination {
+  position: relative !important;
+  bottom: auto !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  z-index: 10 !important;
+  width: 100% !important;
+  margin-top: 10px !important;
+  margin-bottom: 2px !important;
 }
 
 .page-btn {
@@ -2492,7 +2505,7 @@ body::-webkit-scrollbar,
       <div class="modal-sheet detail-sheet">
         <div class="modal-header">
           <div style="display:flex; align-items:center; gap:10px;">
-            <button id="detailBackBtn" class="icon-btn" onclick="app.goBackDetailModal()" style="display:none;" title="返回上一个表达">←</button>
+            <button id="detailBackBtn" class="icon-btn" onclick="(window.app||window.vocabApp).goBackDetailModal()" style="display:none;" title="返回上一个表达">←</button>
             <div class="detail-title-group">
               <h3 id="detailWord" class="detail-word">单词</h3>
               <span id="detailReading" class="detail-reading">[发音]</span>
@@ -3051,11 +3064,11 @@ class JpVocabApp {
       if (isSystem) {
         return `<span class="tag-badge pos-tag">#${this.escapeHtml(t)}</span>`;
       } else {
-        return `<span class="tag-badge custom-tag">#${this.escapeHtml(t)}<i class="remove-tag-x" onclick="event.stopPropagation(); app.removeModalTag('${this.escapeHtml(t)}')" title="删除标签">×</i></span>`;
+        return `<span class="tag-badge custom-tag">#${this.escapeHtml(t)}<i class="remove-tag-x" onclick="event.stopPropagation(); (window.app||window.vocabApp).removeModalTag('${this.escapeHtml(t)}')" title="删除标签">×</i></span>`;
       }
     }).join('');
 
-    container.innerHTML = tagsHtml + `<button type="button" class="add-tag-btn" onclick="app.showModalInlineTagInput(event)" title="添加标签">+</button>`;
+    container.innerHTML = tagsHtml + `<button type="button" class="add-tag-btn" onclick="(window.app||window.vocabApp).showModalInlineTagInput(event)" title="添加标签">+</button>`;
   }
 
   showModalInlineTagInput(event) {
@@ -3071,10 +3084,10 @@ class JpVocabApp {
       <input type="text" 
              class="inline-tag-input" 
              placeholder="+ 标签" 
-             onkeydown="app.handleModalInlineTagKeydown(event)" 
-             onblur="app.saveModalInlineTag(this)" />
-      <span class="inline-quick-tag-chip" onmousedown="event.preventDefault()" onclick="app.addModalQuickTag(event, '易忘')">📌易忘</span>
-      <span class="inline-quick-tag-chip" onmousedown="event.preventDefault()" onclick="app.addModalQuickTag(event, '易混')">🔀易混</span>
+             onkeydown="(window.app||window.vocabApp).handleModalInlineTagKeydown(event)" 
+             onblur="(window.app||window.vocabApp).saveModalInlineTag(this)" />
+      <span class="inline-quick-tag-chip" onmousedown="event.preventDefault()" onclick="(window.app||window.vocabApp).addModalQuickTag(event, '易忘')">📌易忘</span>
+      <span class="inline-quick-tag-chip" onmousedown="event.preventDefault()" onclick="(window.app||window.vocabApp).addModalQuickTag(event, '易混')">🔀易混</span>
     `;
 
     btn.replaceWith(editorDiv);
@@ -3208,7 +3221,7 @@ class JpVocabApp {
       const cleanReading = w.reading ? w.reading.replace(/^[\[\(]+/, '').replace(/[\]\)]+$/, '') : '';
 
       return `
-        <div class="similar-word-chip" onclick="event.stopPropagation(); app.showDetailModal('${w.id}')" style="cursor:pointer; width:100%; box-sizing:border-box; text-align:left;" title="点击查看此相近表达详情">
+        <div class="similar-word-chip" onclick="event.stopPropagation(); (window.app||window.vocabApp).showDetailModal('${w.id}')" style="cursor:pointer; width:100%; box-sizing:border-box; text-align:left;" title="点击查看此相近表达详情">
           <div class="similar-word-title" style="display:flex; align-items:center; gap:6px;">
             <span class="similar-word-text" style="font-size:15px; font-weight:700; color:var(--text-primary);">${this.escapeHtml(w.word)}</span>
             ${cleanReading ? `<span class="similar-word-reading" style="font-size:13px; color:var(--accent-secondary);">[${this.escapeHtml(cleanReading)}]</span>` : ''}
@@ -3279,12 +3292,12 @@ class JpVocabApp {
     const tagsHtml = (word.tags || []).map(t => {
       const isSystem = systemPOSList.includes(t.trim());
       if (isSystem) {
-        return `<span class="tag-badge pos-tag" onclick="event.stopPropagation(); app.filterByTag('${this.escapeHtml(t)}'); app.closeDetailModal();" style="cursor:pointer;" title="点击按标签筛选">#${this.escapeHtml(t)}</span>`;
+        return `<span class="tag-badge pos-tag" onclick="event.stopPropagation(); (window.app||window.vocabApp).filterByTag('${this.escapeHtml(t)}'); (window.app||window.vocabApp).closeDetailModal();" style="cursor:pointer;" title="点击按标签筛选">#${this.escapeHtml(t)}</span>`;
       } else {
-        return `<span class="tag-badge custom-tag" onclick="event.stopPropagation(); app.filterByTag('${this.escapeHtml(t)}'); app.closeDetailModal();" style="cursor:pointer;" title="点击按标签筛选">#${this.escapeHtml(t)}<i class="remove-tag-x" onclick="event.stopPropagation(); app.removeCustomTag('${word.id}', '${this.escapeHtml(t)}');" title="删除自定义标签">×</i></span>`;
+        return `<span class="tag-badge custom-tag" onclick="event.stopPropagation(); (window.app||window.vocabApp).filterByTag('${this.escapeHtml(t)}'); (window.app||window.vocabApp).closeDetailModal();" style="cursor:pointer;" title="点击按标签筛选">#${this.escapeHtml(t)}<i class="remove-tag-x" onclick="event.stopPropagation(); (window.app||window.vocabApp).removeCustomTag('${word.id}', '${this.escapeHtml(t)}');" title="删除自定义标签">×</i></span>`;
       }
     }).join('');
-    tagsContainer.innerHTML = tagsHtml + `<button class="add-tag-btn" onclick="app.showInlineTagInput(event, '${word.id}')" title="添加自定义标签">+</button>`;
+    tagsContainer.innerHTML = tagsHtml + `<button class="add-tag-btn" onclick="(window.app||window.vocabApp).showInlineTagInput(event, '${word.id}')" title="添加自定义标签">+</button>`;
 
     const parsedExamples = this.getParsedExamples(word);
     const listContainer = document.getElementById('detailExamplesList');
@@ -3855,10 +3868,10 @@ class JpVocabApp {
       <input type="text" 
              class="inline-tag-input" 
              placeholder="+ 标签" 
-             onkeydown="app.handleInlineTagKeydown(event, '${wordId}')" 
-             onblur="app.saveInlineTag(this, '${wordId}')" />
-      <span class="inline-quick-tag-chip" onmousedown="event.preventDefault()" onclick="app.addQuickTag(event, '${wordId}', '易忘')">📌易忘</span>
-      <span class="inline-quick-tag-chip" onmousedown="event.preventDefault()" onclick="app.addQuickTag(event, '${wordId}', '易混')">🔀易混</span>
+             onkeydown="(window.app||window.vocabApp).handleInlineTagKeydown(event, '${wordId}')" 
+             onblur="(window.app||window.vocabApp).saveInlineTag(this, '${wordId}')" />
+      <span class="inline-quick-tag-chip" onmousedown="event.preventDefault()" onclick="(window.app||window.vocabApp).addQuickTag(event, '${wordId}', '易忘')">📌易忘</span>
+      <span class="inline-quick-tag-chip" onmousedown="event.preventDefault()" onclick="(window.app||window.vocabApp).addQuickTag(event, '${wordId}', '易混')">🔀易混</span>
     `;
 
     btn.replaceWith(editorDiv);
@@ -4286,7 +4299,7 @@ class JpVocabApp {
     }
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'ko-KR';
+    utterance.lang = 'ja-JP';
     utterance.rate = 0.88;
     window.speechSynthesis.speak(utterance);
   }
@@ -16876,6 +16889,7 @@ document.addEventListener('DOMContentLoaded', () => {
   try {
     window.app = new VocabApp();
     window.vocabApp = window.app;
+    app = window.app;
   } catch (e) {
     console.error("VocabApp init error:", e);
   }

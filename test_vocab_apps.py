@@ -340,8 +340,8 @@ class VocabAppTester:
         pagination_always_flex = ('paginationBar.style.display = \'flex\'' in content or 'paginationBar.style.display = isListTab' in content) and 'safeTotalPages = Math.max(1, totalPages)' in content
         self.assert_true(pagination_always_flex, f"[{lang_name}] 逻辑-翻页工具栏强常驻显示，即使 1 页 (totalPages<=1) 也保持 display:flex", "renderPaginationControls 中缺少 safeTotalPages 保底，会导致 1 页时分页栏被错误隐藏")
 
-        pagination_fixed_css = 'position: fixed' in content and 'bottom: 50px' in content and 'z-index: 99' in content
-        self.assert_true(pagination_fixed_css, f"[{lang_name}] 样式-翻页工具栏固定悬浮于底部导航 Tab 正上方 (bottom: 50px, z-index: 99)", "CSS 中缺少 .pagination-bar 的 position: fixed !important 及 bottom: 50px !important 悬浮定位")
+        pagination_inline_css = 'position: relative' in content and 'z-index: 10' in content
+        self.assert_true(pagination_inline_css, f"[{lang_name}] 样式-翻页工具栏采用 relative 相对定位内联流式布局 (防止 fixed 浮层遮挡与撕裂卡片按钮点击)", "CSS 中缺少 .pagination-bar 的 position: relative !important 相对定位")
 
         switch_tab_pagination = 'const paginationBar = document.getElementById(\'paginationBar\');' in content and 'paginationBar.style.display = isListTab ? \'flex\' : \'none\';' in content
         self.assert_true(switch_tab_pagination, f"[{lang_name}] 逻辑-switchTab 自动切换非列表 Tab 时隐藏分页工具栏", "switchTab 方法中缺少对 #paginationBar 的 isListTab 显显控制")
@@ -548,10 +548,10 @@ class VocabAppTester:
         self.assert_true(add_tag_stop_prop, f"[{lang_name}] 交互-卡片底部 + 加 Tag 按钮与操作栏显式绑定 stopPropagation 隔离阻断", "缺少 event.stopPropagation()，会导致点击 + 加标签时误唤起卡片详情弹窗")
 
         # ---------------------------------------------------------------------
-        # 测试点 48: 悬浮翻页工具栏 (.pagination-bar) 精确定位 (bottom: 50px) 与 z-index 避让 Tab 栏
+        # 测试点 48: 内联翻页工具栏 (.pagination-bar / .word-list-inline-pagination) 采用 relative 相对定位 (防止 fixed 浮层遮挡与撕裂卡片按钮点击)
         # ---------------------------------------------------------------------
-        pagination_bar_fixed = '.pagination-bar {' in content and 'position: fixed !important;' in content and 'bottom: 50px !important;' in content
-        self.assert_true(pagination_bar_fixed, f"[{lang_name}] 布局-悬浮翻页工具栏 position: fixed 挂载于 bottom: 50px 正上方", "pagination-bar 缺少 fixed 定位或未精确悬浮于 50px Tab 栏正上方")
+        pagination_bar_inline = ('.pagination-bar {' in content and 'position: relative !important;' in content) or ('.word-list-inline-pagination {' in content and 'position: relative !important;' in content)
+        self.assert_true(pagination_bar_inline, f"[{lang_name}] 布局-内联翻页工具栏 position: relative 相对定位 (绝不浮动遮挡卡片按钮)", "pagination-bar 缺少 relative 相对定位，会导致 fixed 浮层遮挡底端卡片按钮导致点不动")
 
         # ---------------------------------------------------------------------
         # 测试点 49: 一键置底直达按钮 API (scrollToListBottom) 自动滑至 #wordList 最底端
@@ -589,6 +589,12 @@ class VocabAppTester:
         # ---------------------------------------------------------------------
         app_mount_ok = 'window.app = new VocabApp()' in content and 'window.vocabApp = window.app' in content
         self.assert_true(app_mount_ok, f"[{lang_name}] 逻辑-入口 DOMContentLoaded 事件中 window.app 与 window.vocabApp 双重挂载防护", "缺少 window.vocabApp = window.app 挂载，会导致以 vocabApp 调用的函数报错")
+
+        # ---------------------------------------------------------------------
+        # 测试点 55: 入口 DOMContentLoaded 事件中 app = window.app 挂载防护 (防止内联 app.func 抛 ReferenceError)
+        # ---------------------------------------------------------------------
+        global_app_assign = 'app = window.app;' in content
+        self.assert_true(global_app_assign, f"[{lang_name}] 逻辑-入口 DOMContentLoaded 事件中 app = window.app 显式赋值", "缺少 app = window.app 赋值，会导致模板中 app.xxx 调用抛出 ReferenceError 引起卡片按钮点不动")
 
         # ---------------------------------------------------------------------
         # 触发语言专属特有检测点
@@ -633,6 +639,10 @@ class VocabAppTester:
                 print(f"  ⚠️ [日语专属] 解析 samples JSON 失败: {err}")
 
         self.assert_true(jp_kr_meaning_complete, "[日语专属] 数据集-全量日语样本卡片 100% 覆盖 krMeaning 韩文对应表达", "存在未包含 krMeaning 韩文对应表达的硬编码日语卡片")
+
+        # JP 测试点 6: 日语语音发音 (speakWord) 正确配置 utterance.lang = 'ja-JP'
+        has_ja_jp_tts = "utterance.lang = 'ja-JP';" in content
+        self.assert_true(has_ja_jp_tts, "[日语专属] 语音-speakWord 发音引擎语言设置为 ja-JP", "utterance.lang 未设置为 ja-JP，导致日语发音引擎失效或读错")
 
 
     def run_all(self):
