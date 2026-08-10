@@ -2779,8 +2779,39 @@ function createSupabaseSyncMethods(language) {
     recordDeletedWord(target) {
       if (!target || !target.id) return;
       const records = this.getDeletedRecords();
-      records[String(target.id)] = { id: String(target.id), word: target.word || '', deletedAt: Date.now() };
+      const deletedAt = Date.now();
+      records[String(target.id)] = { id: String(target.id), word: target.word || '', deletedAt };
       this.saveDeletedRecords(records);
+      this.markPendingCloudChanges([String(target.id)], deletedAt);
+    },
+
+    getPendingCloudChanges() {
+      try {
+        const parsed = JSON.parse(SafeStorage.getItem(this.PENDING_CLOUD_KEY || `${this.STORAGE_KEY}_cloud_pending_v1`) || '{}');
+        return parsed && !Array.isArray(parsed) && typeof parsed === 'object' ? parsed : {};
+      } catch (e) { return {}; }
+    },
+
+    savePendingCloudChanges(changes) {
+      SafeStorage.setItem(this.PENDING_CLOUD_KEY || `${this.STORAGE_KEY}_cloud_pending_v1`, JSON.stringify(changes || {}));
+    },
+
+    markPendingCloudChanges(ids, changedAt = Date.now()) {
+      const pending = this.getPendingCloudChanges();
+      (ids || []).filter(Boolean).forEach(id => {
+        const key = String(id);
+        pending[key] = Math.max(Number(pending[key] || 0), Number(changedAt || Date.now()));
+      });
+      this.savePendingCloudChanges(pending);
+    },
+
+    clearUploadedCloudChanges(uploadedRows) {
+      const pending = this.getPendingCloudChanges();
+      (uploadedRows || []).forEach(row => {
+        const id = String(row && row.word_id || '');
+        if (id && Number(pending[id] || 0) <= Number(row.updated_at || 0)) delete pending[id];
+      });
+      this.savePendingCloudChanges(pending);
     },
 
     wordFingerprint(word) {
@@ -2798,10 +2829,15 @@ function createSupabaseSyncMethods(language) {
     markLocallyChangedWords() {
       const previous = this._wordFingerprints || new Map();
       const now = Date.now();
+      const changedIds = [];
       (this.words || []).forEach(word => {
         if (!word || !word.id) return;
-        if (!previous.has(String(word.id)) || previous.get(String(word.id)) !== this.wordFingerprint(word)) word.updatedAt = now;
+        if (!previous.has(String(word.id)) || previous.get(String(word.id)) !== this.wordFingerprint(word)) {
+          word.updatedAt = now;
+          changedIds.push(String(word.id));
+        }
       });
+      if (changedIds.length > 0) this.markPendingCloudChanges(changedIds, now);
       this.refreshWordFingerprints();
     },
 
@@ -2828,6 +2864,7 @@ function createSupabaseSyncMethods(language) {
     mergeCloudRows(rows) {
       const localMap = new Map((this.words || []).filter(w => w && w.id).map(w => [String(w.id), w]));
       const deleted = this.getDeletedRecords();
+      const pending = this.getPendingCloudChanges();
       let changedCount = 0;
       (rows || []).forEach(row => {
         const id = String(row && row.word_id || '');
@@ -2847,25 +2884,32 @@ function createSupabaseSyncMethods(language) {
         }
         if (localDeletedAt >= cloudUpdatedAt) return;
         if (deleted[id] && cloudUpdatedAt > localDeletedAt) delete deleted[id];
-        if (!localWord || cloudUpdatedAt > localUpdatedAt) {
+        const locallyPending = Number(pending[id] || 0) > 0;
+        const cloudPayload = row.payload && typeof row.payload === 'object' ? row.payload : null;
+        const cloudDiffers = cloudPayload && (!localWord || this.wordFingerprint(cloudPayload) !== this.wordFingerprint(localWord));
+        if (!localWord || cloudUpdatedAt > localUpdatedAt || (!locallyPending && cloudDiffers)) {
           const payload = row.payload && typeof row.payload === 'object' ? { ...row.payload } : null;
           if (payload) {
             payload.tags = Array.isArray(payload.tags) ? payload.tags.filter(tag => tag !== '\u6613\u6df7') : [];
             payload.id = payload.id || id;
             payload.updatedAt = cloudUpdatedAt;
             localMap.set(id, payload);
+            if (cloudUpdatedAt >= localUpdatedAt || !locallyPending) delete pending[id];
             changedCount++;
           }
         }
       });
       this.words = Array.from(localMap.values());
       this.saveDeletedRecords(deleted);
+      this.savePendingCloudChanges(pending);
       this.persistSyncedData();
       return changedCount;
     },
 
-    buildCloudRows(userId) {
-      const activeRows = (this.words || []).filter(w => w && w.id).map(word => {
+    buildCloudRows(userId, cloudRows = []) {
+      const pending = this.getPendingCloudChanges();
+      const cloudIds = new Set((cloudRows || []).map(row => String(row && row.word_id || '')).filter(Boolean));
+      const activeRows = (this.words || []).filter(w => w && w.id && (Number(pending[String(w.id)] || 0) > 0 || !cloudIds.has(String(w.id)))).map(word => {
         const payload = { ...word, tags: Array.isArray(word.tags) ? word.tags.filter(tag => tag !== '\u6613\u6df7') : [] };
         return { user_id: userId, language, word_id: String(word.id), payload, updated_at: Number(word.updatedAt || word.createdAt || 1), deleted_at: null };
       });
@@ -2873,8 +2917,8 @@ function createSupabaseSyncMethods(language) {
       return activeRows.concat(deletedRows);
     },
 
-    async upsertCloudRows(accessToken, userId) {
-      const rows = this.buildCloudRows(userId);
+    async upsertCloudRows(accessToken, userId, cloudRows = []) {
+      const rows = this.buildCloudRows(userId, cloudRows);
       for (let index = 0; index < rows.length; index += 50) {
         const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/vocab_items?on_conflict=user_id,language,word_id`, {
           method: 'POST',
@@ -2887,7 +2931,7 @@ function createSupabaseSyncMethods(language) {
           error.status = response.status; error.code = data.code; throw error;
         }
       }
-      return rows.length;
+      return rows;
     },
 
     async syncWithSupabase(showToastNotification = true) {
@@ -2908,7 +2952,9 @@ function createSupabaseSyncMethods(language) {
         if (!userId) throw new Error('无法识别云同步账号，请重新登录');
         const cloudRows = await this.fetchCloudRows(session.access_token);
         const changedCount = this.mergeCloudRows(cloudRows);
-        const uploadedCount = await this.upsertCloudRows(session.access_token, userId);
+        const uploadedRows = await this.upsertCloudRows(session.access_token, userId, cloudRows);
+        this.clearUploadedCloudChanges(uploadedRows);
+        const uploadedCount = uploadedRows.length;
         this.renderWordList();
         this.updateStats();
         if (showToastNotification) this.showToast(`✅ 双向同步成功：更新 ${changedCount} 项，校验 ${uploadedCount} 项`);
@@ -3107,6 +3153,7 @@ class JpVocabApp {
     window.app = this;
     window.vocabApp = this;
     this.STORAGE_KEY = 'evie_jp_vocab_data_v5000';
+    this.PENDING_CLOUD_KEY = `${this.STORAGE_KEY}_cloud_pending_v1`;
     this.THEME_KEY = 'evie_jp_vocab_theme';
     this.DELETED_KEY = 'evie_jp_vocab_deleted_v1';
     this.words = [];
@@ -3125,7 +3172,7 @@ class JpVocabApp {
     try {
       // Auto purge old obsolete storage keys safely
       SafeStorage.keys().forEach(k => {
-        if (k.startsWith('evie_jp_') && k !== this.STORAGE_KEY && k !== this.THEME_KEY && k !== this.DELETED_KEY && k !== SUPABASE_CONFIG.sessionKey) {
+        if (k.startsWith('evie_jp_') && k !== this.STORAGE_KEY && k !== this.PENDING_CLOUD_KEY && k !== this.THEME_KEY && k !== this.DELETED_KEY && k !== SUPABASE_CONFIG.sessionKey) {
           SafeStorage.removeItem(k);
         }
       });
