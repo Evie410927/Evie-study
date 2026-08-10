@@ -1490,7 +1490,7 @@ body::-webkit-scrollbar,
 
 .review-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 12px;
   width: 100%;
   margin-top: auto;
@@ -1521,10 +1521,6 @@ body::-webkit-scrollbar,
 
 .btn-easy-forget {
   background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-}
-
-.btn-easy-confuse {
-  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
 }
 
 .btn-remembered {
@@ -2440,10 +2436,6 @@ body::-webkit-scrollbar,
               <span>📌</span>
               <span>易忘</span>
             </button>
-            <button class="review-btn btn-easy-confuse" id="btnEasyConfuse" onclick="if(window.app) window.app.assessReview('easy-confuse')">
-              <span>🔀</span>
-              <span>易混</span>
-            </button>
             <button class="review-btn btn-remembered" id="btnRemembered" onclick="if(window.app) window.app.assessReview('remembered')">
               <span>✅</span>
               <span>记住了</span>
@@ -2854,7 +2846,13 @@ function createSupabaseSyncMethods(language) {
         if (deleted[id] && cloudUpdatedAt > localDeletedAt) delete deleted[id];
         if (!localWord || cloudUpdatedAt > localUpdatedAt) {
           const payload = row.payload && typeof row.payload === 'object' ? { ...row.payload } : null;
-          if (payload) { payload.id = payload.id || id; payload.updatedAt = cloudUpdatedAt; localMap.set(id, payload); changedCount++; }
+          if (payload) {
+            payload.tags = Array.isArray(payload.tags) ? payload.tags.filter(tag => tag !== '\u6613\u6df7') : [];
+            payload.id = payload.id || id;
+            payload.updatedAt = cloudUpdatedAt;
+            localMap.set(id, payload);
+            changedCount++;
+          }
         }
       });
       this.words = Array.from(localMap.values());
@@ -2864,7 +2862,10 @@ function createSupabaseSyncMethods(language) {
     },
 
     buildCloudRows(userId) {
-      const activeRows = (this.words || []).filter(w => w && w.id).map(word => ({ user_id: userId, language, word_id: String(word.id), payload: word, updated_at: Number(word.updatedAt || word.createdAt || 1), deleted_at: null }));
+      const activeRows = (this.words || []).filter(w => w && w.id).map(word => {
+        const payload = { ...word, tags: Array.isArray(word.tags) ? word.tags.filter(tag => tag !== '\u6613\u6df7') : [] };
+        return { user_id: userId, language, word_id: String(word.id), payload, updated_at: Number(word.updatedAt || word.createdAt || 1), deleted_at: null };
+      });
       const deletedRows = Object.values(this.getDeletedRecords()).filter(item => item && item.id).map(item => ({ user_id: userId, language, word_id: String(item.id), payload: { id: String(item.id), word: item.word || '' }, updated_at: Number(item.deletedAt || 1), deleted_at: Number(item.deletedAt || 1) }));
       return activeRows.concat(deletedRows);
     },
@@ -3172,6 +3173,7 @@ class JpVocabApp {
     if (Array.isArray(this.words)) {
       this.words.forEach(w => {
         if (!w) return;
+        w.tags = Array.isArray(w.tags) ? w.tags.filter(tag => tag !== '\u6613\u6df7') : [];
         const parsed = this.getParsedExamples(w);
         if (parsed && parsed.length > 0) {
           w.examples = parsed;
@@ -3398,7 +3400,7 @@ class JpVocabApp {
       document.getElementById('inputMeaning').value = word.meaning || '';
       document.getElementById('inputExample').value = word.example || '';
       document.getElementById('inputExampleTrans').value = word.exampleTrans || '';
-      this.editingModalTags = word.tags ? [...word.tags] : [];
+      this.editingModalTags = word.tags ? word.tags.filter(tag => tag !== '\u6613\u6df7') : [];
     } else {
       title.textContent = '添加日语单词';
       document.getElementById('wordId').value = '';
@@ -3448,7 +3450,6 @@ class JpVocabApp {
              onkeydown="(window.app||window.vocabApp).handleModalInlineTagKeydown(event)" 
              onblur="(window.app||window.vocabApp).saveModalInlineTag(this)" />
       <span class="inline-quick-tag-chip" onmousedown="event.preventDefault()" onclick="(window.app||window.vocabApp).addModalQuickTag(event, '易忘')">📌易忘</span>
-      <span class="inline-quick-tag-chip" onmousedown="event.preventDefault()" onclick="(window.app||window.vocabApp).addModalQuickTag(event, '易混')">🔀易混</span>
     `;
 
     btn.replaceWith(editorDiv);
@@ -3474,7 +3475,7 @@ class JpVocabApp {
   saveModalInlineTag(inputEl) {
     if (!inputEl) return;
     const tagVal = inputEl.value ? inputEl.value.trim() : '';
-    if (tagVal) {
+    if (tagVal && tagVal !== '\u6613\u6df7') {
       if (!this.editingModalTags) this.editingModalTags = [];
       if (!this.editingModalTags.includes(tagVal)) {
         this.editingModalTags.push(tagVal);
@@ -3485,6 +3486,7 @@ class JpVocabApp {
 
   addModalQuickTag(event, tagType) {
     event.stopPropagation();
+    if (tagType === '\u6613\u6df7') return;
     if (!this.editingModalTags) this.editingModalTags = [];
     if (!this.editingModalTags.includes(tagType)) {
       this.editingModalTags.push(tagType);
@@ -4245,7 +4247,6 @@ class JpVocabApp {
              onkeydown="(window.app||window.vocabApp).handleInlineTagKeydown(event, '${wordId}')" 
              onblur="(window.app||window.vocabApp).saveInlineTag(this, '${wordId}')" />
       <span class="inline-quick-tag-chip" onmousedown="event.preventDefault()" onclick="(window.app||window.vocabApp).addQuickTag(event, '${wordId}', '易忘')">📌易忘</span>
-      <span class="inline-quick-tag-chip" onmousedown="event.preventDefault()" onclick="(window.app||window.vocabApp).addQuickTag(event, '${wordId}', '易混')">🔀易混</span>
     `;
 
     btn.replaceWith(editorDiv);
@@ -4275,7 +4276,7 @@ class JpVocabApp {
   saveInlineTag(inputEl, wordId) {
     if (!inputEl) return;
     const tagVal = inputEl.value ? inputEl.value.trim() : '';
-    if (tagVal) {
+    if (tagVal && tagVal !== '\u6613\u6df7') {
       const word = this.words.find(w => w.id === wordId);
       if (word) {
         if (!word.tags) word.tags = [];
@@ -4299,6 +4300,7 @@ class JpVocabApp {
 
   addQuickTag(event, wordId, tagType) {
     event.stopPropagation();
+    if (tagType === '\u6613\u6df7') return;
     const word = this.words.find(w => w.id === wordId);
     if (word) {
       if (!word.tags) word.tags = [];
@@ -4489,7 +4491,6 @@ class JpVocabApp {
       }
 
       const easyForgetCount = baseWords.filter(w => (w.tags || []).includes('易忘')).length;
-      const easyConfuseCount = baseWords.filter(w => (w.tags || []).includes('易混')).length;
 
       const btnSubAll = document.querySelector('.sub-pill-btn[data-subfilter="all"]');
       if (btnSubAll) {
@@ -4501,8 +4502,6 @@ class JpVocabApp {
 
       const countSubEF = document.getElementById('count-sub-easy-forget');
       if (countSubEF) countSubEF.textContent = easyForgetCount;
-      const countSubEC = document.getElementById('count-sub-easy-confuse');
-      if (countSubEC) countSubEC.textContent = easyConfuseCount;
     } catch(e) {
       console.warn('updateStats safe catch:', e);
     }
@@ -4640,11 +4639,6 @@ class JpVocabApp {
       currentWord.mastered = false;
       if (!currentWord.tags.includes('易忘')) {
         currentWord.tags.push('易忘');
-      }
-    } else if (type === 'easy-confuse') {
-      currentWord.mastered = false;
-      if (!currentWord.tags.includes('易混')) {
-        currentWord.tags.push('易混');
       }
     }
 

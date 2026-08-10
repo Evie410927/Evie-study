@@ -485,10 +485,10 @@ class VocabAppTester:
         self.assert_true(safe_storage_wrapper, f"[{lang_name}] 安全-SafeStorageWrapper 存储沙盒降级与防崩溃护盾", "缺少 SafeStorageWrapper 降级存储包装器，可能在极苛沙盒下导致 localStorage 报错卡死")
 
         # ---------------------------------------------------------------------
-        # 测试点 31: 相近/易混表达推荐算法与面板交互防护 (getSimilarWords & renderSimilarBlockHtml)
+        # 测试点 31: 相近表达推荐算法与面板交互防护 (getSimilarWords & renderSimilarBlockHtml)
         # ---------------------------------------------------------------------
         similar_words_algo = 'getSimilarWords(' in content and 'renderSimilarBlockHtml(' in content and 'similar-word-chip' in content
-        self.assert_true(similar_words_algo, f"[{lang_name}] 算法-getSimilarWords 相近/易混表达推荐算法与面板交互防护", "缺少 getSimilarWords 或 renderSimilarBlockHtml 方法")
+        self.assert_true(similar_words_algo, f"[{lang_name}] 算法-getSimilarWords 相近表达推荐算法与面板交互防护", "缺少 getSimilarWords 或 renderSimilarBlockHtml 方法")
 
         # ---------------------------------------------------------------------
         # 测试点 32: 复习卡片语义与 Tag 聚类出词算法防护 (clusterBySimilarity)
@@ -538,10 +538,15 @@ class VocabAppTester:
         self.assert_true(detail_back_btn, f"[{lang_name}] 交互-详情弹窗极简返回图标按钮 #detailBackBtn 显隐切换与对称布局防护", "缺少 #detailBackBtn 节点或 backBtn.style.display 控制逻辑")
 
         # ---------------------------------------------------------------------
-        # 测试点 37: 行内打字编辑器快捷标签芯片 (📌易忘 / 🔀易混) 事件绑定防护 (Inline Tag Editor Quick Chips)
+        # 测试点 37: 仅保留 📌易忘快捷标签，并彻底移除旧的易混卡片概念
         # ---------------------------------------------------------------------
-        inline_quick_chips = 'class="inline-quick-tag-chip"' in content and "addQuickTag(event, '${wordId}', '易忘')" in content and "addQuickTag(event, '${wordId}', '易混')" in content
-        self.assert_true(inline_quick_chips, f"[{lang_name}] 交互-行内打字编辑器快捷标签芯片 📌易忘/🔀易混 事件绑定防护", "缺少 .inline-quick-tag-chip 快捷标签芯片或 addQuickTag 绑定")
+        easy_forget_only = all(token in content for token in (
+            'class="inline-quick-tag-chip"',
+            "addQuickTag(event, '${wordId}', '易忘')",
+            'grid-template-columns: 1fr 1fr;',
+            "tag !== '\\u6613\\u6df7'",
+        )) and all(token not in content for token in ('btnEasyConfuse', 'easy-confuse', '易混'))
+        self.assert_true(easy_forget_only, f"[{lang_name}] 交互-仅保留📌易忘标签与两枚复习按钮，旧易混标签自动清理且无法重新添加", "仍存在易混按钮/标签/逻辑，或缺少旧数据清理及两列复习按钮布局")
 
         # ---------------------------------------------------------------------
         # 测试点 38: .word-list 使用极小底边距，把空间留给单词卡片
