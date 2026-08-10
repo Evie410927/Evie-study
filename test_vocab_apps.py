@@ -643,9 +643,31 @@ class VocabAppTester:
             and 'this.loadSampleData(false);' in load_data_body
             and 'deletedIds.has(String(item.id))' in content
             and 'deletedWords.has(item.word)' in content
-            and 'if (changed) this.saveData();' in content
+            and 'contentRevision' in content
+            and 'markPendingCloudChanges(changedIds, reconciliationTime)' in content
         )
         self.assert_true(cached_data_upgrade, f"[{lang_name}] 数据升级-非空浏览器缓存自动补入新版内置词条且不复活已删除词", "loadData 未无条件合并内置 samples，或 loadSampleData 未尊重删除记录/按变化保存")
+
+        corrected_example_migration = all(token in content for token in (
+            'hasNewerContent' if lang_name == '韩语' else 'Number(item.contentRevision || 0) > Number(old.contentRevision || 0)',
+            'examples: Array.isArray(item.examples)',
+            'markPendingCloudChanges(changedIds, reconciliationTime)',
+            'updatedAt: reconciliationTime',
+        ))
+        self.assert_true(corrected_example_migration, f"[{lang_name}] 数据修复-新版自然例句覆盖旧缓存且仅标记修正词条待同步", "例句修正只能作用于空白设备，或加载时错误地把整库标记为待上传")
+
+        if lang_name == '韩语':
+            repaired_cluster_ids = [f'kr_{index}:' for index in range(585, 611)]
+            repaired_example_cluster = (
+                'window.KR_CONTENT_REPAIRS' in content
+                and 'applyKrContentRepairs(samples);' in content
+                and 'applyKrContentRepairs(fallbackWords);' in content
+                and all(token in content for token in repaired_cluster_ids if token != 'kr_595:')
+                and '실생활에서 무르다 문맥으로 자주 쓰인다.' not in content
+                and '상황에 맞춰 성질 내다 행동하는 자세가 필요하다.' not in content
+                and '"contentRevision": 2' in content
+            )
+            self.assert_true(repaired_example_cluster, '[韩语] 数据质量-截图词条及同批情绪/说话表达使用人工自然例句', '무르다、성질 내다 或同批词条仍保留模板句，或修订未覆盖主数据与备用数据')
 
         # ---------------------------------------------------------------------
         # 测试点 43: 释义纯净度 (meaning 字段 100% 隔离方括号 [...] 读音)

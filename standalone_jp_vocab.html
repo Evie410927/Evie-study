@@ -17346,16 +17346,31 @@ class JpVocabApp {
     const deletedWords = new Set(Object.values(deletedRecords || {}).map(item => item && item.word).filter(Boolean));
     let count = 0;
     let changed = false;
+    const changedIds = [];
+    const reconciliationTime = Date.now();
     samples.forEach(item => {
       if (deletedIds.has(String(item.id)) || deletedWords.has(item.word)) return;
-      if (!this.words.some(w => w.word === item.word)) {
-        this.words.push(item);
+      const idx = this.words.findIndex(w => w.word === item.word);
+      if (idx === -1) {
+        this.words.push({ ...item, updatedAt: reconciliationTime });
         count++;
         changed = true;
+        changedIds.push(String(item.id));
+      } else {
+        const old = this.words[idx];
+        if (Number(item.contentRevision || 0) > Number(old.contentRevision || 0)) {
+          this.words[idx] = { ...old, example: item.example, exampleTrans: item.exampleTrans, examples: Array.isArray(item.examples) ? item.examples.map(example => ({ ...example })) : [], meaning: item.meaning, reading: item.reading, krMeaning: item.krMeaning, contentRevision: Number(item.contentRevision || 0), updatedAt: reconciliationTime };
+          changed = true;
+          changedIds.push(String(item.id));
+        }
       }
     });
 
-    if (changed) this.saveData();
+    if (changed) {
+      SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
+      if (this.refreshWordFingerprints) this.refreshWordFingerprints();
+      if (this.markPendingCloudChanges) this.markPendingCloudChanges(changedIds, reconciliationTime);
+    }
     this.renderWordList();
     this.updateStats();
     if (showNotification) {

@@ -4828,10 +4828,10 @@ body::-webkit-scrollbar,
               
             </div>
           </div>
-          <div class="word-meaning">adj. 软的，不坚硬的，心软的；v. 退掉，取消</div>
+          <div class="word-meaning">adj. 软的，柔软的；心软的；v. 退货，撤回；后退</div>
           
           <div class="word-example-preview">
-            <div class="ex-preview-text">마음이 무러서 거절하지 못한다.</div>
+            <div class="ex-preview-text">이 복숭아는 너무 익어서 살이 물렀다.</div>
           </div>
           <div class="word-tags-row"><span class="tag-badge">#形容词</span> <button class="add-inline-tag-btn" onclick="event.stopPropagation(); if(window.app) window.app.showInlineTagInput(this, 'kr_139')">+</button></div>
           <div class="word-actions" onclick="event.stopPropagation();">
@@ -16636,6 +16636,148 @@ const SUPABASE_CONFIG = Object.freeze({
   sessionKey: 'evie_supabase_session_v1'
 });
 
+// 人工逐条核对的内置词条内容修订。禁止使用通用模板批量拼接例句。
+window.KR_CONTENT_REPAIRS = Object.freeze({
+  kr_585: { meaning: 'v. 承担，背负（责任、债务或负担）', examples: [
+    ['모든 빚을 혼자 떠안았다.', '他独自承担了所有债务。'],
+    ['회사가 저지른 실수의 책임을 팀장이 떠안게 되었다.', '公司犯下错误，责任最后落到了组长身上。'],
+    ['부모님 병원비까지 떠안으니 생활이 빠듯해졌다.', '连父母的住院费也承担下来后，生活变得拮据了。']
+  ]},
+  kr_586: { meaning: 'v. 包揽，独自承担，全权负责', examples: [
+    ['그는 회의 준비를 혼자 도맡았다.', '他独自包揽了会议的准备工作。'],
+    ['언니가 집안일과 육아를 도맡아 하고 있다.', '姐姐一人承担着家务和育儿。'],
+    ['경험이 많은 직원이 고객 응대를 도맡기로 했다.', '决定由经验丰富的员工全权负责接待客户。']
+  ]},
+  kr_587: { meaning: 'v. 接下，接手；被迫承担', examples: [
+    ['원치 않던 업무까지 떠맡게 되었다.', '连不愿意做的工作也不得不接了下来。'],
+    ['아무도 나서지 않아 내가 반장 일을 떠맡았다.', '因为没人愿意出面，我接下了班长的工作。'],
+    ['그는 친구의 빚까지 떠맡을 생각은 없었다.', '他并不打算连朋友的债务也一起承担。']
+  ]},
+  kr_588: { meaning: 'v. 提起；动不动搬出某事来说', examples: [
+    ['남의 과거를 자꾸 들먹이지 마라.', '不要总是提起别人的过去。'],
+    ['그는 싸울 때마다 헤어지자는 말을 들먹인다.', '他每次吵架都把分手挂在嘴边。'],
+    ['유명인과의 친분을 들먹이며 특별 대우를 요구했다.', '他搬出自己与名人的交情，要求得到特殊待遇。']
+  ]},
+  kr_589: { meaning: 'v. 反复念叨，老是抱怨某件事', examples: [
+    ['힘들다는 타령만 하지 말고 직접 해 봐.', '别只顾着喊累，亲自试试看。'],
+    ['요즘 그는 만날 돈 타령만 한다.', '他最近整天把钱挂在嘴边。'],
+    ['아이는 아침부터 새 장난감 타령이다.', '孩子从早上起就一直念叨着要新玩具。']
+  ]},
+  kr_590: { meaning: '惯用语. 经常挂在嘴边，嘴不离某句话', examples: [
+    ['그는 불평을 입에 달고 산다.', '他总是把抱怨挂在嘴边。'],
+    ['아버지는 건강이 최고라는 말을 입에 달고 사신다.', '父亲常把“健康最重要”这句话挂在嘴边。'],
+    ['요즘 동생은 퇴사하고 싶다는 말을 입에 달고 산다.', '弟弟最近总把想辞职挂在嘴边。']
+  ]},
+  kr_591: { meaning: 'adj. 绝妙，棒极了，精彩极了（口语）', examples: [
+    ['이 집 김치찌개 맛이 정말 기깔난다.', '这家店的泡菜汤味道真是绝了。'],
+    ['가수가 무대에서 노래를 기깔나게 불렀다.', '歌手在舞台上唱得精彩极了。'],
+    ['바닷가에서 본 노을이 아주 기깔났다.', '在海边看到的晚霞美极了。']
+  ]},
+  kr_592: { meaning: 'adj. 有滋有味；生动而富有韵味', examples: [
+    ['어머니는 평범한 재료로도 음식을 맛깔나게 만드신다.', '母亲用普通食材也能做出有滋有味的饭菜。'],
+    ['그 배우는 사투리 연기를 맛깔나게 살렸다.', '那位演员把方言演绎得生动有味。'],
+    ['작가가 일상의 풍경을 맛깔난 문장으로 풀어냈다.', '作家用富有韵味的文字描绘了日常景象。']
+  ]},
+  kr_593: { meaning: 'v. 撒娇抱怨，闹别扭，发牢骚', examples: [
+    ['아이는 더 놀고 싶다며 엄마에게 투정했다.', '孩子向妈妈闹着别扭，说还想再玩一会儿。'],
+    ['조금 힘들다고 계속 투정하지 마라.', '不要因为有点辛苦就一直发牢骚。'],
+    ['동생은 반찬이 마음에 들지 않는다고 투정했다.', '弟弟嫌饭菜不合心意，闹起了脾气。']
+  ]},
+  kr_594: { meaning: 'v. 哼哼唧唧，纠缠着抱怨', examples: [
+    ['아이가 장난감을 사 달라고 하루 종일 찡찡댔다.', '孩子一整天都哼哼唧唧地缠着要买玩具。'],
+    ['조금만 힘들어도 찡찡대는 버릇을 고쳐라.', '改掉稍微辛苦一点就抱怨个不停的习惯吧。'],
+    ['동생은 배가 고프다며 계속 찡찡댔다.', '弟弟一直哼哼唧唧地喊饿。']
+  ]},
+  kr_596: { meaning: 'v. 嘟囔，发牢骚，抱怨个不停', examples: [
+    ['그는 일이 너무 많다며 하루 종일 투덜댔다.', '他抱怨工作太多，嘟囔了一整天。'],
+    ['버스가 늦게 오자 사람들이 하나둘 투덜대기 시작했다.', '公交车迟迟不来，人们开始一个接一个地抱怨。'],
+    ['불만이 있으면 뒤에서 투덜대지 말고 직접 말해라.', '有不满就直接说，不要在背后嘟囔。']
+  ]},
+  kr_597: { meaning: 'v. 喃喃自语，嘴里不停地念叨', examples: [
+    ['그는 혼잣말을 중얼거리며 방 안을 서성였다.', '他喃喃自语着在房间里来回踱步。'],
+    ['아이는 잠꼬대처럼 알아듣기 힘든 말을 중얼거렸다.', '孩子像说梦话一样嘟囔着难以听懂的话。'],
+    ['학생은 문제를 풀면서 공식을 조용히 중얼거렸다.', '学生一边解题，一边轻声念着公式。']
+  ]},
+  kr_598: { meaning: '惯用语. 诉苦，倾诉苦衷', examples: [
+    ['그는 친구에게 회사 생활의 고충을 하소연했다.', '他向朋友倾诉了职场生活的苦衷。'],
+    ['피해자는 억울한 사정을 경찰에게 하소연을 했다.', '受害者向警方诉说了自己的冤屈。'],
+    ['아이는 엄마에게 친구와 다툰 일을 하소연했다.', '孩子向妈妈诉说了和朋友吵架的事情。']
+  ]},
+  kr_599: { meaning: 'v. 低声说，耳语，轻声细语', examples: [
+    ['그녀는 내 귀에 비밀을 조용히 속삭였다.', '她在我耳边轻声说出了秘密。'],
+    ['도서관에서는 서로 작은 목소리로 속삭였다.', '在图书馆里，大家彼此轻声交谈。'],
+    ['아이는 잠든 동생을 깨우지 않으려고 속삭이듯 말했다.', '孩子为了不吵醒睡着的弟弟，像耳语一样轻声说话。']
+  ]},
+  kr_600: { meaning: 'v. 窃窃私语，背后议论', examples: [
+    ['사람들은 새로 온 부장에 대해 수근거렸다.', '人们窃窃私语地议论着新来的部长。'],
+    ['학생들이 복도에서 무슨 일인지 수근거리고 있었다.', '学生们在走廊里小声议论着发生了什么事。'],
+    ['뒤에서 수근거리지 말고 불만이 있으면 직접 말해라.', '不要在背后议论，有不满就直接说。']
+  ]},
+  kr_601: { meaning: 'v. 小声交谈，嘀嘀咕咕', examples: [
+    ['두 사람은 회의 내내 귓속말로 속닥거렸다.', '两个人整个会议期间都在交头接耳。'],
+    ['아이들이 방 안에서 무슨 비밀인지 속닥거리고 있었다.', '孩子们在房间里不知说着什么秘密。'],
+    ['내 앞에서 둘이 속닥거리니 괜히 신경이 쓰였다.', '两个人当着我的面嘀嘀咕咕，让我莫名在意。']
+  ]},
+  kr_602: { meaning: 'n. 装矜持，故意装出文静或不知情的样子', examples: [
+    ['그녀는 처음 만난 사람들 앞에서 내숭을 떨었다.', '她在初次见面的人面前故意装矜持。'],
+    ['좋아하면서도 관심 없는 척 내숭을 부렸다.', '明明喜欢，却装作毫不在意。'],
+    ['우리끼리 있는데 내숭 떨지 말고 솔직하게 말해.', '这里只有我们，别装了，坦率地说吧。']
+  ]},
+  kr_603: { meaning: '惯用语. 装腔作势，表现得虚情假意', examples: [
+    ['그는 사람들 앞에서만 친절한 척 가식을 떨었다.', '他只在人前装出亲切的样子，显得很虚伪。'],
+    ['솔직한 척하면서 가식을 떠는 모습이 더 불편했다.', '他装作坦率却又虚情假意的样子更让人不舒服。'],
+    ['나는 가식을 떠는 사람보다 솔직한 사람이 좋다.', '比起装腔作势的人，我更喜欢坦率的人。']
+  ]},
+  kr_604: { meaning: 'adj. 若无其事的，装作不知情的，滑头的', examples: [
+    ['거짓말이 들켰는데도 그는 능청스럽게 웃었다.', '谎言都被揭穿了，他却还若无其事地笑着。'],
+    ['그는 부탁할 때마다 능청스럽게 친한 척한다.', '他每次求人时都会厚着脸皮装熟。'],
+    ['아이의 능청스러운 대답에 모두가 웃음을 터뜨렸다.', '孩子那副若无其事的回答把大家都逗笑了。']
+  ]},
+  kr_605: { meaning: 'n. 假装，装样子，架势', examples: [
+    ['그는 책을 펴 놓고 공부하는 시늉만 했다.', '他摊开书，只是装作在学习。'],
+    ['나는 그 이야기를 처음 듣는 것처럼 모르는 시늉을 했다.', '我装作第一次听说那件事一样，假装不知道。'],
+    ['아이는 약을 먹는 시늉을 하다가 몰래 뱉었다.', '孩子装作把药吃了，随后偷偷吐了出来。']
+  ]},
+  kr_606: { meaning: '惯用语. 装作不知道，矢口否认', examples: [
+    ['증거가 있는데도 그는 끝까지 시치미를 뗐다.', '明明有证据，他却一直装作不知道。'],
+    ['내가 다 봤는데도 동생은 시치미를 떼고 있었다.', '我明明全都看见了，弟弟却还装傻。'],
+    ['과자를 먹고도 안 먹었다며 시치미를 떼면 안 된다.', '吃了零食却装作没吃可不行。']
+  ]},
+  kr_607: { meaning: 'v. 推脱，推卸责任，矢口否认', examples: [
+    ['그는 자신과 상관없는 일이라며 책임을 발뺌했다.', '他声称事情与自己无关，试图推卸责任。'],
+    ['CCTV 영상이 나오자 더 이상 발뺌하지 못했다.', '监控录像一公布，他就再也无法抵赖了。'],
+    ['약속해 놓고 그런 말을 한 적이 없다며 발뺌했다.', '明明答应过，他却矢口否认自己说过那种话。']
+  ]},
+  kr_608: { meaning: 'n. 撒泼闹事，逞凶施暴', examples: [
+    ['술에 취한 손님이 식당에서 행패를 부렸다.', '醉酒的客人在餐厅里撒泼闹事。'],
+    ['그는 상인들에게 돈을 요구하며 행패를 일삼았다.', '他向商贩索要钱财，经常逞凶闹事。'],
+    ['경찰은 길거리에서 행패를 부리던 남자를 제지했다.', '警察制止了在街头闹事的男子。']
+  ]},
+  kr_609: { meaning: 'adj. 通红的，红彤彤的', examples: [
+    ['추운 날씨에 아이의 코끝이 벌갛게 얼었다.', '天气寒冷，孩子的鼻尖冻得通红。'],
+    ['그는 부끄러운지 얼굴이 벌갛게 달아올랐다.', '他似乎很害羞，脸一下子涨得通红。'],
+    ['매운 음식을 먹고 입술이 벌개졌다.', '吃完辣的东西后，嘴唇变得通红。']
+  ]},
+  kr_610: { meaning: 'v. 变红，泛红，涨红', examples: [
+    ['밤을 새운 탓에 눈이 벌게졌다.', '因为熬了一夜，他的眼睛布满了红血丝。'],
+    ['술을 몇 잔 마시자 얼굴이 금세 벌게졌다.', '喝了几杯酒后，他的脸很快就红了。'],
+    ['그는 화가 나서 얼굴이 벌게진 채 소리쳤다.', '他气得满脸通红，大声喊了起来。']
+  ]}
+});
+
+function applyKrContentRepairs(items) {
+  (items || []).forEach(item => {
+    const repair = item && window.KR_CONTENT_REPAIRS[String(item.id)];
+    if (!repair) return;
+    const examples = repair.examples.map(pair => ({ kr: pair[0], cn: pair[1] }));
+    item.meaning = repair.meaning || item.meaning;
+    item.examples = examples;
+    item.example = examples.map(example => example.kr).join('\n');
+    item.exampleTrans = examples.map(example => example.cn).join('\n');
+    item.contentRevision = 2;
+  });
+}
+
 function createSupabaseSyncMethods(language) {
   return {
     getCloudSession() {
@@ -22619,9 +22761,10 @@ class KrVocabApp {
     "id": "kr_139",
     "word": "무르다",
     "reading": "[무르다]",
-    "meaning": "adj. 软的，不坚硬的，心软的；v. 退掉，取消",
-    "example": "마음이 무러서 거절하지 못한다.\n실생활에서 무르다 문맥으로 자주 쓰인다.\n대화 중에서 무르다 맥락을 정확하게 파악했다.",
-    "exampleTrans": "因为心软没能拒绝。\n在日常生活中经常以무르다语境来使用。\n在对话中准确把握了무르다的上下文。",
+    "meaning": "adj. 软的，柔软的；心软的；v. 退货，撤回；后退",
+    "contentRevision": 2,
+    "example": "이 복숭아는 너무 익어서 살이 물렀다.\n이 나무는 재질이 물러서 쉽게 흠집이 난다.\n그는 마음이 물러서 부탁을 쉽게 거절하지 못한다.\n여행을 못 가게 되어 예약해 둔 비행기표를 물렀다.\n한 번 내뱉은 말은 다시 무를 수 없다.\n그는 한 걸음 뒤로 물러 사람들에게 길을 내주었다.",
+    "exampleTrans": "这个桃子熟得太透，果肉已经变软了。\n这种木材质地较软，很容易留下划痕。\n他心软，很难拒绝别人的请求。\n因为不能去旅行，退掉了预订的机票。\n说出口的话无法再收回。\n他往后退了一步，给人们让出了路。",
     "tags": [
       "形容词"
     ],
@@ -22630,16 +22773,28 @@ class KrVocabApp {
     "createdAt": 1722852470138,
     "examples": [
       {
-        "kr": "마음이 무러서 거절하지 못한다.",
-        "cn": "因为心软没能拒绝。"
+        "kr": "이 복숭아는 너무 익어서 살이 물렀다.",
+        "cn": "这个桃子熟得太透，果肉已经变软了。"
       },
       {
-        "kr": "실생활에서 무르다 문맥으로 자주 쓰인다.",
-        "cn": "在日常生活中经常以무르다语境来使用。"
+        "kr": "이 나무는 재질이 물러서 쉽게 흠집이 난다.",
+        "cn": "这种木材质地较软，很容易留下划痕。"
       },
       {
-        "kr": "대화 중에서 무르다 맥락을 정확하게 파악했다.",
-        "cn": "在对话中准确把握了무르다的上下文。"
+        "kr": "그는 마음이 물러서 부탁을 쉽게 거절하지 못한다.",
+        "cn": "他心软，很难拒绝别人的请求。"
+      },
+      {
+        "kr": "여행을 못 가게 되어 예약해 둔 비행기표를 물렀다.",
+        "cn": "因为不能去旅行，退掉了预订的机票。"
+      },
+      {
+        "kr": "한 번 내뱉은 말은 다시 무를 수 없다.",
+        "cn": "说出口的话无法再收回。"
+      },
+      {
+        "kr": "그는 한 걸음 뒤로 물러 사람들에게 길을 내주었다.",
+        "cn": "他往后退了一步，给人们让出了路。"
       }
     ]
   },
@@ -35444,8 +35599,9 @@ class KrVocabApp {
     "word": "성질 내다",
     "reading": "[성질 내다]",
     "meaning": "惯用语. 发脾气，闹情绪",
-    "example": "사소한 일에 성질 내지 마라.\n상황에 맞춰 성질 내다 행동하는 자세가 필요하다.\n그는 성질 내다 자신의 생각을 분명하게 밝혔다.",
-    "exampleTrans": "不要为了琐事发脾气。\n需要具备结合具体情况惯用语. 发脾气行事的新姿态。\n他闹情绪地向大家明确阐明了自己的想法。",
+    "contentRevision": 2,
+    "example": "사소한 일에 성질 내지 마라.\n아이가 말을 듣지 않는다고 또 성질을 냈다.\n화가 나도 사람들 앞에서 함부로 성질 내면 안 된다.",
+    "exampleTrans": "不要因为小事发脾气。\n因为孩子不听话，他又发了脾气。\n即使生气，也不能当着众人随便发脾气。",
     "tags": [
       "短语"
     ],
@@ -35455,15 +35611,15 @@ class KrVocabApp {
     "examples": [
       {
         "kr": "사소한 일에 성질 내지 마라.",
-        "cn": "不要为了琐事发脾气。"
+        "cn": "不要因为小事发脾气。"
       },
       {
-        "kr": "상황에 맞춰 성질 내다 행동하는 자세가 필요하다.",
-        "cn": "需要具备结合具体情况惯用语. 发脾气行事的新姿态。"
+        "kr": "아이가 말을 듣지 않는다고 또 성질을 냈다.",
+        "cn": "因为孩子不听话，他又发了脾气。"
       },
       {
-        "kr": "그는 성질 내다 자신의 생각을 분명하게 밝혔다.",
-        "cn": "他闹情绪地向大家明确阐明了自己的想法。"
+        "kr": "화가 나도 사람들 앞에서 함부로 성질 내면 안 된다.",
+        "cn": "即使生气，也不能当着众人随便发脾气。"
       }
     ]
   },
@@ -38105,31 +38261,41 @@ class KrVocabApp {
   }
 ];
 
+    applyKrContentRepairs(samples);
     const deletedRecords = this.getDeletedRecords ? this.getDeletedRecords() : {};
     const deletedIds = new Set(Object.keys(deletedRecords || {}));
     const deletedWords = new Set(Object.values(deletedRecords || {}).map(item => item && item.word).filter(Boolean));
     let count = 0;
     let changed = false;
+    const changedIds = [];
+    const reconciliationTime = Date.now();
     samples.forEach(item => {
       if (deletedIds.has(String(item.id)) || deletedWords.has(item.word)) return;
       const idx = this.words.findIndex(w => w.word === item.word);
       if (idx === -1) {
-        this.words.push(item);
+        this.words.push({ ...item, updatedAt: reconciliationTime });
         count++;
         changed = true;
+        changedIds.push(String(item.id));
       } else {
         // Upgrade existing card if it holds outdated placeholder example or fewer example lines
         const old = this.words[idx];
         const oldExLines = (old.example || '').split('\n').filter(Boolean);
         const itemExLines = (item.example || '').split('\n').filter(Boolean);
-        if (oldExLines.length < itemExLines.length || !old.example || old.example.includes('표현을 정확하게') || old.meaning.includes('核心') || old.meaning.includes('色彩的') || old.meaning.includes('干，做') || old.exampleTrans.includes('发生了') || old.exampleTrans.includes('显得非常') || old.meaning.startsWith('韩语') || /[가-힣]/.test(old.meaning) || /[가-힣]/.test(old.exampleTrans)) {
-          this.words[idx] = { ...old, example: item.example, exampleTrans: item.exampleTrans, meaning: item.meaning, reading: item.reading, tags: item.tags };
+        const hasNewerContent = Number(item.contentRevision || 0) > Number(old.contentRevision || 0);
+        if (hasNewerContent || oldExLines.length < itemExLines.length || !old.example || old.example.includes('표현을 정확하게') || old.meaning.includes('核心') || old.meaning.includes('色彩的') || old.meaning.includes('干，做') || old.exampleTrans.includes('发生了') || old.exampleTrans.includes('显得非常') || old.meaning.startsWith('韩语') || /[가-힣]/.test(old.meaning) || /[가-힣]/.test(old.exampleTrans)) {
+          this.words[idx] = { ...old, example: item.example, exampleTrans: item.exampleTrans, examples: Array.isArray(item.examples) ? item.examples.map(example => ({ ...example })) : [], meaning: item.meaning, reading: item.reading, contentRevision: Number(item.contentRevision || old.contentRevision || 0), updatedAt: reconciliationTime };
           changed = true;
+          changedIds.push(String(item.id));
         }
       }
     });
 
-    if (changed) this.saveData();
+    if (changed) {
+      SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
+      if (this.refreshWordFingerprints) this.refreshWordFingerprints();
+      if (this.markPendingCloudChanges) this.markPendingCloudChanges(changedIds, reconciliationTime);
+    }
     this.renderWordList();
     if (showNotification) {
       this.showToast(`🎉 成功载入 ${count} 个韩语常用单词！`);
@@ -42048,9 +42214,10 @@ document.addEventListener('DOMContentLoaded', () => {
     "id": "kr_139",
     "word": "무르다",
     "reading": "[무르다]",
-    "meaning": "adj. 软的，不坚硬的，心软的；v. 退掉，取消",
-    "example": "마음이 무러서 거절하지 못한다.\n실생활에서 무르다 문맥으로 자주 쓰인다.\n대화 중에서 무르다 맥락을 정확하게 파악했다.",
-    "exampleTrans": "因为心软没能拒绝。\n在日常生活中经常以무르다语境来使用。\n在对话中准确把握了무르다的上下文。",
+    "meaning": "adj. 软的，柔软的；心软的；v. 退货，撤回；后退",
+    "contentRevision": 2,
+    "example": "이 복숭아는 너무 익어서 살이 물렀다.\n이 나무는 재질이 물러서 쉽게 흠집이 난다.\n그는 마음이 물러서 부탁을 쉽게 거절하지 못한다.\n여행을 못 가게 되어 예약해 둔 비행기표를 물렀다.\n한 번 내뱉은 말은 다시 무를 수 없다.\n그는 한 걸음 뒤로 물러 사람들에게 길을 내주었다.",
+    "exampleTrans": "这个桃子熟得太透，果肉已经变软了。\n这种木材质地较软，很容易留下划痕。\n他心软，很难拒绝别人的请求。\n因为不能去旅行，退掉了预订的机票。\n说出口的话无法再收回。\n他往后退了一步，给人们让出了路。",
     "tags": [
       "形容词"
     ],
@@ -42059,16 +42226,28 @@ document.addEventListener('DOMContentLoaded', () => {
     "createdAt": 1722852470138,
     "examples": [
       {
-        "kr": "마음이 무러서 거절하지 못한다.",
-        "cn": "因为心软没能拒绝。"
+        "kr": "이 복숭아는 너무 익어서 살이 물렀다.",
+        "cn": "这个桃子熟得太透，果肉已经变软了。"
       },
       {
-        "kr": "실생활에서 무르다 문맥으로 자주 쓰인다.",
-        "cn": "在日常生活中经常以무르다语境来使用。"
+        "kr": "이 나무는 재질이 물러서 쉽게 흠집이 난다.",
+        "cn": "这种木材质地较软，很容易留下划痕。"
       },
       {
-        "kr": "대화 중에서 무르다 맥락을 정확하게 파악했다.",
-        "cn": "在对话中准确把握了무르다的上下文。"
+        "kr": "그는 마음이 물러서 부탁을 쉽게 거절하지 못한다.",
+        "cn": "他心软，很难拒绝别人的请求。"
+      },
+      {
+        "kr": "여행을 못 가게 되어 예약해 둔 비행기표를 물렀다.",
+        "cn": "因为不能去旅行，退掉了预订的机票。"
+      },
+      {
+        "kr": "한 번 내뱉은 말은 다시 무를 수 없다.",
+        "cn": "说出口的话无法再收回。"
+      },
+      {
+        "kr": "그는 한 걸음 뒤로 물러 사람들에게 길을 내주었다.",
+        "cn": "他往后退了一步，给人们让出了路。"
       }
     ]
   },
@@ -54873,8 +55052,9 @@ document.addEventListener('DOMContentLoaded', () => {
     "word": "성질 내다",
     "reading": "[성질 내다]",
     "meaning": "惯用语. 发脾气，闹情绪",
-    "example": "사소한 일에 성질 내지 마라.\n상황에 맞춰 성질 내다 행동하는 자세가 필요하다.\n그는 성질 내다 자신의 생각을 분명하게 밝혔다.",
-    "exampleTrans": "不要为了琐事发脾气。\n需要具备结合具体情况惯用语. 发脾气行事的新姿态。\n他闹情绪地向大家明确阐明了自己的想法。",
+    "contentRevision": 2,
+    "example": "사소한 일에 성질 내지 마라.\n아이가 말을 듣지 않는다고 또 성질을 냈다.\n화가 나도 사람들 앞에서 함부로 성질 내면 안 된다.",
+    "exampleTrans": "不要因为小事发脾气。\n因为孩子不听话，他又发了脾气。\n即使生气，也不能当着众人随便发脾气。",
     "tags": [
       "短语"
     ],
@@ -54884,15 +55064,15 @@ document.addEventListener('DOMContentLoaded', () => {
     "examples": [
       {
         "kr": "사소한 일에 성질 내지 마라.",
-        "cn": "不要为了琐事发脾气。"
+        "cn": "不要因为小事发脾气。"
       },
       {
-        "kr": "상황에 맞춰 성질 내다 행동하는 자세가 필요하다.",
-        "cn": "需要具备结合具体情况惯用语. 发脾气行事的新姿态。"
+        "kr": "아이가 말을 듣지 않는다고 또 성질을 냈다.",
+        "cn": "因为孩子不听话，他又发了脾气。"
       },
       {
-        "kr": "그는 성질 내다 자신의 생각을 분명하게 밝혔다.",
-        "cn": "他闹情绪地向大家明确阐明了自己的想法。"
+        "kr": "화가 나도 사람들 앞에서 함부로 성질 내면 안 된다.",
+        "cn": "即使生气，也不能当着众人随便发脾气。"
       }
     ]
   },
@@ -57533,6 +57713,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ]
   }
 ];
+        applyKrContentRepairs(fallbackWords);
         
         // Immediate DOM render if app failed or is loading
         window.addEventListener('DOMContentLoaded', function() {
