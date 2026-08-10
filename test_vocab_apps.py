@@ -59,6 +59,15 @@ class VocabAppTester:
         btn_cloud_sync = bool(re.search(r'id="cloudSyncBtn"[^>]*onclick="[^"]*fetchFromCloud', content))
         self.assert_true(btn_cloud_sync, f"[{lang_name}] Header-☁️云端同步按钮兜底点击", "cloudSyncBtn 缺少行内 fetchFromCloud 兜底绑定")
 
+        init_body = re.search(r'\n\s*init\(\)\s*\{(.*?)\n\s*\}\n\s*\n\s*loadData\(', content, re.S)
+        save_data_body = re.search(r'\n\s*saveData\(\)\s*\{(.*?)\n\s*\}\n\s*\n\s*loadTheme\(', content, re.S)
+        manual_cloud_only = (
+            'title="手动云端同步"' in content
+            and bool(init_body) and 'fetchFromCloud(' not in init_body.group(1)
+            and bool(save_data_body) and 'syncToCloud(' not in save_data_body.group(1)
+        )
+        self.assert_true(manual_cloud_only, f"[{lang_name}] 云同步-仅点击云朵时上传与下拉", "页面启动或本地编辑保存后仍会自动连接云端同步")
+
         # Supabase 双端同步回归矩阵：覆盖账号隔离、全字段编辑、删除与冲突合并。
         supabase_configured = (
             "https://orxkrmiqboumwbneworn.supabase.co" in content

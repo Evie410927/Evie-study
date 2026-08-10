@@ -1878,7 +1878,7 @@ body::-webkit-scrollbar,
         <span>卡欧每天学KR💪</span>
       </div>
       <div class="header-actions">
-        <button id="cloudSyncBtn" class="icon-btn" title="云端实时同步" style="font-size:16px;" onclick="if(window.app) window.app.fetchFromCloud(true)">☁️</button>
+        <button id="cloudSyncBtn" class="icon-btn" title="手动云端同步" style="font-size:16px;" onclick="if(window.app) window.app.fetchFromCloud(true)">☁️</button>
         <button id="themeToggleBtn" class="icon-btn" title="切换主题" onclick="if(window.app) window.app.toggleTheme()">🌙</button>
         <button id="quickAddBtn" class="icon-btn" title="添加韩语单词" onclick="if(window.app) window.app.openWordModal()">➕</button>
       </div>
@@ -17213,11 +17213,7 @@ class KrVocabApp {
     this.updateStats();
     this.bindEvents();
     if (this.consumeCloudAuthCallback) this.consumeCloudAuthCallback();
-
-    // Async background sync without blocking UI initialization
-    setTimeout(() => {
-      this.fetchFromCloud(false).catch(err => console.warn('Background sync silent warning:', err));
-    }, 300);
+    // 云端同步仅由用户手动点击顶部云朵触发。
   }
 
   loadData() {
@@ -17269,7 +17265,6 @@ class KrVocabApp {
     try {
       if (this.markLocallyChangedWords) this.markLocallyChangedWords();
       SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
-      this.syncToCloud(false);
       this.updateStats();
     } catch (e) {
       this.showToast('⚠️ 保存失败');
