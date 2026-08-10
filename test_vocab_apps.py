@@ -157,8 +157,8 @@ class VocabAppTester:
         scene_full_stretch = '.scene {' in content and 'perspective: 1000px;' in content and 'flex: 1;' in content and 'height: 100%;' in content
         self.assert_true(scene_full_stretch, f"[{lang_name}] 复习界面-中间卡片容器纵向 Flex: 1 撑满紧贴操作按钮上方", ".scene 缺少 flex: 1 或 height: 100% 纵向拉长设置，导致卡片与下方操作按钮间空隙过大")
 
-        review_actions_clearance = '.flashcard-container {' in content and 'padding-bottom:' in content and 'margin-top: auto;' in content
-        self.assert_true(review_actions_clearance, f"[{lang_name}] 复习界面-控制按钮避让底部 Tab 栏且置底定位", ".flashcard-container 缺少 padding-bottom 避让底部 Tab 栏导致控制按钮被遮挡")
+        review_actions_clearance = '.flashcard-container {' in content and 'padding-bottom: 8px;' in content and 'margin-top: auto;' in content
+        self.assert_true(review_actions_clearance, f"[{lang_name}] 复习界面-易忘/记住了按钮与底部 Tab 仅保留 8px 紧凑安全间距", ".flashcard-container 未使用 8px 紧凑底距，可能产生大块空白或遮挡底部 Tab")
 
         # ---------------------------------------------------------------------
         # 测试点 5: 相近表达 Panel 100% 宽度与等宽对齐测试 (Similar Words Panel Width)
@@ -309,8 +309,14 @@ class VocabAppTester:
         # ---------------------------------------------------------------------
         # 测试点 18: 列表中单词卡片 100% 直接展示第一组例句与翻译测试 (Word Card List Direct Example Preview Parity)
         # ---------------------------------------------------------------------
-        card_ex_preview_css = '.word-example-preview {' in content and '.ex-preview-text {' in content
-        self.assert_true(card_ex_preview_css, f"[{lang_name}] 列表卡片-例句预览 CSS 样式组件健全", "缺少 .word-example-preview 或 .ex-preview-text 样式配置")
+        card_ex_preview_css = all(token in content for token in (
+            '.word-example-preview {',
+            '.ex-preview-text {',
+            'border-left: 3px solid var(--accent-primary);',
+            'padding-left: 10px;',
+            'border-radius: 8px 0 0 8px;',
+        ))
+        self.assert_true(card_ex_preview_css, f"[{lang_name}] 列表卡片-例句预览含粉红左边强调装饰与内距", "例句预览缺少 3px 强调左边、10px 内距或圆角端点")
 
         card_ex_preview_render = 'word-example-preview' in content and 'ex-preview-text' in content
         self.assert_true(card_ex_preview_render, f"[{lang_name}] 列表卡片-直接渲染第一组例句与翻译模板防护", "renderWordList 或 DOM 模板中缺少 word-example-preview 渲染节点")
@@ -1183,6 +1189,21 @@ class VocabAppTester:
 
             first_card = driver.find_element(By.CSS_SELECTOR, '.word-card')
             driver.execute_script('arguments[0].scrollIntoView({block: "center"})', first_card)
+            preview_decoration = driver.execute_script("""
+                const preview = arguments[0].querySelector('.word-example-preview');
+                if (!preview) return null;
+                const style = getComputedStyle(preview);
+                return {
+                  borderWidth: parseFloat(style.borderLeftWidth || '0'),
+                  borderStyle: style.borderLeftStyle,
+                  paddingLeft: parseFloat(style.paddingLeft || '0')
+                };
+            """, first_card)
+            self.assert_true(
+                bool(preview_decoration and preview_decoration.get('borderWidth', 0) >= 3 and preview_decoration.get('borderStyle') == 'solid' and preview_decoration.get('paddingLeft', 0) >= 10),
+                f"[{lang_name}] 浏览器列表卡片-例句左侧粉红强调边实际渲染",
+                "列表卡片例句预览未渲染 3px 实线左边或缺少足够左内距",
+            )
             first_card.click()
             time.sleep(0.2)
             detail_modal_active = 'active' in driver.find_element(By.ID, 'detailModal').get_attribute('class').split()
@@ -1230,6 +1251,19 @@ class VocabAppTester:
                 review_active,
                 f"[{lang_name}] 浏览器真实点击-底部卡片复习 Tab 切换生效",
                 "点击复习 Tab 后 #tab-review 未进入 active 状态",
+            )
+            review_bottom_gap = driver.execute_script("""
+                const actions = document.querySelector('#tab-review .review-actions');
+                const nav = document.querySelector('.bottom-nav');
+                if (!actions || !nav) return null;
+                const actionsRect = actions.getBoundingClientRect();
+                const navRect = nav.getBoundingClientRect();
+                return navRect.top - actionsRect.bottom;
+            """)
+            self.assert_true(
+                review_bottom_gap is not None and 0 <= review_bottom_gap <= 16,
+                f"[{lang_name}] 浏览器复习页-易忘/记住了按钮紧贴底部 Tab 且不重叠",
+                f"复习按钮与底部 Tab 的实际间距应为 0~16px，当前为 {review_bottom_gap}",
             )
         except Exception as err:
             self.assert_true(

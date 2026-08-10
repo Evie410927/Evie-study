@@ -766,7 +766,10 @@ body::-webkit-scrollbar,
 .word-example-preview {
   margin-top: 8px;
   padding-top: 8px;
+  padding-left: 10px;
   border-top: 1px dashed var(--border-color, rgba(255, 255, 255, 0.12));
+  border-left: 3px solid var(--accent-primary);
+  border-radius: 8px 0 0 8px;
   font-size: 13px;
   display: flex;
   flex-direction: column;
@@ -1344,7 +1347,7 @@ body::-webkit-scrollbar,
   min-height: 0;
   justify-content: space-between;
   box-sizing: border-box;
-  padding-bottom: calc(var(--safe-bottom, 20px) + 65px);
+  padding-bottom: 8px;
 }
 
 .review-progress-bar {
