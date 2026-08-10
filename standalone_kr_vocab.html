@@ -17623,6 +17623,7 @@ class KrVocabApp {
 
     const modalEl = document.getElementById('detailModal');
     const isModalActive = modalEl && modalEl.classList.contains('active');
+    const shouldResetDetailScroll = !isModalActive || this.currentDetailWordId !== wordId;
 
     if (!isBack) {
       if (isModalActive && this.currentDetailWordId && this.currentDetailWordId !== wordId) {
@@ -17680,7 +17681,18 @@ class KrVocabApp {
       similarBlock.innerHTML = this.renderSimilarBlockHtml(similarWords);
     }
 
-    document.getElementById('detailModal').classList.add('active');
+    if (modalEl) modalEl.classList.add('active');
+
+    // A newly opened or newly selected word must start at the top of the reused detail scroller.
+    if (shouldResetDetailScroll && modalEl) {
+      const detailBody = modalEl.querySelector('.detail-body');
+      if (detailBody) {
+        detailBody.scrollTop = 0;
+        requestAnimationFrame(() => {
+          if (detailBody.isConnected) detailBody.scrollTop = 0;
+        });
+      }
+    }
   }
 
   goBackDetailModal() {

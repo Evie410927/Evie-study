@@ -515,6 +515,17 @@ class VocabAppTester:
         self.assert_true(modal_history_stack, f"[{lang_name}] 交互-详情弹窗相近表达跳转历史栈 detailModalHistory 与 goBackDetailModal 返回上级按钮防护", "缺少 detailModalHistory 历史栈数组或 goBackDetailModal 方法")
 
         # ---------------------------------------------------------------------
+        # 测试点 34A: 相近表达切换到新词条时详情正文必须自动回到顶部
+        # ---------------------------------------------------------------------
+        detail_navigation_scroll_reset = all(token in content for token in (
+            'shouldResetDetailScroll',
+            "modalEl.querySelector('.detail-body')",
+            'detailBody.scrollTop = 0',
+            'requestAnimationFrame(() =>',
+        ))
+        self.assert_true(detail_navigation_scroll_reset, f"[{lang_name}] 交互-详情弹窗点击相近表达或返回上一词条后正文自动置顶", "showDetailModal 切换词条后未把复用的 .detail-body 滚动位置重置为顶部")
+
+        # ---------------------------------------------------------------------
         # 测试点 35: 详情弹窗添加/删除标签实时刷新防护 (Detail Modal Inline Tag Refresh)
         # ---------------------------------------------------------------------
         modal_tag_refresh = "const detailModal = document.getElementById('detailModal');" in content and "this.showDetailModal(wordId, true);" in content
@@ -1174,6 +1185,34 @@ class VocabAppTester:
                 detail_modal_active,
                 f"[{lang_name}] 浏览器真实点击-单词卡片打开详情弹窗",
                 "点击第一张 .word-card 后 #detailModal 未进入 active 状态",
+            )
+
+            detail_scroll_reset = driver.execute_script("""
+                const app = window.app;
+                const source = app.words.find(word => app.getSimilarWords(word, 1).length > 0) || app.words[0];
+                const target = (source && app.getSimilarWords(source, 1)[0]) || app.words.find(word => source && word.id !== source.id);
+                const modal = document.getElementById('detailModal');
+                const body = modal && modal.querySelector('.detail-body');
+                if (!source || !target || !body) return null;
+                const oldHeight = body.style.height;
+                const oldMaxHeight = body.style.maxHeight;
+                body.style.height = '120px';
+                body.style.maxHeight = '120px';
+                app.showDetailModal(source.id);
+                body.scrollTop = body.scrollHeight;
+                const wasScrolled = body.scrollTop > 0;
+                app.showDetailModal(target.id);
+                const resetToTop = body.scrollTop === 0;
+                const switchedWord = app.currentDetailWordId === target.id;
+                body.style.height = oldHeight;
+                body.style.maxHeight = oldMaxHeight;
+                app.closeDetailModal();
+                return {wasScrolled, resetToTop, switchedWord};
+            """)
+            self.assert_true(
+                bool(detail_scroll_reset and detail_scroll_reset.get('wasScrolled') and detail_scroll_reset.get('resetToTop') and detail_scroll_reset.get('switchedWord')),
+                f"[{lang_name}] 浏览器相近表达跳转-旧滚动位置清零并从新词条顶部展示",
+                "详情弹窗滚动到底部后切换相近表达，.detail-body 仍保留旧 scrollTop",
             )
             driver.execute_script("document.getElementById('detailModal')?.classList.remove('active')")
 
