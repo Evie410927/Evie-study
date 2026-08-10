@@ -5651,9 +5651,6 @@ class JpVocabApp {
     if (this.ratingSort !== 'default' && options.rerender !== false) {
       this.renderWordList();
     }
-    if (!options.silent) {
-      this.showToast(nextRating > 0 ? `⭐ 已设为 ${nextRating} 星` : '☆ 已清除星级');
-    }
   }
 
   beginRatingDrag(event, wordId) {
