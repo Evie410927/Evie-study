@@ -5153,11 +5153,28 @@ function createSupabaseSyncMethods(language) {
       SafeStorage.setItem(this.PENDING_CLOUD_KEY || `${this.STORAGE_KEY}_cloud_pending_v1`, JSON.stringify(changes || {}));
     },
 
-    markPendingCloudChanges(ids, changedAt = Date.now()) {
+    getPendingCloudMeta(value) {
+      if (value && typeof value === 'object') {
+        return {
+          changedAt: Number(value.changedAt || 0),
+          source: value.source === 'system' ? 'system' : (value.source === 'legacy' ? 'legacy' : 'user')
+        };
+      }
+      const changedAt = Number(value || 0);
+      return { changedAt, source: changedAt > 0 ? 'legacy' : 'none' };
+    },
+
+    markPendingCloudChanges(ids, changedAt = Date.now(), source = 'user') {
       const pending = this.getPendingCloudChanges();
       (ids || []).filter(Boolean).forEach(id => {
         const key = String(id);
-        pending[key] = Math.max(Number(pending[key] || 0), Number(changedAt || Date.now()));
+        const previous = this.getPendingCloudMeta(pending[key]);
+        const hasPrevious = previous.changedAt > 0;
+        const nextSource = source !== 'system' || (hasPrevious && previous.source === 'user') ? 'user' : 'system';
+        pending[key] = {
+          changedAt: Math.max(previous.changedAt, Number(changedAt || Date.now())),
+          source: nextSource
+        };
       });
       this.savePendingCloudChanges(pending);
     },
@@ -5166,7 +5183,8 @@ function createSupabaseSyncMethods(language) {
       const pending = this.getPendingCloudChanges();
       (uploadedRows || []).forEach(row => {
         const id = String(row && row.word_id || '');
-        if (id && Number(pending[id] || 0) <= Number(row.updated_at || 0)) delete pending[id];
+        const pendingMeta = this.getPendingCloudMeta(pending[id]);
+        if (id && pendingMeta.changedAt <= Number(row.updated_at || 0)) delete pending[id];
       });
       this.savePendingCloudChanges(pending);
     },
@@ -5209,7 +5227,10 @@ function createSupabaseSyncMethods(language) {
 
     async fetchCloudRows(accessToken) {
       const query = `select=word_id,payload,updated_at,deleted_at&language=eq.${language}`;
-      const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/vocab_items?${query}`, { headers: this.cloudHeaders(accessToken) });
+      const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/vocab_items?${query}`, {
+        cache: 'no-store',
+        headers: this.cloudHeaders(accessToken, { 'Cache-Control': 'no-cache' })
+      });
       const data = await response.json().catch(() => []);
       if (!response.ok) {
         const error = new Error(data.message || data.hint || `云端读取失败 (${response.status})`);
@@ -5241,17 +5262,21 @@ function createSupabaseSyncMethods(language) {
         }
         if (localDeletedAt >= cloudUpdatedAt) return;
         if (deleted[id] && cloudUpdatedAt > localDeletedAt) delete deleted[id];
-        const locallyPending = Number(pending[id] || 0) > 0;
+        const pendingMeta = this.getPendingCloudMeta(pending[id]);
+        const locallyPending = pendingMeta.changedAt > 0;
         const cloudPayload = row.payload && typeof row.payload === 'object' ? row.payload : null;
         const cloudDiffers = cloudPayload && (!localWord || this.wordFingerprint(cloudPayload) !== this.wordFingerprint(localWord));
-        if (!localWord || cloudUpdatedAt > localUpdatedAt || (!locallyPending && cloudDiffers)) {
+        const localContentRevision = Number(localWord && localWord.contentRevision || 0);
+        const cloudContentRevision = Number(cloudPayload && cloudPayload.contentRevision || 0);
+        const systemUpdateCanYield = locallyPending && (pendingMeta.source === 'system' || pendingMeta.source === 'legacy') && cloudDiffers && cloudContentRevision >= localContentRevision;
+        if (!localWord || cloudUpdatedAt > localUpdatedAt || (!locallyPending && cloudDiffers) || systemUpdateCanYield) {
           const payload = row.payload && typeof row.payload === 'object' ? { ...row.payload } : null;
           if (payload) {
             payload.tags = Array.isArray(payload.tags) ? payload.tags.filter(tag => tag !== '\u6613\u6df7') : [];
             payload.id = payload.id || id;
             payload.updatedAt = cloudUpdatedAt;
             localMap.set(id, payload);
-            if (cloudUpdatedAt >= localUpdatedAt || !locallyPending) delete pending[id];
+            if (cloudUpdatedAt >= localUpdatedAt || !locallyPending || systemUpdateCanYield) delete pending[id];
             changedCount++;
           }
         }
@@ -5266,7 +5291,7 @@ function createSupabaseSyncMethods(language) {
     buildCloudRows(userId, cloudRows = []) {
       const pending = this.getPendingCloudChanges();
       const cloudIds = new Set((cloudRows || []).map(row => String(row && row.word_id || '')).filter(Boolean));
-      const activeRows = (this.words || []).filter(w => w && w.id && (Number(pending[String(w.id)] || 0) > 0 || !cloudIds.has(String(w.id)))).map(word => {
+      const activeRows = (this.words || []).filter(w => w && w.id && (this.getPendingCloudMeta(pending[String(w.id)]).changedAt > 0 || !cloudIds.has(String(w.id)))).map(word => {
         const payload = { ...word, tags: Array.isArray(word.tags) ? word.tags.filter(tag => tag !== '\u6613\u6df7') : [] };
         return { user_id: userId, language, word_id: String(word.id), payload, updated_at: Number(word.updatedAt || word.createdAt || 1), deleted_at: null };
       });
@@ -6273,6 +6298,7 @@ class JpVocabApp {
     }
 
     const tags = this.editingModalTags ? [...this.editingModalTags] : [];
+    const examples = this.getParsedExamples({ example, exampleTrans });
 
     if (id) {
       const index = this.words.findIndex(w => w.id === id);
@@ -6284,6 +6310,7 @@ class JpVocabApp {
           meaning,
           example,
           exampleTrans,
+          examples,
           tags,
           updatedAt: Date.now()
         };
@@ -6297,6 +6324,7 @@ class JpVocabApp {
         meaning,
         example,
         exampleTrans,
+        examples,
         tags,
         mastered: false,
         rating: 0,
@@ -20110,7 +20138,7 @@ class JpVocabApp {
     if (changed) {
       SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
       if (this.refreshWordFingerprints) this.refreshWordFingerprints();
-      if (this.markPendingCloudChanges) this.markPendingCloudChanges(changedIds, reconciliationTime);
+      if (this.markPendingCloudChanges) this.markPendingCloudChanges(changedIds, reconciliationTime, 'system');
     }
     this.renderWordList();
     this.updateStats();
