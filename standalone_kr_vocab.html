@@ -21098,14 +21098,15 @@ class KrVocabApp {
   }
 
   scrollToFirstCard() {
-    const firstCard = document.querySelector('#wordList .word-card');
-    if (firstCard) {
-      const yOffset = -75;
-      const y = firstCard.getBoundingClientRect().top + window.pageYOffset + yOffset;
-      window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
-    } else {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+    const listContainer = document.getElementById('wordList');
+    if (!listContainer) return;
+    listContainer.scrollTop = 0;
+    if (typeof listContainer.scrollTo === 'function') {
+      listContainer.scrollTo({ top: 0, behavior: 'auto' });
     }
+    requestAnimationFrame(() => {
+      if (listContainer.isConnected) listContainer.scrollTop = 0;
+    });
   }
 
   scrollToListTop() {

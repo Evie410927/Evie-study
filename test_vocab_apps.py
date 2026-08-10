@@ -191,8 +191,18 @@ class VocabAppTester:
         page_size_select = 'id="pageSizeSelect"' in content
         self.assert_true(page_size_select, f"[{lang_name}] 分页-每页条数 Selector", "缺少 pageSizeSelect 下拉选择框")
 
-        scroll_to_first = 'scrollToFirstCard' in content
-        self.assert_true(scroll_to_first, f"[{lang_name}] 分页-自动平滑滚动置顶机制", "缺少 scrollToFirstCard 切页自动置顶函数")
+        scroll_to_first_match = re.search(
+            r'scrollToFirstCard\(\)\s*\{(?P<body>.*?)\n\s*\}\n\s*\n\s*scrollToListTop\(\)',
+            content,
+            re.S,
+        )
+        scroll_to_first_body = scroll_to_first_match.group('body') if scroll_to_first_match else ''
+        scroll_to_first = all(token in scroll_to_first_body for token in (
+            "document.getElementById('wordList')",
+            'listContainer.scrollTop = 0',
+            'requestAnimationFrame',
+        )) and 'window.scrollTo' not in scroll_to_first_body
+        self.assert_true(scroll_to_first, f"[{lang_name}] 分页-翻页后 #wordList 滑动条自动归零", "scrollToFirstCard 未直接重置 #wordList.scrollTop，或仍在错误滚动整个 window")
 
         # ---------------------------------------------------------------------
         # 测试点 7: 主筛选与子筛选统计同步测试 (Filter Stats & Labels)
