@@ -18288,29 +18288,49 @@ class KrVocabApp {
 
   toggleTagDropdown(event) {
     if (event) event.stopPropagation();
-    const menus = document.querySelectorAll('.tag-dropdown-menu, #tagDropdownMenu');
-    if (!menus || menus.length === 0) return;
-    
-    let isVisible = false;
-    menus.forEach(m => {
-      if (m.style.display === 'block') isVisible = true;
-    });
-
+    const menu = document.getElementById('tagDropdownMenu');
+    if (!menu) return;
+    const isVisible = menu.style.display === 'block';
     if (isVisible) {
       this.closeTagFilterDropdown();
     } else {
       this.renderTagDropdownItems();
-      menus.forEach(m => {
-        m.style.display = 'block';
-      });
+      if (menu.parentElement !== document.body) document.body.appendChild(menu);
+      this.positionTagDropdownMenu(menu);
+      menu.style.display = 'block';
     }
   }
 
+  positionTagDropdownMenu(menu) {
+    const button = document.getElementById('tagDropdownBtn');
+    if (!menu || !button) return;
+    const rect = button.getBoundingClientRect();
+    const viewportWidth = Math.max(160, Math.floor((window.visualViewport && window.visualViewport.width) || document.documentElement.clientWidth || window.innerWidth || 320));
+    const viewportHeight = Math.max(160, Math.floor((window.visualViewport && window.visualViewport.height) || document.documentElement.clientHeight || window.innerHeight || 640));
+    const menuWidth = Math.min(240, viewportWidth - 16);
+    const left = Math.max(8, Math.min(rect.right - menuWidth, viewportWidth - menuWidth - 8));
+    const spaceBelow = viewportHeight - rect.bottom - 12;
+    let maxHeight = Math.max(96, Math.min(320, spaceBelow));
+    let top = rect.bottom + 6;
+    if (spaceBelow < 120 && rect.top > spaceBelow) {
+      maxHeight = Math.max(96, Math.min(320, rect.top - 12));
+      top = Math.max(8, rect.top - maxHeight - 6);
+    }
+    menu.style.position = 'fixed';
+    menu.style.left = `${left}px`;
+    menu.style.right = 'auto';
+    menu.style.top = `${top}px`;
+    menu.style.width = `${menuWidth}px`;
+    menu.style.maxWidth = `${viewportWidth - 16}px`;
+    menu.style.maxHeight = `${maxHeight}px`;
+    menu.style.zIndex = '10000';
+    const list = menu.querySelector('.tag-dropdown-list');
+    if (list) list.style.maxHeight = `${Math.max(72, maxHeight - 12)}px`;
+  }
+
   closeTagFilterDropdown() {
-    const menus = document.querySelectorAll('.tag-dropdown-menu, #tagDropdownMenu');
-    menus.forEach(m => {
-      m.style.display = 'none';
-    });
+    const menu = document.getElementById('tagDropdownMenu');
+    if (menu) menu.style.display = 'none';
   }
 
   toggleTagFilter(tag) {

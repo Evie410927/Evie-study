@@ -300,6 +300,14 @@ class VocabAppTester:
         tag_dropdown_menu = 'id="tagDropdownMenu"' in content and 'id="tagDropdownList"' in content
         self.assert_true(tag_dropdown_menu, f"[{lang_name}] 标签筛选-下拉菜单面板 #tagDropdownMenu 存在", "DOM 中缺少 id='tagDropdownMenu' 面板")
 
+        mobile_tag_dropdown_unclipped = all(token in content for token in (
+            "positionTagDropdownMenu(menu)", "document.body.appendChild(menu)",
+            "button.getBoundingClientRect()", "menu.style.position = 'fixed'",
+            "menu.style.zIndex = '10000'", "viewportWidth - menuWidth - 8",
+            "list.style.maxHeight",
+        ))
+        self.assert_true(mobile_tag_dropdown_unclipped, f"[{lang_name}] 标签筛选-手机端下拉菜单脱离滚动层且完整显示", "标签下拉框仍嵌在词库滚动层中，可能被卡片遮挡或超出屏幕")
+
         tag_methods_exist = 'toggleTagDropdown(' in content and 'toggleTagFilter(' in content and 'clearAllTagFilters(' in content and 'updateTagBadge(' in content and 'renderTagDropdownItems(' in content
         self.assert_true(tag_methods_exist, f"[{lang_name}] 标签筛选-多选切换与清空方法集健全", "类中缺少 toggleTagFilter/clearAllTagFilters/updateTagBadge/renderTagDropdownItems 方法")
 
