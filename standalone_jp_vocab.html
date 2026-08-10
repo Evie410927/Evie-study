@@ -1327,6 +1327,116 @@ body::-webkit-scrollbar,
   color: var(--accent-info);
 }
 
+/* 0-5 星级：空心星表示尚未达到该等级，支持点击与横向拖动。 */
+.star-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  min-height: 28px;
+  padding: 2px 4px;
+  border-radius: 9px;
+  cursor: ew-resize;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  line-height: 1;
+  outline: none;
+}
+
+.star-rating:focus-visible {
+  box-shadow: 0 0 0 2px rgba(236, 72, 153, 0.55);
+}
+
+.rating-star {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 22px;
+  color: #64748b;
+  font-size: 19px;
+  transition: color 0.12s ease, transform 0.12s ease;
+  pointer-events: none;
+}
+
+.rating-star.filled {
+  color: #fbbf24;
+  text-shadow: 0 1px 8px rgba(251, 191, 36, 0.42);
+}
+
+.star-rating.is-dragging .rating-star {
+  transform: scale(1.08);
+}
+
+.word-header-actions,
+.detail-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+
+.detail-header-actions {
+  margin-left: auto;
+}
+
+.word-card-rating {
+  margin: -3px -3px 0 auto;
+}
+
+.review-star-rating {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 5;
+  background: rgba(15, 23, 42, 0.42);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.review-rating-order-box {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: -4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.rating-sort-select {
+  max-width: 112px;
+}
+
+@media (max-width: 480px) {
+  .rating-star {
+    width: 16px;
+    font-size: 17px;
+  }
+  .word-header {
+    gap: 5px;
+  }
+  .word-header-actions {
+    gap: 3px;
+  }
+  .mastered-badge {
+    display: none;
+  }
+  .detail-header-actions {
+    gap: 3px;
+  }
+  .detail-header-actions .star-rating {
+    padding-left: 1px;
+    padding-right: 1px;
+  }
+  .detail-header-actions .rating-star {
+    width: 14px;
+    font-size: 16px;
+  }
+}
+
 #tab-review.active {
   display: flex;
   flex-direction: column;
@@ -1430,6 +1540,7 @@ body::-webkit-scrollbar,
 .card-face-back {
   transform: rotateY(180deg);
   background: linear-gradient(145deg, rgba(30, 41, 59, 0.95) 0%, var(--bg-card-solid) 100%);
+  padding-top: 54px;
   overflow-y: auto;
   align-items: stretch;
   justify-content: flex-start;
@@ -1927,6 +2038,11 @@ body::-webkit-scrollbar,
             </div>
           </div>
           <div class="page-size-select-box">
+            <select id="ratingSortSelect" class="page-size-select rating-sort-select" onchange="if(window.app) window.app.onRatingSortChange(this.value)" title="按星级排列词库卡片">
+              <option value="default">默认排序</option>
+              <option value="desc">五星 → 无星</option>
+              <option value="asc">无星 → 五星</option>
+            </select>
             <span>每页:</span>
             <select id="pageSizeSelect" class="page-size-select" onchange="if(window.app) window.app.onPageSizeChange(this.value)">
               <option value="10">10 条</option>
@@ -2410,10 +2526,19 @@ body::-webkit-scrollbar,
             <div id="reviewProgressFill" class="review-progress-fill"></div>
           </div>
           <div id="reviewStatusText" class="review-status-text">进度：0 / 0</div>
+          <div class="review-rating-order-box">
+            <span>出卡顺序:</span>
+            <select id="reviewRatingSortSelect" class="page-size-select rating-sort-select" onchange="if(window.app) window.app.onReviewRatingSortChange(this.value)" title="按星级安排复习卡片顺序">
+              <option value="default">相近表达</option>
+              <option value="desc">五星 → 无星</option>
+              <option value="asc">无星 → 五星</option>
+            </select>
+          </div>
 
           <div class="scene" id="flashcardScene" onclick="if(window.app) window.app.toggleCardFlip()">
             <div class="flashcard" id="flashcard">
               <div class="card-face card-face-front">
+                <div id="cardFrontRating" class="review-star-slot"></div>
                 <div class="card-hint">点击卡片翻转 ↺</div>
                 <div class="card-main-word" id="cardFrontWord">一体</div>
                 <div class="card-reading-text" id="cardFrontReading">[一体]</div>
@@ -2421,6 +2546,7 @@ body::-webkit-scrollbar,
               </div>
 
               <div class="card-face card-face-back">
+                <div id="cardBackRating" class="review-star-slot"></div>
                 <div class="card-meaning-text" id="cardBackMeaning">到底；究竟</div>
                 <div class="card-example-block" id="cardBackExampleBlock">
                   <div class="word-example" id="cardBackExample">一体 바쁜데 일이 더 생겼다.</div>
@@ -2536,7 +2662,10 @@ body::-webkit-scrollbar,
               <span id="detailReading" class="detail-reading">[发音]</span>
             </div>
           </div>
-          <button id="closeDetailModalBtn" class="icon-btn" onclick="if(window.app) window.app.closeDetailModal()">✕</button>
+          <div class="detail-header-actions">
+            <div id="detailRating" class="detail-star-slot"></div>
+            <button id="closeDetailModalBtn" class="icon-btn" onclick="if(window.app) window.app.closeDetailModal()">✕</button>
+          </div>
         </div>
         <div class="detail-body">
           <div id="detailMeaning" class="detail-meaning">词性与释义</div>
@@ -5393,6 +5522,8 @@ class JpVocabApp {
     this.selectedTags = new Set();
     this.currentPage = 1;
     this.pageSize = 20;
+    this.ratingSort = 'default';
+    this.reviewRatingSort = 'default';
     this.init();
   }
 
@@ -5448,6 +5579,7 @@ class JpVocabApp {
       this.words.forEach(w => {
         if (!w) return;
         w.tags = Array.isArray(w.tags) ? w.tags.filter(tag => tag !== '\u6613\u6df7') : [];
+        w.rating = this.normalizeRating(w.rating);
         const parsed = this.getParsedExamples(w);
         if (parsed && parsed.length > 0) {
           w.examples = parsed;
@@ -5470,6 +5602,144 @@ class JpVocabApp {
     } catch (e) {
       this.showToast('⚠️ 保存失败');
     }
+  }
+
+  normalizeRating(value) {
+    const rating = Number(value);
+    if (!Number.isFinite(rating)) return 0;
+    return Math.max(0, Math.min(5, Math.round(rating)));
+  }
+
+  renderStarRating(word, extraClass = '') {
+    if (!word || !word.id) return '';
+    const rating = this.normalizeRating(word.rating);
+    const stars = Array.from({ length: 5 }, (_, index) => {
+      const value = index + 1;
+      return `<span class="rating-star ${value <= rating ? 'filled' : ''}" data-rating-value="${value}">${value <= rating ? '★' : '☆'}</span>`;
+    }).join('');
+    const safeId = this.escapeHtml(String(word.id));
+    const label = rating > 0 ? `${rating} 星` : '未设置星级';
+    return `<div class="star-rating ${extraClass}" data-rating-word-id="${safeId}" data-rating="${rating}" role="slider" tabindex="0" aria-label="${this.escapeHtml(word.word)}星级" aria-valuemin="0" aria-valuemax="5" aria-valuenow="${rating}" aria-valuetext="${label}" title="横向拖动或点击设置星级；重复点击当前星可清零" onclick="event.stopPropagation()" ondblclick="event.stopPropagation(); (window.app||window.vocabApp).setWordRating('${safeId}', 0)" onpointerdown="(window.app||window.vocabApp).beginRatingDrag(event, '${safeId}')" onkeydown="(window.app||window.vocabApp).handleRatingKeydown(event, '${safeId}')">${stars}</div>`;
+  }
+
+  syncRatingWidgets(wordId) {
+    const word = this.words.find(item => String(item.id) === String(wordId));
+    if (!word) return;
+    const rating = this.normalizeRating(word.rating);
+    document.querySelectorAll('.star-rating').forEach(widget => {
+      if (String(widget.dataset.ratingWordId || '') !== String(wordId)) return;
+      widget.dataset.rating = String(rating);
+      widget.setAttribute('aria-valuenow', String(rating));
+      widget.setAttribute('aria-valuetext', rating > 0 ? `${rating} 星` : '未设置星级');
+      widget.querySelectorAll('.rating-star').forEach((star, index) => {
+        const filled = index < rating;
+        star.classList.toggle('filled', filled);
+        star.textContent = filled ? '★' : '☆';
+      });
+    });
+  }
+
+  setWordRating(wordId, value, options = {}) {
+    const word = this.words.find(item => String(item.id) === String(wordId));
+    if (!word) return;
+    const nextRating = this.normalizeRating(value);
+    const changed = this.normalizeRating(word.rating) !== nextRating;
+    word.rating = nextRating;
+    this.syncRatingWidgets(wordId);
+    if (!changed) return;
+    this.saveData();
+    if (this.ratingSort !== 'default' && options.rerender !== false) {
+      this.renderWordList();
+    }
+    if (!options.silent) {
+      this.showToast(nextRating > 0 ? `⭐ 已设为 ${nextRating} 星` : '☆ 已清除星级');
+    }
+  }
+
+  beginRatingDrag(event, wordId) {
+    if (!event || (typeof event.button === 'number' && event.button > 0)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const widget = event.currentTarget;
+    const word = this.words.find(item => String(item.id) === String(wordId));
+    if (!widget || !word) return;
+    const initialRating = this.normalizeRating(word.rating);
+    const startX = event.clientX;
+    let previewRating = initialRating;
+    let moved = false;
+
+    const ratingFromPointer = pointerEvent => {
+      const rect = widget.getBoundingClientRect();
+      if (!rect.width || pointerEvent.clientX < rect.left - 6) return 0;
+      const ratio = Math.max(0, Math.min(1, (pointerEvent.clientX - rect.left) / rect.width));
+      return Math.max(1, Math.min(5, Math.ceil(ratio * 5)));
+    };
+    const preview = pointerEvent => {
+      pointerEvent.preventDefault();
+      pointerEvent.stopPropagation();
+      if (Math.abs(pointerEvent.clientX - startX) > 3) moved = true;
+      previewRating = ratingFromPointer(pointerEvent);
+      word.rating = previewRating;
+      this.syncRatingWidgets(wordId);
+    };
+    const finish = pointerEvent => {
+      pointerEvent.preventDefault();
+      pointerEvent.stopPropagation();
+      widget.classList.remove('is-dragging');
+      widget.removeEventListener('pointermove', preview);
+      widget.removeEventListener('pointerup', finish);
+      widget.removeEventListener('pointercancel', finish);
+      if (!moved && previewRating === initialRating) previewRating = 0;
+      word.rating = initialRating;
+      this.setWordRating(wordId, previewRating);
+    };
+
+    widget.classList.add('is-dragging');
+    if (widget.setPointerCapture && event.pointerId !== undefined) {
+      try { widget.setPointerCapture(event.pointerId); } catch (e) {}
+    }
+    preview(event);
+    widget.addEventListener('pointermove', preview);
+    widget.addEventListener('pointerup', finish);
+    widget.addEventListener('pointercancel', finish);
+  }
+
+  handleRatingKeydown(event, wordId) {
+    if (!event) return;
+    const word = this.words.find(item => String(item.id) === String(wordId));
+    if (!word) return;
+    const current = this.normalizeRating(word.rating);
+    let next = null;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowUp') next = current + 1;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') next = current - 1;
+    if (event.key === 'Home' || event.key === '0') next = 0;
+    if (event.key === 'End') next = 5;
+    if (/^[1-5]$/.test(event.key)) next = Number(event.key);
+    if (next === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.setWordRating(wordId, next);
+  }
+
+  sortWordsByRating(items, direction) {
+    if (direction !== 'asc' && direction !== 'desc') return [...items];
+    const factor = direction === 'desc' ? -1 : 1;
+    return items.map((word, index) => ({ word, index })).sort((a, b) => {
+      const ratingDiff = (this.normalizeRating(a.word.rating) - this.normalizeRating(b.word.rating)) * factor;
+      return ratingDiff || (a.index - b.index);
+    }).map(item => item.word);
+  }
+
+  onRatingSortChange(value) {
+    this.ratingSort = value === 'asc' || value === 'desc' ? value : 'default';
+    this.currentPage = 1;
+    this.renderWordList();
+    this.scrollToFirstCard();
+  }
+
+  onReviewRatingSortChange(value) {
+    this.reviewRatingSort = value === 'asc' || value === 'desc' ? value : 'default';
+    this.startReviewSession();
   }
 
   loadTheme() {
@@ -5911,6 +6181,9 @@ class JpVocabApp {
 
     this.currentDetailWordId = wordId;
 
+    const detailRating = document.getElementById('detailRating');
+    if (detailRating) detailRating.innerHTML = this.renderStarRating(word);
+
     const backBtn = document.getElementById('detailBackBtn');
     if (backBtn) {
       if (this.detailModalHistory.length > 0) {
@@ -6029,6 +6302,7 @@ class JpVocabApp {
         exampleTrans,
         tags,
         mastered: false,
+        rating: 0,
         reviewCount: 0,
         createdAt: Date.now()
       };
@@ -6424,6 +6698,8 @@ class JpVocabApp {
       return true;
     });
 
+    filtered = this.sortWordsByRating(filtered, this.ratingSort);
+
     const totalItems = filtered.length;
     const totalPages = Math.ceil(totalItems / this.pageSize) || 1;
     if (this.currentPage > totalPages) this.currentPage = totalPages;
@@ -6475,7 +6751,10 @@ class JpVocabApp {
               ${w.reading ? `<span class="word-reading">${this.escapeHtml(w.reading)}</span>` : ''}
               ${w.krMeaning ? `<span class="kr-meaning-badge">${this.escapeHtml(w.krMeaning)}</span>` : ''}
             </div>
-            ${w.mastered ? `<span class="mastered-badge">已掌握</span>` : ''}
+            <div class="word-header-actions">
+              ${w.mastered ? `<span class="mastered-badge">已掌握</span>` : ''}
+              ${this.renderStarRating(w, 'word-card-rating')}
+            </div>
           </div>
 
           <div class="word-meaning">${this.escapeHtml(w.meaning)}</div>
@@ -6851,8 +7130,14 @@ class JpVocabApp {
     if (this.reviewList.length === 0) {
       this.reviewList = [...this.words];
     }
-    // 意思相近/表达相似聚类排序出词
-    this.reviewList = this.clusterBySimilarity(this.reviewList);
+    if (this.reviewRatingSort === 'asc' || this.reviewRatingSort === 'desc') {
+      this.reviewList = this.sortWordsByRating(this.reviewList, this.reviewRatingSort);
+    } else {
+      // 默认继续按意思相近/表达相似聚类排序出词。
+      this.reviewList = this.clusterBySimilarity(this.reviewList);
+    }
+    const reviewSortSelect = document.getElementById('reviewRatingSortSelect');
+    if (reviewSortSelect) reviewSortSelect.value = this.reviewRatingSort;
     this.currentReviewIndex = 0;
     this.renderCurrentCard();
   }
@@ -6862,6 +7147,10 @@ class JpVocabApp {
     flashcard.classList.remove('is-flipped');
 
     if (this.reviewList.length === 0) {
+      const frontRating = document.getElementById('cardFrontRating');
+      const backRating = document.getElementById('cardBackRating');
+      if (frontRating) frontRating.innerHTML = '';
+      if (backRating) backRating.innerHTML = '';
       document.getElementById('cardFrontWord').textContent = '🎉 日语词库为空';
       document.getElementById('cardFrontReading').textContent = '点击新增开始添加单词吧';
       document.getElementById('reviewStatusText').textContent = '进度：0 / 0';
@@ -6871,6 +7160,10 @@ class JpVocabApp {
 
     const word = this.reviewList[this.currentReviewIndex];
     if (!word) {
+      const frontRating = document.getElementById('cardFrontRating');
+      const backRating = document.getElementById('cardBackRating');
+      if (frontRating) frontRating.innerHTML = '';
+      if (backRating) backRating.innerHTML = '';
       document.getElementById('cardFrontWord').textContent = '✨ 日语卡片复习完成！';
       document.getElementById('cardFrontReading').textContent = '오늘도 수고하셨습니다!';
       document.getElementById('cardBackMeaning').textContent = '所有日语卡片已复习完毕';
@@ -6888,6 +7181,10 @@ class JpVocabApp {
 
     document.getElementById('cardFrontWord').textContent = word.word;
     document.getElementById('cardFrontReading').textContent = word.reading || '';
+    const frontRating = document.getElementById('cardFrontRating');
+    const backRating = document.getElementById('cardBackRating');
+    if (frontRating) frontRating.innerHTML = this.renderStarRating(word, 'review-star-rating');
+    if (backRating) backRating.innerHTML = this.renderStarRating(word, 'review-star-rating');
 
     document.getElementById('cardBackMeaning').innerHTML = this.escapeHtml(word.meaning) + (word.krMeaning ? `<span class="kr-badge" style="margin-left:12px;">${this.escapeHtml(word.krMeaning)}</span>` : '');
     const parsedExamples = this.getParsedExamples(word);
