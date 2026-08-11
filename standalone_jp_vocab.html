@@ -2022,9 +2022,9 @@ body::-webkit-scrollbar,
         <div class="list-control-row">
           <div class="filter-pills-group" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
             <div class="filter-pills" id="filterPills">
-              <button class="pill-btn active" data-filter="learning" onclick="if(window.app) window.app.setMainFilter('learning', this)">学习中 (<span id="count-learning">460</span>)</button>
+              <button class="pill-btn active" data-filter="learning" onclick="if(window.app) window.app.setMainFilter('learning', this)">学习中 (<span id="count-learning">462</span>)</button>
               <button class="pill-btn" data-filter="mastered" onclick="if(window.app) window.app.setMainFilter('mastered', this)">已掌握 (<span id="count-mastered">0</span>)</button>
-              <button class="pill-btn" data-filter="all" onclick="if(window.app) window.app.setMainFilter('all', this)">全部 (<span id="count-all">460</span>)</button>
+              <button class="pill-btn" data-filter="all" onclick="if(window.app) window.app.setMainFilter('all', this)">全部 (<span id="count-all">462</span>)</button>
             </div>
             <div class="tag-filter-dropdown-wrapper" id="tagDropdownContainer">
               <button id="tagDropdownBtn" class="pill-btn tag-dropdown-btn" onclick="if(window.app) window.app.toggleTagDropdown(event)" title="按标签/Label过滤 (可多选)" style="display: inline-flex; align-items: center; gap: 4px;">
@@ -5132,6 +5132,32 @@ window.JP_NOTE_ADDITIONS = [
       {"jp": "明日は雨が降るかもしれない。", "cn": "明天可能会下雨。"},
       {"jp": "彼はもう帰ったかもしれない。", "cn": "他也许已经回去了。"},
       {"jp": "この話は本当ではないかもしれない。", "cn": "这件事可能不是真的。"}
+    ]
+  },
+  {
+    "id": "jp_user_461", "word": "急に", "reading": "[きゅうに]",
+    "meaning": "adv. 突然，忽然；急剧地", "krMeaning": "갑자기 / 급하게", "tags": ["副词"],
+    "notes": "表示事情在没有预兆的情况下突然发生，或状态在短时间内快速变化。",
+    "example": "空が暗くなり、急に雨が降り出した。\n彼は急に立ち上がって部屋を出ていった。\n最近、急に寒くなりました。",
+    "exampleTrans": "天色暗了下来，突然下起了雨。\n他突然站起来走出了房间。\n最近天气骤然变冷了。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786499121000,
+    "examples": [
+      {"jp": "空が暗くなり、急に雨が降り出した。", "cn": "天色暗了下来，突然下起了雨。"},
+      {"jp": "彼は急に立ち上がって部屋を出ていった。", "cn": "他突然站起来走出了房间。"},
+      {"jp": "最近、急に寒くなりました。", "cn": "最近天气骤然变冷了。"}
+    ]
+  },
+  {
+    "id": "jp_user_462", "word": "ばかり", "reading": "[ばかり]",
+    "meaning": "助词. 净是，只顾；刚刚；即将", "krMeaning": "…만 / …기만 하다 / 막 …한 참이다 / …할 참이다", "tags": ["助词"],
+    "notes": "常见用法：名词＋ばかり表示“净是、只”；动词た形＋ばかり表示“刚刚做完”；动词辞书形＋ばかりだ表示“只等着……、即将……”。",
+    "example": "甘い物ばかり食べてはいけません。\n彼はさっき会社に着いたばかりです。\n準備はできたので、あとは出発するばかりだ。",
+    "exampleTrans": "不能净吃甜食。\n他刚刚到公司。\n准备已经完成，接下来只等出发了。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786499122000,
+    "examples": [
+      {"jp": "甘い物ばかり食べてはいけません。", "cn": "不能净吃甜食。"},
+      {"jp": "彼はさっき会社に着いたばかりです。", "cn": "他刚刚到公司。"},
+      {"jp": "準備はできたので、あとは出発するばかりだ。", "cn": "准备已经完成，接下来只等出发了。"}
     ]
   }
 ];
@@ -20517,6 +20543,32 @@ class JpVocabApp {
       {"jp": "明日は雨が降るかもしれない。", "cn": "明天可能会下雨。"},
       {"jp": "彼はもう帰ったかもしれない。", "cn": "他也许已经回去了。"},
       {"jp": "この話は本当ではないかもしれない。", "cn": "这件事可能不是真的。"}
+    ]
+  },
+  {
+    "id": "jp_user_461", "word": "急に", "reading": "[きゅうに]",
+    "meaning": "adv. 突然，忽然；急剧地", "krMeaning": "갑자기 / 급하게", "tags": ["副词"],
+    "notes": "表示事情在没有预兆的情况下突然发生，或状态在短时间内快速变化。",
+    "example": "空が暗くなり、急に雨が降り出した。\n彼は急に立ち上がって部屋を出ていった。\n最近、急に寒くなりました。",
+    "exampleTrans": "天色暗了下来，突然下起了雨。\n他突然站起来走出了房间。\n最近天气骤然变冷了。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786499121000,
+    "examples": [
+      {"jp": "空が暗くなり、急に雨が降り出した。", "cn": "天色暗了下来，突然下起了雨。"},
+      {"jp": "彼は急に立ち上がって部屋を出ていった。", "cn": "他突然站起来走出了房间。"},
+      {"jp": "最近、急に寒くなりました。", "cn": "最近天气骤然变冷了。"}
+    ]
+  },
+  {
+    "id": "jp_user_462", "word": "ばかり", "reading": "[ばかり]",
+    "meaning": "助词. 净是，只顾；刚刚；即将", "krMeaning": "…만 / …기만 하다 / 막 …한 참이다 / …할 참이다", "tags": ["助词"],
+    "notes": "常见用法：名词＋ばかり表示“净是、只”；动词た形＋ばかり表示“刚刚做完”；动词辞书形＋ばかりだ表示“只等着……、即将……”。",
+    "example": "甘い物ばかり食べてはいけません。\n彼はさっき会社に着いたばかりです。\n準備はできたので、あとは出発するばかりだ。",
+    "exampleTrans": "不能净吃甜食。\n他刚刚到公司。\n准备已经完成，接下来只等出发了。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786499122000,
+    "examples": [
+      {"jp": "甘い物ばかり食べてはいけません。", "cn": "不能净吃甜食。"},
+      {"jp": "彼はさっき会社に着いたばかりです。", "cn": "他刚刚到公司。"},
+      {"jp": "準備はできたので、あとは出発するばかりだ。", "cn": "准备已经完成，接下来只等出发了。"}
     ]
   }
 ];
