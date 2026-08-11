@@ -1,0 +1,14 @@
+# 临时调试与缓存
+scratch/
+__pycache__/
+*.pyc
+.vscode/
+
+# 运行产物 / 日志 / 邮件备份
+debug.log
+latest_email_dispatch.eml
+latest_vocab_backup.eml
+*.eml
+
+# 历史临时脚本
+scratch property_var.py
