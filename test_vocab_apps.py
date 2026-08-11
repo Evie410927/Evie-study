@@ -110,6 +110,12 @@ class VocabAppTester:
         ))
         self.assert_true(conflict_merge, f"[{lang_name}] 云同步-双设备 Last-Write-Wins 冲突合并", "缺少本地/云端更新时间比较，可能整库覆盖丢数据")
 
+        legacy_pending_protected = all(token in content for token in (
+            "return { changedAt, source: changedAt > 0 ? 'user' : 'none' }",
+            "pendingMeta.source === 'system'",
+        )) and "pendingMeta.source === 'legacy'" not in content
+        self.assert_true(legacy_pending_protected, f"[{lang_name}] 云同步-旧格式待上传记录按用户编辑保护", "legacy 待上传记录仍可能被当作系统更新，导致较旧云端内容覆盖较新的本地编辑")
+
         sync_lock = "this._cloudSyncing" in content and "this._cloudSyncPending" in content
         self.assert_true(sync_lock, f"[{lang_name}] 云同步-并发请求锁与待同步补偿", "连续编辑可能并发上传并产生覆盖竞争")
 
@@ -585,7 +591,11 @@ class VocabAppTester:
             "addQuickTag(event, '${wordId}', '易忘')",
             'grid-template-columns: 1fr 1fr;',
             "tag !== '\\u6613\\u6df7'",
-        )) and all(token not in content for token in ('btnEasyConfuse', 'easy-confuse', '易混'))
+        )) and all(token not in content for token in (
+            'btnEasyConfuse',
+            'easy-confuse',
+            "addQuickTag(event, '${wordId}', '易混')",
+        ))
         self.assert_true(easy_forget_only, f"[{lang_name}] 交互-仅保留📌易忘标签与两枚复习按钮，旧易混标签自动清理且无法重新添加", "仍存在易混按钮/标签/逻辑，或缺少旧数据清理及两列复习按钮布局")
 
         # ---------------------------------------------------------------------
@@ -654,14 +664,14 @@ class VocabAppTester:
             and 'deletedIds.has(String(item.id))' in content
             and 'deletedWords.has(item.word)' in content
             and 'contentRevision' in content
-            and 'markPendingCloudChanges(changedIds, reconciliationTime)' in content
+            and 'markPendingCloudChanges(changedIds, reconciliationTime' in content
         )
         self.assert_true(cached_data_upgrade, f"[{lang_name}] 数据升级-非空浏览器缓存自动补入新版内置词条且不复活已删除词", "loadData 未无条件合并内置 samples，或 loadSampleData 未尊重删除记录/按变化保存")
 
         corrected_example_migration = all(token in content for token in (
             'hasNewerContent' if lang_name == '韩语' else 'Number(item.contentRevision || 0) > Number(old.contentRevision || 0)',
             'examples: Array.isArray(item.examples)',
-            'markPendingCloudChanges(changedIds, reconciliationTime)',
+            'markPendingCloudChanges(changedIds, reconciliationTime',
             'updatedAt: reconciliationTime',
         ))
         self.assert_true(corrected_example_migration, f"[{lang_name}] 数据修复-新版自然例句覆盖旧缓存且仅标记修正词条待同步", "例句修正只能作用于空白设备，或加载时错误地把整库标记为待上传")

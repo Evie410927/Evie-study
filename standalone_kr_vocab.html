@@ -19523,11 +19523,11 @@ function createSupabaseSyncMethods(language) {
       if (value && typeof value === 'object') {
         return {
           changedAt: Number(value.changedAt || 0),
-          source: value.source === 'system' ? 'system' : (value.source === 'legacy' ? 'legacy' : 'user')
+          source: value.source === 'system' ? 'system' : 'user'
         };
       }
       const changedAt = Number(value || 0);
-      return { changedAt, source: changedAt > 0 ? 'legacy' : 'none' };
+      return { changedAt, source: changedAt > 0 ? 'user' : 'none' };
     },
 
     markPendingCloudChanges(ids, changedAt = Date.now(), source = 'user') {
@@ -19634,7 +19634,7 @@ function createSupabaseSyncMethods(language) {
         const cloudDiffers = cloudPayload && (!localWord || this.wordFingerprint(cloudPayload) !== this.wordFingerprint(localWord));
         const localContentRevision = Number(localWord && localWord.contentRevision || 0);
         const cloudContentRevision = Number(cloudPayload && cloudPayload.contentRevision || 0);
-        const systemUpdateCanYield = locallyPending && (pendingMeta.source === 'system' || pendingMeta.source === 'legacy') && cloudDiffers && cloudContentRevision >= localContentRevision;
+        const systemUpdateCanYield = locallyPending && pendingMeta.source === 'system' && cloudDiffers && cloudContentRevision >= localContentRevision;
         if (!localWord || cloudUpdatedAt > localUpdatedAt || (!locallyPending && cloudDiffers) || systemUpdateCanYield) {
           const payload = row.payload && typeof row.payload === 'object' ? { ...row.payload } : null;
           if (payload) {

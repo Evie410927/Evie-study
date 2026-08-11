@@ -2022,9 +2022,9 @@ body::-webkit-scrollbar,
         <div class="list-control-row">
           <div class="filter-pills-group" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
             <div class="filter-pills" id="filterPills">
-              <button class="pill-btn active" data-filter="learning" onclick="if(window.app) window.app.setMainFilter('learning', this)">学习中 (<span id="count-learning">446</span>)</button>
+              <button class="pill-btn active" data-filter="learning" onclick="if(window.app) window.app.setMainFilter('learning', this)">学习中 (<span id="count-learning">460</span>)</button>
               <button class="pill-btn" data-filter="mastered" onclick="if(window.app) window.app.setMainFilter('mastered', this)">已掌握 (<span id="count-mastered">0</span>)</button>
-              <button class="pill-btn" data-filter="all" onclick="if(window.app) window.app.setMainFilter('all', this)">全部 (<span id="count-all">446</span>)</button>
+              <button class="pill-btn" data-filter="all" onclick="if(window.app) window.app.setMainFilter('all', this)">全部 (<span id="count-all">460</span>)</button>
             </div>
             <div class="tag-filter-dropdown-wrapper" id="tagDropdownContainer">
               <button id="tagDropdownBtn" class="pill-btn tag-dropdown-btn" onclick="if(window.app) window.app.toggleTagDropdown(event)" title="按标签/Label过滤 (可多选)" style="display: inline-flex; align-items: center; gap: 4px;">
@@ -4963,6 +4963,179 @@ function applyJpContentRepairs(items) {
   });
 }
 
+window.JP_NOTE_ADDITIONS = [
+  {
+    "id": "jp_user_447", "word": "呆れる", "reading": "[あきれる]",
+    "meaning": "v. 惊愕，哑然；觉得荒唐而无语", "krMeaning": "어이없어하다 / 기가 막히다", "tags": ["动词"],
+    "example": "あの人のずうずうしさには呆れるばかりだ。\n突然の言葉に呆れて何も言えなかった。\n呆れるほど高くて、とても買えない。",
+    "exampleTrans": "那个人厚颜无耻的样子真让人无语。\n被这突如其来的话惊得哑口无言。\n贵得让人咋舌，实在买不起。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412721000,
+    "examples": [
+      {"jp": "あの人のずうずうしさには呆れるばかりだ。", "cn": "那个人厚颜无耻的样子真让人无语。"},
+      {"jp": "突然の言葉に呆れて何も言えなかった。", "cn": "被这突如其来的话惊得哑口无言。"},
+      {"jp": "呆れるほど高くて、とても買えない。", "cn": "贵得让人咋舌，实在买不起。"}
+    ]
+  },
+  {
+    "id": "jp_user_448", "word": "責める", "reading": "[せめる]",
+    "meaning": "v. 责备，指责；归咎", "krMeaning": "책망하다 / 탓하다", "tags": ["动词"],
+    "example": "自分の失敗を他人のせいにして責めるのはよくない。\nあの件で彼を責めるつもりはありません。\n自分を責めすぎて、眠れなくなってしまった。",
+    "exampleTrans": "把自己的失败归咎于别人并加以指责是不好的。\n那件事我并不打算责怪他。\n因为过于自责，变得睡不着觉了。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412722000,
+    "examples": [
+      {"jp": "自分の失敗を他人のせいにして責めるのはよくない。", "cn": "把自己的失败归咎于别人并加以指责是不好的。"},
+      {"jp": "あの件で彼を責めるつもりはありません。", "cn": "那件事我并不打算责怪他。"},
+      {"jp": "自分を責めすぎて、眠れなくなってしまった。", "cn": "因为过于自责，变得睡不着觉了。"}
+    ]
+  },
+  {
+    "id": "jp_user_449", "word": "動く", "reading": "[うごく]",
+    "meaning": "v. 动，移动；运转", "krMeaning": "움직이다 / 작동하다", "tags": ["动词"],
+    "example": "風もなく、木の葉一つ動かない。\n機械が急に動かなくなった。\n人の列がゆっくりと動き始めた。",
+    "exampleTrans": "一点风也没有，连一片树叶都不动。\n机器突然停止运转了。\n队伍开始缓缓向前移动。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412723000,
+    "examples": [
+      {"jp": "風もなく、木の葉一つ動かない。", "cn": "一点风也没有，连一片树叶都不动。"},
+      {"jp": "機械が急に動かなくなった。", "cn": "机器突然停止运转了。"},
+      {"jp": "人の列がゆっくりと動き始めた。", "cn": "队伍开始缓缓向前移动。"}
+    ]
+  },
+  {
+    "id": "jp_user_450", "word": "そもそも", "reading": "[そもそも]",
+    "meaning": "adv. 本来；说到底，究竟", "krMeaning": "애초에 / 도대체", "tags": ["副词"],
+    "example": "そもそも、この計画自体に無理がある。\nそもそも君の言い分が間違っている。\nそもそも彼を知っているのかどうかも怪しい。",
+    "exampleTrans": "说到底，这个计划本身就不切实际。\n本来就是你的说法有问题。\n甚至连他究竟认不认识那个人都很可疑。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412724000,
+    "examples": [
+      {"jp": "そもそも、この計画自体に無理がある。", "cn": "说到底，这个计划本身就不切实际。"},
+      {"jp": "そもそも君の言い分が間違っている。", "cn": "本来就是你的说法有问题。"},
+      {"jp": "そもそも彼を知っているのかどうかも怪しい。", "cn": "甚至连他究竟认不认识那个人都很可疑。"}
+    ]
+  },
+  {
+    "id": "jp_user_451", "word": "一理ある", "reading": "[いちりがある]",
+    "meaning": "短语. 有一定道理", "krMeaning": "일리가 있다", "tags": ["短语"],
+    "example": "彼の言い分にも一理あると思う。\n批判は厳しいが、その指摘には一理ある。\nあの意見には一理あるので、考え直そう。",
+    "exampleTrans": "我认为他的说法也有一定道理。\n批评虽然严厉，但指出的问题确实有一定道理。\n那个意见有一定道理，所以重新考虑一下吧。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412725000,
+    "examples": [
+      {"jp": "彼の言い分にも一理あると思う。", "cn": "我认为他的说法也有一定道理。"},
+      {"jp": "批判は厳しいが、その指摘には一理ある。", "cn": "批评虽然严厉，但指出的问题确实有一定道理。"},
+      {"jp": "あの意見には一理あるので、考え直そう。", "cn": "那个意见有一定道理，所以重新考虑一下吧。"}
+    ]
+  },
+  {
+    "id": "jp_user_452", "word": "前向き", "reading": "[まえむき]",
+    "meaning": "adj. 积极的，乐观的", "krMeaning": "긍정적이다 / 적극적이다", "tags": ["形容动词"],
+    "example": "もっと前向きに考えよう。\n彼はいつも前向きな姿勢で仕事をする。\n前向きな意見を出してほしい。",
+    "exampleTrans": "让我们想得更积极一些吧。\n他工作时总是保持积极的态度。\n希望你能提出积极的意见。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412726000,
+    "examples": [
+      {"jp": "もっと前向きに考えよう。", "cn": "让我们想得更积极一些吧。"},
+      {"jp": "彼はいつも前向きな姿勢で仕事をする。", "cn": "他工作时总是保持积极的态度。"},
+      {"jp": "前向きな意見を出してほしい。", "cn": "希望你能提出积极的意见。"}
+    ]
+  },
+  {
+    "id": "jp_user_453", "word": "疲れる", "reading": "[つかれる]",
+    "meaning": "v. 疲倦，劳累", "krMeaning": "피곤하다 / 지치다", "tags": ["动词"],
+    "example": "長い会議でとても疲れた。\n大勢の人と話すと、どっと疲れる。\n仕事が忙しくて体が疲れている。",
+    "exampleTrans": "开了很久的会，累极了。\n和很多人说话后，会一下子感到很疲惫。\n工作太忙，身体很累。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412727000,
+    "examples": [
+      {"jp": "長い会議でとても疲れた。", "cn": "开了很久的会，累极了。"},
+      {"jp": "大勢の人と話すと、どっと疲れる。", "cn": "和很多人说话后，会一下子感到很疲惫。"},
+      {"jp": "仕事が忙しくて体が疲れている。", "cn": "工作太忙，身体很累。"}
+    ]
+  },
+  {
+    "id": "jp_user_454", "word": "～はさておき", "reading": "[～はさておき]",
+    "meaning": "短语. 暂且不谈……；把……先放在一边", "krMeaning": "…은 제쳐 두고 / …은 차치하고", "tags": ["短语"],
+    "example": "結果はさておき、よく頑張ったね。\n上手か下手かはさておき、まずやってみよう。\n費用のことはさておき、実現できるかが問題だ。",
+    "exampleTrans": "结果暂且不论，你确实很努力了。\n水平高低先放一边，先试试看吧。\n费用先撇开不谈，能否实现才是问题。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412728000,
+    "examples": [
+      {"jp": "結果はさておき、よく頑張ったね。", "cn": "结果暂且不论，你确实很努力了。"},
+      {"jp": "上手か下手かはさておき、まずやってみよう。", "cn": "水平高低先放一边，先试试看吧。"},
+      {"jp": "費用のことはさておき、実現できるかが問題だ。", "cn": "费用先撇开不谈，能否实现才是问题。"}
+    ]
+  },
+  {
+    "id": "jp_user_455", "word": "～はともかく", "reading": "[～はともかく]",
+    "meaning": "短语. 暂且不论……；姑且不说……", "krMeaning": "…은 둘째 치고 / …은 차치하고", "tags": ["短语"],
+    "example": "味はともかく、見た目は最高だ。\n値段はともかく、品質は信頼できる。\n本人はともかく、家族はどう思っているのだろう。",
+    "exampleTrans": "味道姑且不论，外观无可挑剔。\n价格暂且不论，品质值得信赖。\n本人姑且不说，不知道家人是怎么想的。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412729000,
+    "examples": [
+      {"jp": "味はともかく、見た目は最高だ。", "cn": "味道姑且不论，外观无可挑剔。"},
+      {"jp": "値段はともかく、品質は信頼できる。", "cn": "价格暂且不论，品质值得信赖。"},
+      {"jp": "本人はともかく、家族はどう思っているのだろう。", "cn": "本人姑且不说，不知道家人是怎么想的。"}
+    ]
+  },
+  {
+    "id": "jp_user_456", "word": "振り返る", "reading": "[ふりかえる]",
+    "meaning": "v. 回头看；回顾", "krMeaning": "뒤돌아보다 / 되돌아보다", "tags": ["动词"],
+    "example": "後ろを振り返って、誰もいないことを確かめた。\nこれまでの一年を振り返ってみる。\n過去を振り返らず、前に進もう。",
+    "exampleTrans": "回头确认了一下，发现后面没有人。\n回顾一下过去这一年。\n不要回望过去，继续向前走吧。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412730000,
+    "examples": [
+      {"jp": "後ろを振り返って、誰もいないことを確かめた。", "cn": "回头确认了一下，发现后面没有人。"},
+      {"jp": "これまでの一年を振り返ってみる。", "cn": "回顾一下过去这一年。"},
+      {"jp": "過去を振り返らず、前に進もう。", "cn": "不要回望过去，继续向前走吧。"}
+    ]
+  },
+  {
+    "id": "jp_user_457", "word": "泣く", "reading": "[なく]",
+    "meaning": "v. 哭，哭泣", "krMeaning": "울다", "tags": ["动词"],
+    "example": "悲しくて思わず泣いてしまった。\n映画が感動的で、泣いている人が多かった。\n悔しくて声を出して泣いた。",
+    "exampleTrans": "因为难过，忍不住哭了出来。\n电影很感人，很多人都哭了。\n因为不甘心，放声哭了出来。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412731000,
+    "examples": [
+      {"jp": "悲しくて思わず泣いてしまった。", "cn": "因为难过，忍不住哭了出来。"},
+      {"jp": "映画が感動的で、泣いている人が多かった。", "cn": "电影很感人，很多人都哭了。"},
+      {"jp": "悔しくて声を出して泣いた。", "cn": "因为不甘心，放声哭了出来。"}
+    ]
+  },
+  {
+    "id": "jp_user_458", "word": "しか", "reading": "[しか]",
+    "meaning": "助词. 只，仅（后接否定形式）", "krMeaning": "밖에", "tags": ["助词"],
+    "example": "今のところ、それしか方法がない。\n彼にはあなたしか頼れる人がいない。\n会議には一人しか来なかった。",
+    "exampleTrans": "目前只有那一个办法。\n他能够依靠的人只有你。\n会议只来了一个人。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412732000,
+    "examples": [
+      {"jp": "今のところ、それしか方法がない。", "cn": "目前只有那一个办法。"},
+      {"jp": "彼にはあなたしか頼れる人がいない。", "cn": "他能够依靠的人只有你。"},
+      {"jp": "会議には一人しか来なかった。", "cn": "会议只来了一个人。"}
+    ]
+  },
+  {
+    "id": "jp_user_459", "word": "かどうか", "reading": "[かどうか]",
+    "meaning": "语法. 是否……；是不是……", "krMeaning": "…(으)ㄴ/는지 / …인지", "tags": ["语法"],
+    "notes": "接续：普通形＋かどうか。名词和形容动词通常直接接「かどうか」，不加「だ」。",
+    "example": "彼が参加するかどうか、まだ分かりません。\nこの方法が本当に有効かどうか確認してください。\n買うかどうかは、実物を見てから決めます。",
+    "exampleTrans": "还不知道他是否参加。\n请确认这个方法是否真的有效。\n要不要买，等看过实物后再决定。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412733000,
+    "examples": [
+      {"jp": "彼が参加するかどうか、まだ分かりません。", "cn": "还不知道他是否参加。"},
+      {"jp": "この方法が本当に有効かどうか確認してください。", "cn": "请确认这个方法是否真的有效。"},
+      {"jp": "買うかどうかは、実物を見てから決めます。", "cn": "要不要买，等看过实物后再决定。"}
+    ]
+  },
+  {
+    "id": "jp_user_460", "word": "かもしれない", "reading": "[かもしれない]",
+    "meaning": "语法. 也许……；可能……", "krMeaning": "…(으)ㄹ지도 모르다", "tags": ["语法"],
+    "notes": "接续：普通形＋かもしれない。名词和形容动词接续时去掉「だ」；礼貌形式为「かもしれません」。",
+    "example": "明日は雨が降るかもしれない。\n彼はもう帰ったかもしれない。\nこの話は本当ではないかもしれない。",
+    "exampleTrans": "明天可能会下雨。\n他也许已经回去了。\n这件事可能不是真的。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412734000,
+    "examples": [
+      {"jp": "明日は雨が降るかもしれない。", "cn": "明天可能会下雨。"},
+      {"jp": "彼はもう帰ったかもしれない。", "cn": "他也许已经回去了。"},
+      {"jp": "この話は本当ではないかもしれない。", "cn": "这件事可能不是真的。"}
+    ]
+  }
+];
+
 function createSupabaseSyncMethods(language) {
   return {
     getCloudSession() {
@@ -5157,11 +5330,11 @@ function createSupabaseSyncMethods(language) {
       if (value && typeof value === 'object') {
         return {
           changedAt: Number(value.changedAt || 0),
-          source: value.source === 'system' ? 'system' : (value.source === 'legacy' ? 'legacy' : 'user')
+          source: value.source === 'system' ? 'system' : 'user'
         };
       }
       const changedAt = Number(value || 0);
-      return { changedAt, source: changedAt > 0 ? 'legacy' : 'none' };
+      return { changedAt, source: changedAt > 0 ? 'user' : 'none' };
     },
 
     markPendingCloudChanges(ids, changedAt = Date.now(), source = 'user') {
@@ -5268,7 +5441,7 @@ function createSupabaseSyncMethods(language) {
         const cloudDiffers = cloudPayload && (!localWord || this.wordFingerprint(cloudPayload) !== this.wordFingerprint(localWord));
         const localContentRevision = Number(localWord && localWord.contentRevision || 0);
         const cloudContentRevision = Number(cloudPayload && cloudPayload.contentRevision || 0);
-        const systemUpdateCanYield = locallyPending && (pendingMeta.source === 'system' || pendingMeta.source === 'legacy') && cloudDiffers && cloudContentRevision >= localContentRevision;
+        const systemUpdateCanYield = locallyPending && pendingMeta.source === 'system' && cloudDiffers && cloudContentRevision >= localContentRevision;
         if (!localWord || cloudUpdatedAt > localUpdatedAt || (!locallyPending && cloudDiffers) || systemUpdateCanYield) {
           const payload = row.payload && typeof row.payload === 'object' ? { ...row.payload } : null;
           if (payload) {
@@ -20175,6 +20348,176 @@ class JpVocabApp {
       {"jp": "店内では静かな音楽を流している。", "cn": "店里播放着安静的音乐。"},
       {"jp": "誰かが根拠のない噂を流した。", "cn": "有人散布了毫无根据的传闻。"}
     ]
+  },
+{
+    "id": "jp_user_447", "word": "呆れる", "reading": "[あきれる]",
+    "meaning": "v. 惊愕，哑然；觉得荒唐而无语", "krMeaning": "어이없어하다 / 기가 막히다", "tags": ["动词"],
+    "example": "あの人のずうずうしさには呆れるばかりだ。\n突然の言葉に呆れて何も言えなかった。\n呆れるほど高くて、とても買えない。",
+    "exampleTrans": "那个人厚颜无耻的样子真让人无语。\n被这突如其来的话惊得哑口无言。\n贵得让人咋舌，实在买不起。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412721000,
+    "examples": [
+      {"jp": "あの人のずうずうしさには呆れるばかりだ。", "cn": "那个人厚颜无耻的样子真让人无语。"},
+      {"jp": "突然の言葉に呆れて何も言えなかった。", "cn": "被这突如其来的话惊得哑口无言。"},
+      {"jp": "呆れるほど高くて、とても買えない。", "cn": "贵得让人咋舌，实在买不起。"}
+    ]
+  },
+  {
+    "id": "jp_user_448", "word": "責める", "reading": "[せめる]",
+    "meaning": "v. 责备，指责；归咎", "krMeaning": "책망하다 / 탓하다", "tags": ["动词"],
+    "example": "自分の失敗を他人のせいにして責めるのはよくない。\nあの件で彼を責めるつもりはありません。\n自分を責めすぎて、眠れなくなってしまった。",
+    "exampleTrans": "把自己的失败归咎于别人并加以指责是不好的。\n那件事我并不打算责怪他。\n因为过于自责，变得睡不着觉了。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412722000,
+    "examples": [
+      {"jp": "自分の失敗を他人のせいにして責めるのはよくない。", "cn": "把自己的失败归咎于别人并加以指责是不好的。"},
+      {"jp": "あの件で彼を責めるつもりはありません。", "cn": "那件事我并不打算责怪他。"},
+      {"jp": "自分を責めすぎて、眠れなくなってしまった。", "cn": "因为过于自责，变得睡不着觉了。"}
+    ]
+  },
+  {
+    "id": "jp_user_449", "word": "動く", "reading": "[うごく]",
+    "meaning": "v. 动，移动；运转", "krMeaning": "움직이다 / 작동하다", "tags": ["动词"],
+    "example": "風もなく、木の葉一つ動かない。\n機械が急に動かなくなった。\n人の列がゆっくりと動き始めた。",
+    "exampleTrans": "一点风也没有，连一片树叶都不动。\n机器突然停止运转了。\n队伍开始缓缓向前移动。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412723000,
+    "examples": [
+      {"jp": "風もなく、木の葉一つ動かない。", "cn": "一点风也没有，连一片树叶都不动。"},
+      {"jp": "機械が急に動かなくなった。", "cn": "机器突然停止运转了。"},
+      {"jp": "人の列がゆっくりと動き始めた。", "cn": "队伍开始缓缓向前移动。"}
+    ]
+  },
+  {
+    "id": "jp_user_450", "word": "そもそも", "reading": "[そもそも]",
+    "meaning": "adv. 本来；说到底，究竟", "krMeaning": "애초에 / 도대체", "tags": ["副词"],
+    "example": "そもそも、この計画自体に無理がある。\nそもそも君の言い分が間違っている。\nそもそも彼を知っているのかどうかも怪しい。",
+    "exampleTrans": "说到底，这个计划本身就不切实际。\n本来就是你的说法有问题。\n甚至连他究竟认不认识那个人都很可疑。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412724000,
+    "examples": [
+      {"jp": "そもそも、この計画自体に無理がある。", "cn": "说到底，这个计划本身就不切实际。"},
+      {"jp": "そもそも君の言い分が間違っている。", "cn": "本来就是你的说法有问题。"},
+      {"jp": "そもそも彼を知っているのかどうかも怪しい。", "cn": "甚至连他究竟认不认识那个人都很可疑。"}
+    ]
+  },
+  {
+    "id": "jp_user_451", "word": "一理ある", "reading": "[いちりがある]",
+    "meaning": "短语. 有一定道理", "krMeaning": "일리가 있다", "tags": ["短语"],
+    "example": "彼の言い分にも一理あると思う。\n批判は厳しいが、その指摘には一理ある。\nあの意見には一理あるので、考え直そう。",
+    "exampleTrans": "我认为他的说法也有一定道理。\n批评虽然严厉，但指出的问题确实有一定道理。\n那个意见有一定道理，所以重新考虑一下吧。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412725000,
+    "examples": [
+      {"jp": "彼の言い分にも一理あると思う。", "cn": "我认为他的说法也有一定道理。"},
+      {"jp": "批判は厳しいが、その指摘には一理ある。", "cn": "批评虽然严厉，但指出的问题确实有一定道理。"},
+      {"jp": "あの意見には一理あるので、考え直そう。", "cn": "那个意见有一定道理，所以重新考虑一下吧。"}
+    ]
+  },
+  {
+    "id": "jp_user_452", "word": "前向き", "reading": "[まえむき]",
+    "meaning": "adj. 积极的，乐观的", "krMeaning": "긍정적이다 / 적극적이다", "tags": ["形容动词"],
+    "example": "もっと前向きに考えよう。\n彼はいつも前向きな姿勢で仕事をする。\n前向きな意見を出してほしい。",
+    "exampleTrans": "让我们想得更积极一些吧。\n他工作时总是保持积极的态度。\n希望你能提出积极的意见。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412726000,
+    "examples": [
+      {"jp": "もっと前向きに考えよう。", "cn": "让我们想得更积极一些吧。"},
+      {"jp": "彼はいつも前向きな姿勢で仕事をする。", "cn": "他工作时总是保持积极的态度。"},
+      {"jp": "前向きな意見を出してほしい。", "cn": "希望你能提出积极的意见。"}
+    ]
+  },
+  {
+    "id": "jp_user_453", "word": "疲れる", "reading": "[つかれる]",
+    "meaning": "v. 疲倦，劳累", "krMeaning": "피곤하다 / 지치다", "tags": ["动词"],
+    "example": "長い会議でとても疲れた。\n大勢の人と話すと、どっと疲れる。\n仕事が忙しくて体が疲れている。",
+    "exampleTrans": "开了很久的会，累极了。\n和很多人说话后，会一下子感到很疲惫。\n工作太忙，身体很累。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412727000,
+    "examples": [
+      {"jp": "長い会議でとても疲れた。", "cn": "开了很久的会，累极了。"},
+      {"jp": "大勢の人と話すと、どっと疲れる。", "cn": "和很多人说话后，会一下子感到很疲惫。"},
+      {"jp": "仕事が忙しくて体が疲れている。", "cn": "工作太忙，身体很累。"}
+    ]
+  },
+  {
+    "id": "jp_user_454", "word": "～はさておき", "reading": "[～はさておき]",
+    "meaning": "短语. 暂且不谈……；把……先放在一边", "krMeaning": "…은 제쳐 두고 / …은 차치하고", "tags": ["短语"],
+    "example": "結果はさておき、よく頑張ったね。\n上手か下手かはさておき、まずやってみよう。\n費用のことはさておき、実現できるかが問題だ。",
+    "exampleTrans": "结果暂且不论，你确实很努力了。\n水平高低先放一边，先试试看吧。\n费用先撇开不谈，能否实现才是问题。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412728000,
+    "examples": [
+      {"jp": "結果はさておき、よく頑張ったね。", "cn": "结果暂且不论，你确实很努力了。"},
+      {"jp": "上手か下手かはさておき、まずやってみよう。", "cn": "水平高低先放一边，先试试看吧。"},
+      {"jp": "費用のことはさておき、実現できるかが問題だ。", "cn": "费用先撇开不谈，能否实现才是问题。"}
+    ]
+  },
+  {
+    "id": "jp_user_455", "word": "～はともかく", "reading": "[～はともかく]",
+    "meaning": "短语. 暂且不论……；姑且不说……", "krMeaning": "…은 둘째 치고 / …은 차치하고", "tags": ["短语"],
+    "example": "味はともかく、見た目は最高だ。\n値段はともかく、品質は信頼できる。\n本人はともかく、家族はどう思っているのだろう。",
+    "exampleTrans": "味道姑且不论，外观无可挑剔。\n价格暂且不论，品质值得信赖。\n本人姑且不说，不知道家人是怎么想的。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412729000,
+    "examples": [
+      {"jp": "味はともかく、見た目は最高だ。", "cn": "味道姑且不论，外观无可挑剔。"},
+      {"jp": "値段はともかく、品質は信頼できる。", "cn": "价格暂且不论，品质值得信赖。"},
+      {"jp": "本人はともかく、家族はどう思っているのだろう。", "cn": "本人姑且不说，不知道家人是怎么想的。"}
+    ]
+  },
+  {
+    "id": "jp_user_456", "word": "振り返る", "reading": "[ふりかえる]",
+    "meaning": "v. 回头看；回顾", "krMeaning": "뒤돌아보다 / 되돌아보다", "tags": ["动词"],
+    "example": "後ろを振り返って、誰もいないことを確かめた。\nこれまでの一年を振り返ってみる。\n過去を振り返らず、前に進もう。",
+    "exampleTrans": "回头确认了一下，发现后面没有人。\n回顾一下过去这一年。\n不要回望过去，继续向前走吧。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412730000,
+    "examples": [
+      {"jp": "後ろを振り返って、誰もいないことを確かめた。", "cn": "回头确认了一下，发现后面没有人。"},
+      {"jp": "これまでの一年を振り返ってみる。", "cn": "回顾一下过去这一年。"},
+      {"jp": "過去を振り返らず、前に進もう。", "cn": "不要回望过去，继续向前走吧。"}
+    ]
+  },
+  {
+    "id": "jp_user_457", "word": "泣く", "reading": "[なく]",
+    "meaning": "v. 哭，哭泣", "krMeaning": "울다", "tags": ["动词"],
+    "example": "悲しくて思わず泣いてしまった。\n映画が感動的で、泣いている人が多かった。\n悔しくて声を出して泣いた。",
+    "exampleTrans": "因为难过，忍不住哭了出来。\n电影很感人，很多人都哭了。\n因为不甘心，放声哭了出来。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412731000,
+    "examples": [
+      {"jp": "悲しくて思わず泣いてしまった。", "cn": "因为难过，忍不住哭了出来。"},
+      {"jp": "映画が感動的で、泣いている人が多かった。", "cn": "电影很感人，很多人都哭了。"},
+      {"jp": "悔しくて声を出して泣いた。", "cn": "因为不甘心，放声哭了出来。"}
+    ]
+  },
+  {
+    "id": "jp_user_458", "word": "しか", "reading": "[しか]",
+    "meaning": "助词. 只，仅（后接否定形式）", "krMeaning": "밖에", "tags": ["助词"],
+    "example": "今のところ、それしか方法がない。\n彼にはあなたしか頼れる人がいない。\n会議には一人しか来なかった。",
+    "exampleTrans": "目前只有那一个办法。\n他能够依靠的人只有你。\n会议只来了一个人。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412732000,
+    "examples": [
+      {"jp": "今のところ、それしか方法がない。", "cn": "目前只有那一个办法。"},
+      {"jp": "彼にはあなたしか頼れる人がいない。", "cn": "他能够依靠的人只有你。"},
+      {"jp": "会議には一人しか来なかった。", "cn": "会议只来了一个人。"}
+    ]
+  },
+  {
+    "id": "jp_user_459", "word": "かどうか", "reading": "[かどうか]",
+    "meaning": "语法. 是否……；是不是……", "krMeaning": "…(으)ㄴ/는지 / …인지", "tags": ["语法"],
+    "notes": "接续：普通形＋かどうか。名词和形容动词通常直接接「かどうか」，不加「だ」。",
+    "example": "彼が参加するかどうか、まだ分かりません。\nこの方法が本当に有効かどうか確認してください。\n買うかどうかは、実物を見てから決めます。",
+    "exampleTrans": "还不知道他是否参加。\n请确认这个方法是否真的有效。\n要不要买，等看过实物后再决定。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412733000,
+    "examples": [
+      {"jp": "彼が参加するかどうか、まだ分かりません。", "cn": "还不知道他是否参加。"},
+      {"jp": "この方法が本当に有効かどうか確認してください。", "cn": "请确认这个方法是否真的有效。"},
+      {"jp": "買うかどうかは、実物を見てから決めます。", "cn": "要不要买，等看过实物后再决定。"}
+    ]
+  },
+  {
+    "id": "jp_user_460", "word": "かもしれない", "reading": "[かもしれない]",
+    "meaning": "语法. 也许……；可能……", "krMeaning": "…(으)ㄹ지도 모르다", "tags": ["语法"],
+    "notes": "接续：普通形＋かもしれない。名词和形容动词接续时去掉「だ」；礼貌形式为「かもしれません」。",
+    "example": "明日は雨が降るかもしれない。\n彼はもう帰ったかもしれない。\nこの話は本当ではないかもしれない。",
+    "exampleTrans": "明天可能会下雨。\n他也许已经回去了。\n这件事可能不是真的。",
+    "mastered": false, "reviewCount": 0, "createdAt": 1786412734000,
+    "examples": [
+      {"jp": "明日は雨が降るかもしれない。", "cn": "明天可能会下雨。"},
+      {"jp": "彼はもう帰ったかもしれない。", "cn": "他也许已经回去了。"},
+      {"jp": "この話は本当ではないかもしれない。", "cn": "这件事可能不是真的。"}
+    ]
   }
 ];
 
@@ -32785,12 +33128,26 @@ document.addEventListener('DOMContentLoaded', () => {
           { id: 'jp_user_442', word: '立場', reading: '[たちば]', meaning: 'n. 立场；处境；身份，地位', krMeaning: '입장 / 처지 / 지위', tags: ['名词'], notes: '常用搭配：立場に立つ（站在……的立场）；立場がない（无地自容）', mastered: false, reviewCount: 0, createdAt: 1786320011000 }
         );
 
+        fallbackWords.push(
+          { id: 'jp_user_443', word: '探る', reading: '[さぐる]', meaning: 'v. 探寻，调查；摸索；试探', krMeaning: '살피다 / 탐색하다 / 떠보다', tags: ['动词'], notes: '常用搭配：原因を探る（探究原因）；手探りで進む（摸索前进）；反応を探る（试探反应）。', example: '事故の原因を詳しく探っている。\n相手の反応を探りながら話を進めた。\n彼は暗闇の中で手探りでスイッチを探った。', exampleTrans: '正在详细调查事故原因。\n我一边试探对方的反应，一边继续交谈。\n他在黑暗中用手摸索着寻找开关。', examples: [{ jp: '事故の原因を詳しく探っている。', cn: '正在详细调查事故原因。' }, { jp: '相手の反応を探りながら話を進めた。', cn: '我一边试探对方的反应，一边继续交谈。' }, { jp: '彼は暗闇の中で手探りでスイッチを探った。', cn: '他在黑暗中用手摸索着寻找开关。' }], mastered: false, reviewCount: 0, createdAt: 1786320012000 },
+          { id: 'jp_user_444', word: '抑える', reading: '[おさえる]', meaning: 'v. 抑制，控制，压住；控制在一定范围内', krMeaning: '억누르다 / 억제하다 / 줄이다', tags: ['动词'], notes: '常用搭配：感情を抑える（克制感情）；出費を抑える（控制开支）；声を抑える（压低声音）。', example: '痛みを抑えるために薬を飲んだ。\n怒りを抑えて冷静に話し合った。\n今月は出費をできるだけ抑えたい。', exampleTrans: '为了缓解疼痛吃了药。\n我压住怒气，冷静地进行了沟通。\n这个月想尽量控制开支。', examples: [{ jp: '痛みを抑えるために薬を飲んだ。', cn: '为了缓解疼痛吃了药。' }, { jp: '怒りを抑えて冷静に話し合った。', cn: '我压住怒气，冷静地进行了沟通。' }, { jp: '今月は出費をできるだけ抑えたい。', cn: '这个月想尽量控制开支。' }], mastered: false, reviewCount: 0, createdAt: 1786320013000 },
+          { id: 'jp_user_445', word: '控える', reading: '[ひかえる]', meaning: 'v. 节制，避免；等候；临近，面临', krMeaning: '삼가다 / 대기하다 / 앞두다', tags: ['动词'], notes: '常用搭配：甘い物を控える（少吃甜食）；出番を控える（等候出场）；試験を控える（临近考试）。', example: '健康のために塩分を控えている。\n出演者たちは舞台の袖で出番を控えていた。\n来週に大事な試験を控えている。', exampleTrans: '为了健康，我正在控制盐分摄入。\n演员们正在舞台侧面等候出场。\n下周就要迎来一场重要考试。', examples: [{ jp: '健康のために塩分を控えている。', cn: '为了健康，我正在控制盐分摄入。' }, { jp: '出演者たちは舞台の袖で出番を控えていた。', cn: '演员们正在舞台侧面等候出场。' }, { jp: '来週に大事な試験を控えている。', cn: '下周就要迎来一场重要考试。' }], mastered: false, reviewCount: 0, createdAt: 1786320014000 },
+          { id: 'jp_user_446', word: '流す', reading: '[ながす]', meaning: 'v. 使流动，冲洗；流下；播放；散布', krMeaning: '흘리다 / 씻어 내다 / 틀다 / 퍼뜨리다', tags: ['动词'], notes: '常用搭配：水を流す（放水）；涙を流す（流泪）；音楽を流す（播放音乐）；噂を流す（散布传闻）。', example: '蛇口から水を流して汚れを洗い落とした。\n彼女は悔しそうに涙を流した。\n店内では静かな音楽を流している。\n誰かが根拠のない噂を流した。', exampleTrans: '打开水龙头放水，把污渍冲洗掉了。\n她不甘心地流下了眼泪。\n店里播放着安静的音乐。\n有人散布了毫无根据的传闻。', examples: [{ jp: '蛇口から水を流して汚れを洗い落とした。', cn: '打开水龙头放水，把污渍冲洗掉了。' }, { jp: '彼女は悔しそうに涙を流した。', cn: '她不甘心地流下了眼泪。' }, { jp: '店内では静かな音楽を流している。', cn: '店里播放着安静的音乐。' }, { jp: '誰かが根拠のない噂を流した。', cn: '有人散布了毫无根据的传闻。' }], mastered: false, reviewCount: 0, createdAt: 1786320015000 }
+        );
+
+        fallbackWords.push(...window.JP_NOTE_ADDITIONS.map(function(item) {
+          return Object.assign({}, item, {
+            tags: item.tags.slice(),
+            examples: item.examples.map(function(example) { return Object.assign({}, example); })
+          });
+        }));
+
         applyJpContentRepairs(fallbackWords);
         // Immediate DOM render if app failed or is loading
         window.addEventListener('DOMContentLoaded', function() {
           var listContainer = document.getElementById('wordList');
           if (listContainer && (!listContainer.children || listContainer.children.length === 0)) {
-            console.log("Executing fail-safe DOM hard-render for 442 cards...");
+            console.log("Executing fail-safe DOM hard-render for 460 cards...");
             if (window.app && window.app.words && window.app.words.length > 0) {
               window.app.renderWordList();
             } else {
