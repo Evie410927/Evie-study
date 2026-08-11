@@ -12,3 +12,9 @@ latest_vocab_backup.eml
 
 # 历史临时脚本
 scratch property_var.py
+
+# 旧版独立应用源码（已废弃，不再纳入版本控制）
+app.js
+styles.css
+standalone_vocab.html
+manifest.json
