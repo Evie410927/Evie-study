@@ -268,6 +268,27 @@ class VocabAppTester:
         self.assert_true(on_page_jump_change_method, f"[{lang_name}] 分页-onPageJumpChange 显式方法与跳页滚动", "类中缺少 onPageJumpChange 方法或未触发 renderWordList")
 
         # ---------------------------------------------------------------------
+        # 测试点 10.5: 主列表排序=创建时间近→远/远→近双选项 (Creation Time Sort Options)
+        # ---------------------------------------------------------------------
+        created_sort_options = 'value="createdDesc" selected>创建时间: 近 → 远<' in content and 'value="createdAsc">创建时间: 远 → 近<' in content
+        self.assert_true(created_sort_options, f"[{lang_name}] 排序-创建时间近→远(默认)/远→近双选项", "sortRatingSelect 缺少 createdDesc/createdAsc 选项")
+
+        legacy_sort_options_removed = 'value="default">默认排序<' not in content
+        self.assert_true(legacy_sort_options_removed, f"[{lang_name}] 排序-旧默认排序/星级选项退出主列表", "主列表下拉框仍残留 默认排序 选项")
+
+        rating_sort_init_created = "this.ratingSort = 'createdDesc'" in content
+        self.assert_true(rating_sort_init_created, f"[{lang_name}] 排序-ratingSort 默认初始化为 createdDesc", "构造函数中 ratingSort 未默认设置为 createdDesc")
+
+        created_sort_method = 'sortWordsByCreatedAt(items, direction)' in content
+        self.assert_true(created_sort_method, f"[{lang_name}] 排序-sortWordsByCreatedAt 方法存在", "类中缺少 sortWordsByCreatedAt 排序方法")
+
+        created_sort_guard = "value === 'createdAsc' || value === 'createdDesc'" in content
+        self.assert_true(created_sort_guard, f"[{lang_name}] 排序-onRatingSortChange 合法值护栏", "onRatingSortChange 缺少 createdAsc/createdDesc 合法值校验")
+
+        created_sort_branch = "this.ratingSort === 'createdAsc' || this.ratingSort === 'createdDesc'" in content
+        self.assert_true(created_sort_branch, f"[{lang_name}] 排序-renderWordList 创建时间分支联动", "renderWordList 缺少 createdAsc/createdDesc 排序分支")
+
+        # ---------------------------------------------------------------------
         # 测试点 11: bindEvents 事件绑定初始化与语法声明校验 (Event Binding Initialization)
         # ---------------------------------------------------------------------
         bind_events_called = 'this.bindEvents()' in content
