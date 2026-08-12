@@ -2038,8 +2038,11 @@ body::-webkit-scrollbar,
             </div>
           </div>
           <div class="page-size-select-box">
-            <select id="ratingSortSelect" class="page-size-select rating-sort-select" onchange="if(window.app) window.app.onRatingSortChange(this.value)" title="按创建时间排列词库卡片">
-              <option value="createdDesc" selected>近 → 远</option>
+            <select id="ratingSortSelect" class="page-size-select rating-sort-select" onchange="if(window.app) window.app.onRatingSortChange(this.value)" title="排列词库卡片顺序">
+              <option value="default">默认排序</option>
+              <option value="desc" selected>五星 → 无星</option>
+              <option value="asc">无星 → 五星</option>
+              <option value="createdDesc">近 → 远</option>
               <option value="createdAsc">远 → 近</option>
             </select>
             <span>每页:</span>
@@ -5920,7 +5923,7 @@ class JpVocabApp {
     this.selectedTags = new Set();
     this.currentPage = 1;
     this.pageSize = 20;
-    this.ratingSort = 'createdDesc';
+    this.ratingSort = 'desc';
     this.reviewRatingSort = 'default';
     this.init();
   }
@@ -6135,7 +6138,8 @@ class JpVocabApp {
   }
 
   onRatingSortChange(value) {
-    this.ratingSort = value === 'createdAsc' || value === 'createdDesc' ? value : 'createdDesc';
+    const allowedSorts = ['default', 'asc', 'desc', 'createdAsc', 'createdDesc'];
+    this.ratingSort = allowedSorts.includes(value) ? value : 'desc';
     this.currentPage = 1;
     this.renderWordList();
     this.scrollToFirstCard();

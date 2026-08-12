@@ -268,28 +268,41 @@ class VocabAppTester:
         self.assert_true(on_page_jump_change_method, f"[{lang_name}] 分页-onPageJumpChange 显式方法与跳页滚动", "类中缺少 onPageJumpChange 方法或未触发 renderWordList")
 
         # ---------------------------------------------------------------------
-        # 测试点 10.5: 主列表排序=创建时间近→远/远→近双选项 (Creation Time Sort Options)
+        # 测试点 10.5: 主列表排序=默认/五星→无星/无星→五星 + 创建时间近→远/远→近
+        #              (回归: 星级升降排序曾被误删, 用户要求维持原星级排序)
         # ---------------------------------------------------------------------
-        created_sort_options = 'value="createdDesc" selected>近 → 远<' in content and 'value="createdAsc">远 → 近<' in content
-        self.assert_true(created_sort_options, f"[{lang_name}] 排序-精简文案近→远(默认)/远→近双选项", "sortRatingSelect 缺少 createdDesc/createdAsc 精简文案选项")
+        star_sort_options_present = ('value="default">默认排序<' in content
+            and 'value="desc" selected>五星 → 无星<' in content
+            and 'value="asc">无星 → 五星<' in content)
+        self.assert_true(star_sort_options_present, f"[{lang_name}] 排序-星级升降三选项齐全且默认五星→无星", "主列表下拉框星级排序三选项缺失或 selected 未落在 五星→无星 上")
+
+        star_sort_default_selected = 'value="desc" selected>五星 → 无星<' in content
+        self.assert_true(star_sort_default_selected, f"[{lang_name}] 排序-默认选中五星→无星(星级降序)", "selected 未默认设置在 value=\"desc\" 五星→无星 选项上")
+
+        created_sort_options = 'value="createdDesc">近 → 远<' in content and 'value="createdAsc">远 → 近<' in content
+        self.assert_true(created_sort_options, f"[{lang_name}] 排序-创建时间近→远/远→近两选项保留(不再 selected)", "sortRatingSelect 创建时间 createdDesc/createdAsc 选项缺失或仍被误标 selected")
 
         created_sort_prefix_removed = '创建时间:' not in content
         self.assert_true(created_sort_prefix_removed, f"[{lang_name}] 排序-下拉框移除前缀防文案截断", "主列表排序下拉框仍残留“创建时间:”前缀，112px 限宽下文案会被截断")
 
-        legacy_sort_options_removed = 'value="default">默认排序<' not in content
-        self.assert_true(legacy_sort_options_removed, f"[{lang_name}] 排序-旧默认排序/星级选项退出主列表", "主列表下拉框仍残留 默认排序 选项")
+        rating_sort_init_desc = "this.ratingSort = 'desc'" in content
+        self.assert_true(rating_sort_init_desc, f"[{lang_name}] 排序-ratingSort 默认初始化为 desc(五星→无星)", "构造函数中 ratingSort 未默认设置为 desc")
 
-        rating_sort_init_created = "this.ratingSort = 'createdDesc'" in content
-        self.assert_true(rating_sort_init_created, f"[{lang_name}] 排序-ratingSort 默认初始化为 createdDesc", "构造函数中 ratingSort 未默认设置为 createdDesc")
+        star_sort_method = 'sortWordsByRating(items, direction)' in content
+        self.assert_true(star_sort_method, f"[{lang_name}] 排序-sortWordsByRating 星级排序方法存在", "类中缺少 sortWordsByRating 星级排序方法")
 
         created_sort_method = 'sortWordsByCreatedAt(items, direction)' in content
         self.assert_true(created_sort_method, f"[{lang_name}] 排序-sortWordsByCreatedAt 方法存在", "类中缺少 sortWordsByCreatedAt 排序方法")
 
-        created_sort_guard = "value === 'createdAsc' || value === 'createdDesc'" in content
-        self.assert_true(created_sort_guard, f"[{lang_name}] 排序-onRatingSortChange 合法值护栏", "onRatingSortChange 缺少 createdAsc/createdDesc 合法值校验")
+        rating_sort_guard = ("allowedSorts = ['default', 'asc', 'desc', 'createdAsc', 'createdDesc']" in content
+            and "allowedSorts.includes(value) ? value : 'desc'" in content)
+        self.assert_true(rating_sort_guard, f"[{lang_name}] 排序-onRatingSortChange 五值合法护栏(默认回落 desc)", "onRatingSortChange 缺少五值 allowedSorts 护栏或默认回落 desc 逻辑")
 
         created_sort_branch = "this.ratingSort === 'createdAsc' || this.ratingSort === 'createdDesc'" in content
         self.assert_true(created_sort_branch, f"[{lang_name}] 排序-renderWordList 创建时间分支联动", "renderWordList 缺少 createdAsc/createdDesc 排序分支")
+
+        star_sort_branch = 'sortWordsByRating(filtered, this.ratingSort)' in content
+        self.assert_true(star_sort_branch, f"[{lang_name}] 排序-renderWordList 星级排序分支联动", "renderWordList 缺少 sortWordsByRating 星级排序分发")
 
         # ---------------------------------------------------------------------
         # 测试点 11: bindEvents 事件绑定初始化与语法声明校验 (Event Binding Initialization)
