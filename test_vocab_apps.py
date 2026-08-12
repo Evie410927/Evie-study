@@ -588,13 +588,22 @@ class VocabAppTester:
         self.assert_true(similar_word_manual_controls, f"[{lang_name}] 相近表达-标题＋库内搜索添加与卡片右上角×删除控件完整", "相近表达 Panel 缺少＋搜索添加、×删除或双视图刷新 API")
 
         similar_word_persistence = all(token in content for token in (
+            'autoSimilarWordIds',
             'manualSimilarWordIds',
             'hiddenSimilarWordIds',
             'this.saveData()',
-            'hiddenIds.has(String(w.id))',
-            'manualWords.concat(',
+            'calculateAutomaticSimilarWords(',
+            'return automaticWords.concat(manualWords)',
         ))
-        self.assert_true(similar_word_persistence, f"[{lang_name}] 相近表达-人工添加优先与删除隐藏关系持久化", "人工相近词或隐藏词 ID 未写入词条数据，刷新后可能丢失或被算法重新推荐")
+        self.assert_true(similar_word_persistence, f"[{lang_name}] 相近表达-固定三条自动快照、删除不补位与人工不限量持久化", "缺少自动推荐快照或人工/隐藏关系字段，删除后可能继续从候选池补位")
+
+        fixed_auto_snapshot = all(token in content for token in (
+            'newWord.autoSimilarWordIds = this.calculateAutomaticSimilarWords(newWord, 3)',
+            'if (!Array.isArray(targetWord.autoSimilarWordIds))',
+            'targetWord.autoSimilarWordIds',
+            'return automaticWords.concat(manualWords);',
+        )) and 'const automaticLimit = Math.max(0, limit - manualWords.length)' not in content
+        self.assert_true(fixed_auto_snapshot, f"[{lang_name}] 相近表达-新词仅初始化三张自动卡且删除后绝不动态补位", "仍存在按 limit 动态补足三张卡的旧逻辑，删除一张后会冒出新候选")
 
         similar_word_search_scope = "[word.word, word.reading, word.meaning].some" in content and ".slice(0, 20)" in content
         self.assert_true(similar_word_search_scope, f"[{lang_name}] 相近表达-添加搜索仅匹配当前词库的词条/读音/释义", "相近表达搜索未限制为当前 this.words，或错误纳入例句/标签/笔记字段")
@@ -1371,10 +1380,17 @@ class VocabAppTester:
 
             similar_manual_crud = driver.execute_script("""
                 const app = window.app;
-                const source = app.words.find(word => app.getSimilarWords(word, 1).length > 0) || app.words[0];
-                const initial = source && app.getSimilarWords(source, 3)[0];
-                const addTarget = source && app.words.find(word => word && word.id !== source.id && (!initial || word.id !== initial.id));
-                if (!source || !initial || !addTarget) return null;
+                const source = app.words[0];
+                const candidates = app.words.filter(word => word && source && word.id !== source.id).slice(0, 8);
+                if (!source || candidates.length < 7) return null;
+                const originalAuto = source.autoSimilarWordIds;
+                const originalManual = source.manualSimilarWordIds;
+                const originalHidden = source.hiddenSimilarWordIds;
+                source.autoSimilarWordIds = candidates.slice(0, 3).map(word => String(word.id));
+                source.manualSimilarWordIds = [];
+                source.hiddenSimilarWordIds = [];
+                const initial = candidates[0];
+                const addTargets = candidates.slice(3, 7);
                 app.showDetailModal(source.id);
                 const panel = document.querySelector('#detailSimilarBlock .similar-words-container');
                 const addButton = panel && panel.querySelector('.similar-panel-add-btn');
@@ -1383,31 +1399,40 @@ class VocabAppTester:
                 addButton.click();
                 const picker = panel.querySelector('.similar-word-picker');
                 const input = panel.querySelector('.similar-word-search-input');
-                input.value = addTarget.word;
+                input.value = addTargets[0].word;
                 input.dispatchEvent(new Event('input', { bubbles: true }));
-                const hasLibraryResult = Array.from(panel.querySelectorAll('.similar-word-search-result strong')).some(node => node.textContent === addTarget.word);
-                app.addSimilarWord(source.id, addTarget.id);
-                const addedPersisted = (source.manualSimilarWordIds || []).map(String).includes(String(addTarget.id));
-                const addedVisible = app.getSimilarWords(source, 3).some(word => word.id === addTarget.id);
-                app.removeSimilarWord(source.id, addTarget.id);
-                const hiddenPersisted = (source.hiddenSimilarWordIds || []).map(String).includes(String(addTarget.id));
-                const removedInvisible = !app.getSimilarWords(source, 3).some(word => word.id === addTarget.id);
-                source.manualSimilarWordIds = (source.manualSimilarWordIds || []).filter(id => String(id) !== String(addTarget.id));
-                source.hiddenSimilarWordIds = (source.hiddenSimilarWordIds || []).filter(id => String(id) !== String(addTarget.id));
+                const hasLibraryResult = Array.from(panel.querySelectorAll('.similar-word-search-result strong')).some(node => node.textContent === addTargets[0].word);
+                const beforeDeleteCount = app.getSimilarWords(source, 3).length;
+                app.removeSimilarWord(source.id, initial.id);
+                const afterDeleteIds = app.getSimilarWords(source, 3).map(word => String(word.id));
+                const afterRepeatedReadIds = app.getSimilarWords(source, 3).map(word => String(word.id));
+                const deleteLeavesGap = beforeDeleteCount === 3 && afterDeleteIds.length === 2;
+                const noAutomaticRefill = JSON.stringify(afterDeleteIds) === JSON.stringify(afterRepeatedReadIds) && !afterDeleteIds.includes(String(initial.id));
+                addTargets.forEach(word => app.addSimilarWord(source.id, word.id));
+                const afterUnlimitedAdd = app.getSimilarWords(source, 3);
+                const addedPersisted = addTargets.every(word => (source.manualSimilarWordIds || []).map(String).includes(String(word.id)));
+                const addedVisible = addTargets.every(word => afterUnlimitedAdd.some(item => item.id === word.id));
+                const manualUnlimited = afterUnlimitedAdd.length === 6;
+                const hiddenPersisted = (source.hiddenSimilarWordIds || []).map(String).includes(String(initial.id));
+                if (originalAuto === undefined) delete source.autoSimilarWordIds; else source.autoSimilarWordIds = originalAuto;
+                if (originalManual === undefined) delete source.manualSimilarWordIds; else source.manualSimilarWordIds = originalManual;
+                if (originalHidden === undefined) delete source.hiddenSimilarWordIds; else source.hiddenSimilarWordIds = originalHidden;
                 app.saveData();
                 app.refreshSimilarWordPanels(source.id);
                 return {
                   pickerOpened: !!picker && picker.classList.contains('active'),
                   hasLibraryResult,
+                  deleteLeavesGap,
+                  noAutomaticRefill,
                   addedPersisted,
                   addedVisible,
+                  manualUnlimited,
                   hiddenPersisted,
-                  removedInvisible
                 };
             """)
             self.assert_true(
                 bool(similar_manual_crud and all(similar_manual_crud.values())),
-                f"[{lang_name}] 浏览器相近表达-＋展开库内搜索、人工添加、×删除及持久隐藏全流程",
+                f"[{lang_name}] 浏览器相近表达-删除留空不补位、＋库内搜索及人工添加不限量全流程",
                 f"相近表达手动增删真实交互失败: {similar_manual_crud}",
             )
 

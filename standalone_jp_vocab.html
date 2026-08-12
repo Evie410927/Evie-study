@@ -6712,15 +6712,8 @@ class JpVocabApp {
   }
 
   
-  getSimilarWords(targetWord, limit = 3) {
+  calculateAutomaticSimilarWords(targetWord, limit = 3) {
     if (!targetWord || !this.words || this.words.length <= 1) return [];
-
-    const manualIds = Array.isArray(targetWord.manualSimilarWordIds) ? targetWord.manualSimilarWordIds.map(String) : [];
-    const hiddenIds = new Set(Array.isArray(targetWord.hiddenSimilarWordIds) ? targetWord.hiddenSimilarWordIds.map(String) : []);
-    const manualWords = manualIds
-      .map(id => this.words.find(word => String(word.id) === id))
-      .filter(word => word && word.id !== targetWord.id && !hiddenIds.has(String(word.id)));
-    const manualIdSet = new Set(manualWords.map(word => String(word.id)));
 
     const targetMeaningClean = targetWord.meaning.replace(/^(v|n|adj|adv|短语|惯用句|句型|语法|短語|慣用句)\.\s*/i, '');
     const keywords = targetMeaningClean.split(/[,，；;\s/]/).map(k => k.trim()).filter(k => k.length >= 1);
@@ -6730,7 +6723,6 @@ class JpVocabApp {
 
     this.words.forEach(w => {
       if (w.id === targetWord.id || w.word === targetWord.word) return;
-      if (hiddenIds.has(String(w.id)) || manualIdSet.has(String(w.id))) return;
 
       let score = 0;
       const wMeaningClean = w.meaning.replace(/^(v|n|adj|adv|短语|惯用句|句型|语法|短語|慣用句)\.\s*/i, '');
@@ -6758,14 +6750,34 @@ class JpVocabApp {
         score += 50;
       }
 
-      if (score > 0) {
-        scoredWords.push({ word: w, score });
-      }
+      scoredWords.push({ word: w, score });
     });
 
     scoredWords.sort((a, b) => b.score - a.score);
-    const automaticLimit = Math.max(0, limit - manualWords.length);
-    return manualWords.concat(scoredWords.slice(0, automaticLimit).map(item => item.word));
+    return scoredWords.slice(0, limit).map(item => item.word);
+  }
+
+  getSimilarWords(targetWord, limit = 3) {
+    if (!targetWord || !this.words || this.words.length <= 1) return [];
+
+    // The automatic recommendations are a one-time snapshot. Deleting one must
+    // leave the slot empty instead of pulling another candidate from the pool.
+    if (!Array.isArray(targetWord.autoSimilarWordIds)) {
+      targetWord.autoSimilarWordIds = this.calculateAutomaticSimilarWords(targetWord, 3).map(word => String(word.id));
+    }
+    const hiddenIds = new Set(Array.isArray(targetWord.hiddenSimilarWordIds) ? targetWord.hiddenSimilarWordIds.map(String) : []);
+    const automaticWords = targetWord.autoSimilarWordIds
+      .map(id => this.words.find(word => String(word.id) === String(id)))
+      .filter(word => word && word.id !== targetWord.id && !hiddenIds.has(String(word.id)));
+    const automaticIdSet = new Set(automaticWords.map(word => String(word.id)));
+    const manualIds = Array.isArray(targetWord.manualSimilarWordIds) ? targetWord.manualSimilarWordIds.map(String) : [];
+    const manualWords = manualIds
+      .map(id => this.words.find(word => String(word.id) === id))
+      .filter(word => word && word.id !== targetWord.id && !hiddenIds.has(String(word.id)) && !automaticIdSet.has(String(word.id)));
+
+    // Manual additions are deliberately unlimited and are appended after the
+    // remaining automatic snapshot; `limit` is retained for API compatibility.
+    return automaticWords.concat(manualWords);
   }
 
   renderSimilarBlockHtml(similarWords, targetWord) {
@@ -7040,6 +7052,7 @@ class JpVocabApp {
         reviewCount: 0,
         createdAt: Date.now()
       };
+      newWord.autoSimilarWordIds = this.calculateAutomaticSimilarWords(newWord, 3).map(word => String(word.id));
       this.words.unshift(newWord);
       this.showToast('🎉 新日语单词已添加');
     }
