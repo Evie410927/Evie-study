@@ -753,6 +753,9 @@ class VocabAppTester:
         # ---------------------------------------------------------------------
         reading_valid = True
         invalid_reading_id = ""
+        # 发音字段同时禁止残留日语音调圈号 (①-⑳ / ⓪)，用户明确要求去掉这种“奇怪的数字”
+        import re as _re_circled
+        circled_pat = _re_circled.compile(r'[①-⑳⓪]')
         if samples_m:
             try:
                 import json
@@ -763,9 +766,13 @@ class VocabAppTester:
                         reading_valid = False
                         invalid_reading_id = f"ID={item.get('id')} Word={item.get('word')} Reading={r_text}"
                         break
+                    if circled_pat.search(r_text):
+                        reading_valid = False
+                        invalid_reading_id = f"ID={item.get('id')} Word={item.get('word')} Reading={r_text} (含音调圈号)"
+                        break
             except Exception:
                 pass
-        self.assert_true(reading_valid, f"[{lang_name}] 数据集-全量卡片 reading 字段正位且格式规范 [...]", f"发现 reading 缺失或缺少 [...] 括号: {invalid_reading_id}")
+        self.assert_true(reading_valid, f"[{lang_name}] 数据集-全量卡片 reading 字段正位且格式规范 [...] (不含音调圈号)", f"发现 reading 缺失/缺少 [...] 括号/含圈号: {invalid_reading_id}")
 
         # ---------------------------------------------------------------------
         # 测试点 45: 自定义标签行内打字编辑器 (showInlineTagInput 不使用 window.prompt)
