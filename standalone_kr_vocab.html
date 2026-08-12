@@ -2007,9 +2007,9 @@ body::-webkit-scrollbar,
         <div class="list-control-row">
           <div class="filter-pills-group" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
             <div class="filter-pills" id="filterPills">
-<button class="pill-btn active" data-filter="learning" onclick="if(window.app) window.app.setMainFilter('learning', this)">学习中 (<span id="count-learning">698</span>)</button>
+<button class="pill-btn active" data-filter="learning" onclick="if(window.app) window.app.setMainFilter('learning', this)">学习中 (<span id="count-learning">699</span>)</button>
               <button class="pill-btn" data-filter="mastered" onclick="if(window.app) window.app.setMainFilter('mastered', this)">已掌握 (<span id="count-mastered">0</span>)</button>
-<button class="pill-btn" data-filter="all" onclick="if(window.app) window.app.setMainFilter('all', this)">全部 (<span id="count-all">698</span>)</button>
+<button class="pill-btn" data-filter="all" onclick="if(window.app) window.app.setMainFilter('all', this)">全部 (<span id="count-all">699</span>)</button>
             </div>
             <div class="tag-filter-dropdown-wrapper" id="tagDropdownContainer">
               <button id="tagDropdownBtn" class="pill-btn tag-dropdown-btn" onclick="if(window.app) window.app.toggleTagDropdown(event)" title="按标签/Label过滤 (可多选)" style="display: inline-flex; align-items: center; gap: 4px;">
@@ -2024,8 +2024,8 @@ body::-webkit-scrollbar,
           </div>
           <div class="page-size-select-box">
             <select id="ratingSortSelect" class="page-size-select rating-sort-select" onchange="if(window.app) window.app.onRatingSortChange(this.value)" title="按创建时间排列词库卡片">
-              <option value="createdDesc" selected>创建时间: 近 → 远</option>
-              <option value="createdAsc">创建时间: 远 → 近</option>
+              <option value="createdDesc" selected>近 → 远</option>
+              <option value="createdAsc">远 → 近</option>
             </select>
             <span>每页:</span>
             <select id="pageSizeSelect" class="page-size-select" onchange="if(window.app) window.app.onPageSizeChange(this.value)">
@@ -20513,6 +20513,15 @@ class KrVocabApp {
         });
       }
 
+      const targetRelated = Array.isArray(targetWord.relatedWords) ? targetWord.relatedWords : [];
+      if (targetRelated.indexOf(w.word) !== -1) {
+        score += 50;
+      }
+      const wordRelated = Array.isArray(w.relatedWords) ? w.relatedWords : [];
+      if (wordRelated.indexOf(targetWord.word) !== -1) {
+        score += 50;
+      }
+
       if (score > 0) {
         scoredWords.push({ word: w, score });
       }
@@ -37076,6 +37085,7 @@ class KrVocabApp {
     "notes": "Tag分类：#单词",
     "mastered": false,
     "createdAt": 1722852470550,
+    "relatedWords": ["침범하다"],
     "examples": [
       {
         "kr": "범접할 수 없는 카리스마를 발산했다.",
@@ -41123,6 +41133,35 @@ class KrVocabApp {
       {"kr": "학교에서 배운 문법을 실제 회화에서 바로 써먹어 봤다.", "cn": "试着把在学校学的语法直接用到了实际会话中。"},
       {"kr": "그 꼼수는 이미 여러 번 써먹어서 더는 안 통한다.", "cn": "那套把戏已经用过好几次了，再也不灵了。"},
       {"kr": "블로그에 올린 글을 다듬어서 공모전에도 써먹었다.", "cn": "把博客上的文章润色之后，又拿去投了征文比赛。"}
+    ]
+  }
+  ,{
+    "id": "kr_699",
+    "word": "침범하다",
+    "reading": "[침범하다]",
+    "meaning": "v. 侵犯，侵占，侵入",
+    "example": "적군이 우리 영토를 침범했다.\n그는 타인의 사생활을 침범했다.\n이 조약은 주권을 침범하는 것이다.",
+    "exampleTrans": "敌军侵犯了我们的领土。\n他侵犯了他人的私生活。\n这个条约是在侵犯主权。",
+    "tags": [
+      "动词"
+    ],
+    "notes": "침범하다 为及物动词，直接接宾语（如 영토/사생활/권리를 침범하다），侧重客观上的侵占、侵入。범접하다 常接否定（~수 없다/못하다），表\"不容轻易靠近、难以企及\"，多修饰气场/境界/领域。",
+    "mastered": false,
+    "createdAt": 1786500109000,
+    "relatedWords": ["범접하다"],
+    "examples": [
+      {
+        "kr": "적군이 우리 영토를 침범했다.",
+        "cn": "敌军侵犯了我们的领土。"
+      },
+      {
+        "kr": "그는 타인의 사생활을 침범했다.",
+        "cn": "他侵犯了他人的私生活。"
+      },
+      {
+        "kr": "이 조약은 주권을 침범하는 것이다.",
+        "cn": "这个条约是在侵犯主权。"
+      }
     ]
   }
 ];

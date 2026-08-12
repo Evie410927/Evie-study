@@ -270,8 +270,11 @@ class VocabAppTester:
         # ---------------------------------------------------------------------
         # 测试点 10.5: 主列表排序=创建时间近→远/远→近双选项 (Creation Time Sort Options)
         # ---------------------------------------------------------------------
-        created_sort_options = 'value="createdDesc" selected>创建时间: 近 → 远<' in content and 'value="createdAsc">创建时间: 远 → 近<' in content
-        self.assert_true(created_sort_options, f"[{lang_name}] 排序-创建时间近→远(默认)/远→近双选项", "sortRatingSelect 缺少 createdDesc/createdAsc 选项")
+        created_sort_options = 'value="createdDesc" selected>近 → 远<' in content and 'value="createdAsc">远 → 近<' in content
+        self.assert_true(created_sort_options, f"[{lang_name}] 排序-精简文案近→远(默认)/远→近双选项", "sortRatingSelect 缺少 createdDesc/createdAsc 精简文案选项")
+
+        created_sort_prefix_removed = '创建时间:' not in content
+        self.assert_true(created_sort_prefix_removed, f"[{lang_name}] 排序-下拉框移除前缀防文案截断", "主列表排序下拉框仍残留“创建时间:”前缀，112px 限宽下文案会被截断")
 
         legacy_sort_options_removed = 'value="default">默认排序<' not in content
         self.assert_true(legacy_sort_options_removed, f"[{lang_name}] 排序-旧默认排序/星级选项退出主列表", "主列表下拉框仍残留 默认排序 选项")
