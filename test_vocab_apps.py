@@ -576,6 +576,29 @@ class VocabAppTester:
         similar_words_algo = 'getSimilarWords(' in content and 'renderSimilarBlockHtml(' in content and 'similar-word-chip' in content
         self.assert_true(similar_words_algo, f"[{lang_name}] 算法-getSimilarWords 相近表达推荐算法与面板交互防护", "缺少 getSimilarWords 或 renderSimilarBlockHtml 方法")
 
+        similar_word_manual_controls = all(token in content for token in (
+            'class="similar-panel-add-btn"',
+            'class="similar-word-remove-btn"',
+            'toggleSimilarWordPicker(',
+            'searchSimilarWordOptions(',
+            'addSimilarWord(',
+            'removeSimilarWord(',
+            'refreshSimilarWordPanels(',
+        ))
+        self.assert_true(similar_word_manual_controls, f"[{lang_name}] 相近表达-标题＋库内搜索添加与卡片右上角×删除控件完整", "相近表达 Panel 缺少＋搜索添加、×删除或双视图刷新 API")
+
+        similar_word_persistence = all(token in content for token in (
+            'manualSimilarWordIds',
+            'hiddenSimilarWordIds',
+            'this.saveData()',
+            'hiddenIds.has(String(w.id))',
+            'manualWords.concat(',
+        ))
+        self.assert_true(similar_word_persistence, f"[{lang_name}] 相近表达-人工添加优先与删除隐藏关系持久化", "人工相近词或隐藏词 ID 未写入词条数据，刷新后可能丢失或被算法重新推荐")
+
+        similar_word_search_scope = "[word.word, word.reading, word.meaning].some" in content and ".slice(0, 20)" in content
+        self.assert_true(similar_word_search_scope, f"[{lang_name}] 相近表达-添加搜索仅匹配当前词库的词条/读音/释义", "相近表达搜索未限制为当前 this.words，或错误纳入例句/标签/笔记字段")
+
         # ---------------------------------------------------------------------
         # 测试点 32: 复习卡片语义与 Tag 聚类出词算法防护 (clusterBySimilarity)
         # ---------------------------------------------------------------------
@@ -1344,6 +1367,48 @@ class VocabAppTester:
                 detail_modal_active,
                 f"[{lang_name}] 浏览器真实点击-单词卡片打开详情弹窗",
                 "点击第一张 .word-card 后 #detailModal 未进入 active 状态",
+            )
+
+            similar_manual_crud = driver.execute_script("""
+                const app = window.app;
+                const source = app.words.find(word => app.getSimilarWords(word, 1).length > 0) || app.words[0];
+                const initial = source && app.getSimilarWords(source, 3)[0];
+                const addTarget = source && app.words.find(word => word && word.id !== source.id && (!initial || word.id !== initial.id));
+                if (!source || !initial || !addTarget) return null;
+                app.showDetailModal(source.id);
+                const panel = document.querySelector('#detailSimilarBlock .similar-words-container');
+                const addButton = panel && panel.querySelector('.similar-panel-add-btn');
+                const removeButton = panel && panel.querySelector('.similar-word-remove-btn');
+                if (!panel || !addButton || !removeButton) return null;
+                addButton.click();
+                const picker = panel.querySelector('.similar-word-picker');
+                const input = panel.querySelector('.similar-word-search-input');
+                input.value = addTarget.word;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                const hasLibraryResult = Array.from(panel.querySelectorAll('.similar-word-search-result strong')).some(node => node.textContent === addTarget.word);
+                app.addSimilarWord(source.id, addTarget.id);
+                const addedPersisted = (source.manualSimilarWordIds || []).map(String).includes(String(addTarget.id));
+                const addedVisible = app.getSimilarWords(source, 3).some(word => word.id === addTarget.id);
+                app.removeSimilarWord(source.id, addTarget.id);
+                const hiddenPersisted = (source.hiddenSimilarWordIds || []).map(String).includes(String(addTarget.id));
+                const removedInvisible = !app.getSimilarWords(source, 3).some(word => word.id === addTarget.id);
+                source.manualSimilarWordIds = (source.manualSimilarWordIds || []).filter(id => String(id) !== String(addTarget.id));
+                source.hiddenSimilarWordIds = (source.hiddenSimilarWordIds || []).filter(id => String(id) !== String(addTarget.id));
+                app.saveData();
+                app.refreshSimilarWordPanels(source.id);
+                return {
+                  pickerOpened: !!picker && picker.classList.contains('active'),
+                  hasLibraryResult,
+                  addedPersisted,
+                  addedVisible,
+                  hiddenPersisted,
+                  removedInvisible
+                };
+            """)
+            self.assert_true(
+                bool(similar_manual_crud and all(similar_manual_crud.values())),
+                f"[{lang_name}] 浏览器相近表达-＋展开库内搜索、人工添加、×删除及持久隐藏全流程",
+                f"相近表达手动增删真实交互失败: {similar_manual_crud}",
             )
 
             detail_scroll_reset = driver.execute_script("""
