@@ -268,13 +268,16 @@ class VocabAppTester:
         self.assert_true(on_page_jump_change_method, f"[{lang_name}] 分页-onPageJumpChange 显式方法与跳页滚动", "类中缺少 onPageJumpChange 方法或未触发 renderWordList")
 
         # ---------------------------------------------------------------------
-        # 测试点 10.5: 主列表排序=默认/五星→无星/无星→五星 + 创建时间近→远/远→近
-        #              (回归: 星级升降排序曾被误删, 用户要求维持原星级排序)
+        # 测试点 10.5: 主列表排序=五星→无星/无星→五星 + 创建时间近→远/远→近
+        #              (回归: 星级升降排序曾被误删, 用户要求维持原星级排序;
+        #               用户随后要求删除"默认排序"项, 只保留升降/创建时间四项)
         # ---------------------------------------------------------------------
-        star_sort_options_present = ('value="default">默认排序<' in content
-            and 'value="desc" selected>五星 → 无星<' in content
+        default_sort_option_absent = 'value="default">默认排序<' not in content
+        self.assert_true(default_sort_option_absent, f"[{lang_name}] 排序-默认排序选项已删除(用户需求)", "主列表下拉框仍残留 默认排序 选项, 用户明确要求删除")
+
+        star_sort_options_present = ('value="desc" selected>五星 → 无星<' in content
             and 'value="asc">无星 → 五星<' in content)
-        self.assert_true(star_sort_options_present, f"[{lang_name}] 排序-星级升降三选项齐全且默认五星→无星", "主列表下拉框星级排序三选项缺失或 selected 未落在 五星→无星 上")
+        self.assert_true(star_sort_options_present, f"[{lang_name}] 排序-星级升降两选项齐全且默认五星→无星", "主列表下拉框星级排序两选项缺失或 selected 未落在 五星→无星 上")
 
         star_sort_default_selected = 'value="desc" selected>五星 → 无星<' in content
         self.assert_true(star_sort_default_selected, f"[{lang_name}] 排序-默认选中五星→无星(星级降序)", "selected 未默认设置在 value=\"desc\" 五星→无星 选项上")
@@ -294,9 +297,9 @@ class VocabAppTester:
         created_sort_method = 'sortWordsByCreatedAt(items, direction)' in content
         self.assert_true(created_sort_method, f"[{lang_name}] 排序-sortWordsByCreatedAt 方法存在", "类中缺少 sortWordsByCreatedAt 排序方法")
 
-        rating_sort_guard = ("allowedSorts = ['default', 'asc', 'desc', 'createdAsc', 'createdDesc']" in content
+        rating_sort_guard = ("allowedSorts = ['asc', 'desc', 'createdAsc', 'createdDesc']" in content
             and "allowedSorts.includes(value) ? value : 'desc'" in content)
-        self.assert_true(rating_sort_guard, f"[{lang_name}] 排序-onRatingSortChange 五值合法护栏(默认回落 desc)", "onRatingSortChange 缺少五值 allowedSorts 护栏或默认回落 desc 逻辑")
+        self.assert_true(rating_sort_guard, f"[{lang_name}] 排序-onRatingSortChange 四值合法护栏(默认回落 desc)", "onRatingSortChange 缺少四值 allowedSorts 护栏或默认回落 desc 逻辑")
 
         created_sort_branch = "this.ratingSort === 'createdAsc' || this.ratingSort === 'createdDesc'" in content
         self.assert_true(created_sort_branch, f"[{lang_name}] 排序-renderWordList 创建时间分支联动", "renderWordList 缺少 createdAsc/createdDesc 排序分支")

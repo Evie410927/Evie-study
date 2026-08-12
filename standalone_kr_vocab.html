@@ -2024,7 +2024,6 @@ body::-webkit-scrollbar,
           </div>
           <div class="page-size-select-box">
             <select id="ratingSortSelect" class="page-size-select rating-sort-select" onchange="if(window.app) window.app.onRatingSortChange(this.value)" title="排列词库卡片顺序">
-              <option value="default">默认排序</option>
               <option value="desc" selected>五星 → 无星</option>
               <option value="asc">无星 → 五星</option>
               <option value="createdDesc">近 → 远</option>
@@ -20127,7 +20126,7 @@ class KrVocabApp {
   }
 
   onRatingSortChange(value) {
-    const allowedSorts = ['default', 'asc', 'desc', 'createdAsc', 'createdDesc'];
+    const allowedSorts = ['asc', 'desc', 'createdAsc', 'createdDesc'];
     this.ratingSort = allowedSorts.includes(value) ? value : 'desc';
     this.currentPage = 1;
     this.renderWordList();
