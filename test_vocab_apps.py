@@ -605,6 +605,23 @@ class VocabAppTester:
         )) and 'const automaticLimit = Math.max(0, limit - manualWords.length)' not in content
         self.assert_true(fixed_auto_snapshot, f"[{lang_name}] 相近表达-新词仅初始化三张自动卡且删除后绝不动态补位", "仍存在按 limit 动态补足三张卡的旧逻辑，删除一张后会冒出新候选")
 
+        bidirectional_manual_similarity = all(token in content for token in (
+            'similarWord.manualSimilarWordIds = Array.isArray(similarWord.manualSimilarWordIds)',
+            'similarWord.manualSimilarWordIds.push(String(targetWord.id))',
+            'similarWord.hiddenSimilarWordIds = similarWord.hiddenSimilarWordIds.filter',
+            'this.refreshSimilarWordPanels(similarWord.id)',
+        ))
+        self.assert_true(bidirectional_manual_similarity, f"[{lang_name}] 相近表达-人工添加自动建立并刷新双向持久关联", "A 手动添加 B 时未同步把 A 写入 B 的相近表达关系或未刷新反向视图")
+
+        bidirectional_legacy_migration = all(token in content for token in (
+            'SIMILAR_RELATION_MIGRATION_KEY',
+            'migrateBidirectionalManualSimilarities()',
+            'this.migrateBidirectionalManualSimilarities();',
+            'if (reverseHiddenIds.includes(String(sourceWord.id))) return;',
+            "SafeStorage.setItem(this.SIMILAR_RELATION_MIGRATION_KEY, 'done')",
+        ))
+        self.assert_true(bidirectional_legacy_migration, f"[{lang_name}] 相近表达-已有单向人工关系一次性补齐反向关系且尊重单侧隐藏", "旧数据不会自动迁移为双向关系，或迁移会错误恢复用户已删除的反向卡片")
+
         similar_word_search_scope = "[word.word, word.reading, word.meaning].some" in content and ".slice(0, 20)" in content
         self.assert_true(similar_word_search_scope, f"[{lang_name}] 相近表达-添加搜索仅匹配当前词库的词条/读音/释义", "相近表达搜索未限制为当前 this.words，或错误纳入例句/标签/笔记字段")
 
@@ -1386,11 +1403,17 @@ class VocabAppTester:
                 const originalAuto = source.autoSimilarWordIds;
                 const originalManual = source.manualSimilarWordIds;
                 const originalHidden = source.hiddenSimilarWordIds;
+                const reverseOriginalState = addTargets => addTargets.map(word => ({
+                  word,
+                  manual: word.manualSimilarWordIds,
+                  hidden: word.hiddenSimilarWordIds
+                }));
                 source.autoSimilarWordIds = candidates.slice(0, 3).map(word => String(word.id));
                 source.manualSimilarWordIds = [];
                 source.hiddenSimilarWordIds = [];
                 const initial = candidates[0];
                 const addTargets = candidates.slice(3, 7);
+                const reverseOriginal = reverseOriginalState(addTargets);
                 app.showDetailModal(source.id);
                 const panel = document.querySelector('#detailSimilarBlock .similar-words-container');
                 const addButton = panel && panel.querySelector('.similar-panel-add-btn');
@@ -1413,10 +1436,18 @@ class VocabAppTester:
                 const addedPersisted = addTargets.every(word => (source.manualSimilarWordIds || []).map(String).includes(String(word.id)));
                 const addedVisible = addTargets.every(word => afterUnlimitedAdd.some(item => item.id === word.id));
                 const manualUnlimited = afterUnlimitedAdd.length === 6;
+                const reversePersisted = addTargets.every(word => (word.manualSimilarWordIds || []).map(String).includes(String(source.id)));
+                const reverseVisible = addTargets.every(word => app.getSimilarWords(word, 3).some(item => item.id === source.id));
                 const hiddenPersisted = (source.hiddenSimilarWordIds || []).map(String).includes(String(initial.id));
+                app.removeSimilarWord(source.id, addTargets[0].id);
+                const oneSidedDeletePreservedReverse = app.getSimilarWords(addTargets[0], 3).some(item => item.id === source.id);
                 if (originalAuto === undefined) delete source.autoSimilarWordIds; else source.autoSimilarWordIds = originalAuto;
                 if (originalManual === undefined) delete source.manualSimilarWordIds; else source.manualSimilarWordIds = originalManual;
                 if (originalHidden === undefined) delete source.hiddenSimilarWordIds; else source.hiddenSimilarWordIds = originalHidden;
+                reverseOriginal.forEach(({word, manual, hidden}) => {
+                  if (manual === undefined) delete word.manualSimilarWordIds; else word.manualSimilarWordIds = manual;
+                  if (hidden === undefined) delete word.hiddenSimilarWordIds; else word.hiddenSimilarWordIds = hidden;
+                });
                 app.saveData();
                 app.refreshSimilarWordPanels(source.id);
                 return {
@@ -1427,6 +1458,9 @@ class VocabAppTester:
                   addedPersisted,
                   addedVisible,
                   manualUnlimited,
+                  reversePersisted,
+                  reverseVisible,
+                  oneSidedDeletePreservedReverse,
                   hiddenPersisted,
                 };
             """)

@@ -20000,6 +20000,7 @@ class KrVocabApp {
     this.PENDING_CLOUD_KEY = `${this.STORAGE_KEY}_cloud_pending_v1`;
     this.THEME_KEY = 'evie_kr_vocab_theme';
     this.DELETED_KEY = 'evie_kr_vocab_deleted_v1';
+    this.SIMILAR_RELATION_MIGRATION_KEY = `${this.STORAGE_KEY}_similar_bidirectional_v1`;
     this.words = [];
     this.reviewList = [];
     this.currentReviewIndex = 0;
@@ -20018,7 +20019,7 @@ class KrVocabApp {
     try {
       // Auto purge old obsolete storage keys safely
       SafeStorage.keys().forEach(k => {
-        if (k.startsWith('evie_kr_') && k !== this.STORAGE_KEY && k !== this.PENDING_CLOUD_KEY && k !== this.THEME_KEY && k !== this.DELETED_KEY && k !== SUPABASE_CONFIG.sessionKey) {
+        if (k.startsWith('evie_kr_') && k !== this.STORAGE_KEY && k !== this.PENDING_CLOUD_KEY && k !== this.THEME_KEY && k !== this.DELETED_KEY && k !== this.SIMILAR_RELATION_MIGRATION_KEY && k !== SUPABASE_CONFIG.sessionKey) {
           SafeStorage.removeItem(k);
         }
       });
@@ -20078,7 +20079,39 @@ class KrVocabApp {
         SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
       } catch (e) {}
     }
+    this.migrateBidirectionalManualSimilarities();
     if (this.refreshWordFingerprints) this.refreshWordFingerprints();
+  }
+
+  migrateBidirectionalManualSimilarities() {
+    if (SafeStorage.getItem(this.SIMILAR_RELATION_MIGRATION_KEY) === 'done') return 0;
+    const wordMap = new Map((this.words || []).filter(word => word && word.id).map(word => [String(word.id), word]));
+    const changedIds = new Set();
+    (this.words || []).forEach(sourceWord => {
+      if (!sourceWord || !sourceWord.id || !Array.isArray(sourceWord.manualSimilarWordIds)) return;
+      sourceWord.manualSimilarWordIds.map(String).forEach(targetId => {
+        const targetWord = wordMap.get(targetId);
+        if (!targetWord || targetWord.id === sourceWord.id) return;
+        const reverseHiddenIds = Array.isArray(targetWord.hiddenSimilarWordIds) ? targetWord.hiddenSimilarWordIds.map(String) : [];
+        if (reverseHiddenIds.includes(String(sourceWord.id))) return;
+        targetWord.manualSimilarWordIds = Array.isArray(targetWord.manualSimilarWordIds) ? targetWord.manualSimilarWordIds.map(String) : [];
+        if (!targetWord.manualSimilarWordIds.includes(String(sourceWord.id))) {
+          targetWord.manualSimilarWordIds.push(String(sourceWord.id));
+          changedIds.add(String(targetWord.id));
+        }
+      });
+    });
+    if (changedIds.size > 0) {
+      const migrationTime = Date.now();
+      changedIds.forEach(id => {
+        const word = wordMap.get(id);
+        if (word) word.updatedAt = migrationTime;
+      });
+      SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
+      if (this.markPendingCloudChanges) this.markPendingCloudChanges(Array.from(changedIds), migrationTime);
+    }
+    SafeStorage.setItem(this.SIMILAR_RELATION_MIGRATION_KEY, 'done');
+    return changedIds.size;
   }
 
   saveData() {
@@ -20747,8 +20780,17 @@ class KrVocabApp {
     targetWord.hiddenSimilarWordIds = Array.isArray(targetWord.hiddenSimilarWordIds) ? targetWord.hiddenSimilarWordIds.map(String) : [];
     if (!targetWord.manualSimilarWordIds.includes(String(similarWord.id))) targetWord.manualSimilarWordIds.push(String(similarWord.id));
     targetWord.hiddenSimilarWordIds = targetWord.hiddenSimilarWordIds.filter(id => id !== String(similarWord.id));
+
+    // A manually confirmed similarity is a bidirectional relationship. Persist
+    // the reverse edge as well so the selected word immediately recommends the
+    // current word in its own detail/review panel.
+    similarWord.manualSimilarWordIds = Array.isArray(similarWord.manualSimilarWordIds) ? similarWord.manualSimilarWordIds.map(String) : [];
+    similarWord.hiddenSimilarWordIds = Array.isArray(similarWord.hiddenSimilarWordIds) ? similarWord.hiddenSimilarWordIds.map(String) : [];
+    if (!similarWord.manualSimilarWordIds.includes(String(targetWord.id))) similarWord.manualSimilarWordIds.push(String(targetWord.id));
+    similarWord.hiddenSimilarWordIds = similarWord.hiddenSimilarWordIds.filter(id => id !== String(targetWord.id));
     this.saveData();
     this.refreshSimilarWordPanels(targetWord.id);
+    this.refreshSimilarWordPanels(similarWord.id);
     this.showToast(`✅ 已添加相近表达：${similarWord.word}`);
   }
 
