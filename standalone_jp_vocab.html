@@ -1258,6 +1258,30 @@ body::-webkit-scrollbar,
   cursor: pointer;
 }
 .similar-word-search-result:hover { border-color: var(--accent-primary); }
+.similar-word-search-result:disabled,
+.similar-word-search-result.is-added {
+  cursor: not-allowed;
+  opacity: 0.55;
+  border-color: var(--border-color);
+  background: rgba(255,255,255,0.025);
+}
+.similar-word-search-result:disabled:hover,
+.similar-word-search-result.is-added:hover { border-color: var(--border-color); }
+.similar-word-search-result-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.similar-word-added-badge {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: rgba(255,255,255,0.08);
+  font-size: 11px;
+  font-weight: 700;
+}
 .similar-word-search-hint {
   padding: 6px 2px 2px;
   color: var(--text-muted);
@@ -6891,12 +6915,19 @@ class JpVocabApp {
       if (!word || String(word.id) === String(targetWordId)) return false;
       return [word.word, word.reading, word.meaning].some(value => String(value || '').toLowerCase().includes(query));
     }).slice(0, 20);
-    results.innerHTML = matches.length ? matches.map(word => `
-      <button type="button" class="similar-word-search-result" onclick="event.stopPropagation(); (window.app||window.vocabApp).addSimilarWord('${targetWord.id}', '${word.id}')">
-        <strong>${this.escapeHtml(word.word)}</strong>${word.reading ? ` <span style="color:var(--accent-secondary);">${this.escapeHtml(word.reading)}</span>` : ''}
+    const addedIds = new Set(this.getSimilarWords(targetWord, 3).map(word => String(word.id)));
+    results.innerHTML = matches.length ? matches.map(word => {
+      const isAdded = addedIds.has(String(word.id));
+      return `
+      <button type="button" class="similar-word-search-result${isAdded ? ' is-added' : ''}" ${isAdded ? 'disabled aria-disabled="true"' : `onclick="event.stopPropagation(); (window.app||window.vocabApp).addSimilarWord('${targetWord.id}', '${word.id}')"`}>
+        <div class="similar-word-search-result-row">
+          <span><strong>${this.escapeHtml(word.word)}</strong>${word.reading ? ` <span style="color:var(--accent-secondary);">${this.escapeHtml(word.reading)}</span>` : ''}</span>
+          ${isAdded ? '<span class="similar-word-added-badge">已添加</span>' : ''}
+        </div>
         <div style="margin-top:2px; color:var(--text-secondary); font-size:12px;">${this.escapeHtml(word.meaning)}</div>
       </button>
-    `).join('') : '<div class="similar-word-search-hint">当前词库中没有匹配的单词</div>';
+    `;
+    }).join('') : '<div class="similar-word-search-hint">当前词库中没有匹配的单词</div>';
   }
 
   addSimilarWord(targetWordId, similarWordId) {

@@ -625,6 +625,15 @@ class VocabAppTester:
         similar_word_search_scope = "[word.word, word.reading, word.meaning].some" in content and ".slice(0, 20)" in content
         self.assert_true(similar_word_search_scope, f"[{lang_name}] 相近表达-添加搜索仅匹配当前词库的词条/读音/释义", "相近表达搜索未限制为当前 this.words，或错误纳入例句/标签/笔记字段")
 
+        similar_word_already_added_disabled = all(token in content for token in (
+            '.similar-word-search-result:disabled',
+            'class="similar-word-added-badge">已添加',
+            'const addedIds = new Set(this.getSimilarWords(targetWord, 3)',
+            "disabled aria-disabled=\"true\"",
+            "isAdded ? ' is-added' : ''",
+        ))
+        self.assert_true(similar_word_already_added_disabled, f"[{lang_name}] 相近表达-搜索结果中的已添加词灰化禁用并显示状态", "已存在于当前 Panel 的词仍可在搜索结果中重复点击，或缺少‘已添加’状态提示")
+
         # ---------------------------------------------------------------------
         # 测试点 32: 复习卡片语义与 Tag 聚类出词算法防护 (clusterBySimilarity)
         # ---------------------------------------------------------------------
@@ -1425,6 +1434,11 @@ class VocabAppTester:
                 input.value = addTargets[0].word;
                 input.dispatchEvent(new Event('input', { bubbles: true }));
                 const hasLibraryResult = Array.from(panel.querySelectorAll('.similar-word-search-result strong')).some(node => node.textContent === addTargets[0].word);
+                input.value = initial.word;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                const existingResultButton = Array.from(panel.querySelectorAll('.similar-word-search-result')).find(button => button.querySelector('strong')?.textContent === initial.word);
+                const existingResultDisabled = !!existingResultButton && existingResultButton.disabled && existingResultButton.getAttribute('aria-disabled') === 'true';
+                const existingResultLabeled = !!existingResultButton && existingResultButton.querySelector('.similar-word-added-badge')?.textContent === '已添加';
                 const beforeDeleteCount = app.getSimilarWords(source, 3).length;
                 app.removeSimilarWord(source.id, initial.id);
                 const afterDeleteIds = app.getSimilarWords(source, 3).map(word => String(word.id));
@@ -1453,6 +1467,8 @@ class VocabAppTester:
                 return {
                   pickerOpened: !!picker && picker.classList.contains('active'),
                   hasLibraryResult,
+                  existingResultDisabled,
+                  existingResultLabeled,
                   deleteLeavesGap,
                   noAutomaticRefill,
                   addedPersisted,
