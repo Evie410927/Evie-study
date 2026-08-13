@@ -635,6 +635,21 @@ class VocabAppTester:
         self.assert_true(similar_word_already_added_disabled, f"[{lang_name}] 相近表达-搜索结果中的已添加词灰化禁用并显示状态", "已存在于当前 Panel 的词仍可在搜索结果中重复点击，或缺少‘已添加’状态提示")
 
         # ---------------------------------------------------------------------
+        # 测试点 31A: 相近表达卡片状态按钮位于星级左侧并可同步切换
+        # ---------------------------------------------------------------------
+        similar_word_status_control = all(token in content for token in (
+            'class="similar-word-header-actions"',
+            'class="similar-word-status-btn ${w.mastered',
+            'data-mastered-word-id=',
+            "${w.mastered ? '✅ 已掌握' : '🔄 学习中'}",
+            "this.renderStarRating(w, 'similar-word-rating')",
+            'syncMasteredWidgets(wordId)',
+            'this.syncMasteredWidgets(id);',
+        ))
+        status_before_rating = content.find('class="similar-word-status-btn ${w.mastered') < content.find("this.renderStarRating(w, 'similar-word-rating')")
+        self.assert_true(similar_word_status_control and status_before_rating, f"[{lang_name}] 相近表达-卡片星级左侧显示可切换的学习中/已掌握状态", "相近词卡片缺少状态按钮、未复用星级控件、状态未同步，或状态按钮没有位于星级左侧")
+
+        # ---------------------------------------------------------------------
         # 测试点 32: 复习卡片语义与 Tag 聚类出词算法防护 (clusterBySimilarity)
         # ---------------------------------------------------------------------
         cluster_by_sim = 'clusterBySimilarity(' in content and 'this.clusterBySimilarity(' in content
@@ -1484,6 +1499,39 @@ class VocabAppTester:
                 bool(similar_manual_crud and all(similar_manual_crud.values())),
                 f"[{lang_name}] 浏览器相近表达-删除留空不补位、＋库内搜索及人工添加不限量全流程",
                 f"相近表达手动增删真实交互失败: {similar_manual_crud}",
+            )
+
+            similar_status_toggle = driver.execute_script("""
+                const app = window.app;
+                const source = app.words.find(word => app.getSimilarWords(word, 1).length > 0);
+                const target = source && app.getSimilarWords(source, 1)[0];
+                if (!source || !target) return null;
+                const initialMastered = Boolean(target.mastered);
+                app.showDetailModal(source.id);
+                const chip = Array.from(document.querySelectorAll('#detailSimilarBlock .similar-word-chip')).find(node =>
+                  node.querySelector('.similar-word-text')?.textContent === target.word
+                );
+                const statusButton = chip && chip.querySelector('.similar-word-status-btn');
+                const rating = chip && chip.querySelector('.similar-word-rating');
+                if (!chip || !statusButton || !rating) return null;
+                const statusBeforeRating = statusButton.nextElementSibling === rating;
+                const currentDetailBefore = app.currentDetailWordId;
+                statusButton.click();
+                const toggled = Boolean(target.mastered) === !initialMastered;
+                const textUpdated = statusButton.textContent.trim() === (target.mastered ? '✅ 已掌握' : '🔄 学习中');
+                const ariaUpdated = statusButton.getAttribute('aria-pressed') === (target.mastered ? 'true' : 'false');
+                const clickStayedOnSource = app.currentDetailWordId === currentDetailBefore;
+                const storedWords = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]');
+                const storedTarget = storedWords.find(word => String(word.id) === String(target.id));
+                const persisted = storedTarget && Boolean(storedTarget.mastered) === Boolean(target.mastered);
+                statusButton.click();
+                const restored = Boolean(target.mastered) === initialMastered;
+                return {statusBeforeRating, toggled, textUpdated, ariaUpdated, clickStayedOnSource, persisted, restored};
+            """)
+            self.assert_true(
+                bool(similar_status_toggle and all(similar_status_toggle.values())),
+                f"[{lang_name}] 浏览器相近表达-状态按钮位于星级左侧且点击切换、持久化与原位同步完整",
+                f"相近表达状态切换真实交互失败: {similar_status_toggle}",
             )
 
             detail_scroll_reset = driver.execute_script("""

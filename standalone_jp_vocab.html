@@ -1158,6 +1158,56 @@ body::-webkit-scrollbar,
   align-items: center;
   gap: 6px;
 }
+.similar-word-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  min-width: 0;
+}
+.similar-word-header .similar-word-title {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+.similar-word-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.similar-word-status-btn {
+  min-height: 26px;
+  padding: 3px 7px;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background: var(--bg-input);
+  color: var(--accent-info);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.similar-word-status-btn.status-mastered {
+  border-color: rgba(74, 222, 128, 0.4);
+  color: #86efac;
+}
+.similar-word-status-btn:hover,
+.similar-word-status-btn:focus-visible {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+  outline: none;
+}
+.similar-word-rating {
+  min-height: 26px;
+  padding: 0 2px;
+}
+.similar-word-rating .rating-star {
+  width: 15px;
+  height: 20px;
+  font-size: 16px;
+}
 .similar-word-text {
   font-size: 14px;
   font-weight: 700;
@@ -6320,6 +6370,19 @@ class JpVocabApp {
     });
   }
 
+  syncMasteredWidgets(wordId) {
+    const word = this.words.find(item => String(item.id) === String(wordId));
+    if (!word) return;
+    document.querySelectorAll('[data-mastered-word-id]').forEach(button => {
+      if (String(button.dataset.masteredWordId || '') !== String(wordId)) return;
+      button.classList.toggle('status-mastered', Boolean(word.mastered));
+      button.classList.toggle('status-learning', !word.mastered);
+      button.textContent = word.mastered ? '✅ 已掌握' : '🔄 学习中';
+      button.setAttribute('aria-pressed', word.mastered ? 'true' : 'false');
+      button.setAttribute('title', word.mastered ? '点击切换为学习中' : '点击切换为已掌握');
+    });
+  }
+
   setWordRating(wordId, value, options = {}) {
     const word = this.words.find(item => String(item.id) === String(wordId));
     if (!word) return;
@@ -6849,9 +6912,15 @@ class JpVocabApp {
       return `
         <div class="similar-word-chip" onclick="event.stopPropagation(); (window.app||window.vocabApp).showDetailModal('${w.id}')" style="cursor:pointer; width:100%; box-sizing:border-box; text-align:left;" title="点击查看此相近表达详情">
           <button type="button" class="similar-word-remove-btn" onclick="event.stopPropagation(); (window.app||window.vocabApp).removeSimilarWord('${targetWord.id}', '${w.id}')" aria-label="从当前词的相近表达中删除 ${this.escapeHtml(w.word)}" title="从当前面板删除">×</button>
-          <div class="similar-word-title" style="display:flex; align-items:center; gap:6px;">
-            <span class="similar-word-text" style="font-size:15px; font-weight:700; color:var(--text-primary);">${this.escapeHtml(w.word)}</span>
-            ${cleanReading ? `<span class="similar-word-reading" style="font-size:13px; color:var(--accent-secondary);">[${this.escapeHtml(cleanReading)}]</span>` : ''}
+          <div class="similar-word-header">
+            <div class="similar-word-title">
+              <span class="similar-word-text" style="font-size:15px; font-weight:700; color:var(--text-primary);">${this.escapeHtml(w.word)}</span>
+              ${cleanReading ? `<span class="similar-word-reading" style="font-size:13px; color:var(--accent-secondary);">[${this.escapeHtml(cleanReading)}]</span>` : ''}
+            </div>
+            <div class="similar-word-header-actions">
+              <button type="button" class="similar-word-status-btn ${w.mastered ? 'status-mastered' : 'status-learning'}" data-mastered-word-id="${this.escapeHtml(String(w.id))}" aria-pressed="${w.mastered ? 'true' : 'false'}" onclick="event.stopPropagation(); (window.app||window.vocabApp).toggleMastered('${w.id}')" title="${w.mastered ? '点击切换为学习中' : '点击切换为已掌握'}">${w.mastered ? '✅ 已掌握' : '🔄 学习中'}</button>
+              ${this.renderStarRating(w, 'similar-word-rating')}
+            </div>
           </div>
           <div class="similar-word-meaning" style="font-size:13px; color:var(--text-secondary); margin-top:2px;">
             ${this.escapeHtml(w.meaning)}
@@ -7140,6 +7209,7 @@ class JpVocabApp {
     if (word) {
       word.mastered = !word.mastered;
       this.saveData();
+      this.syncMasteredWidgets(id);
       this.renderWordList();
       this.showToast(word.mastered ? '🌟 已标记为掌握' : '📖 标记为学习中');
     }
