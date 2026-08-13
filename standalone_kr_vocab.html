@@ -2129,9 +2129,9 @@ body::-webkit-scrollbar,
         <div class="list-control-row">
           <div class="filter-pills-group" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
             <div class="filter-pills" id="filterPills">
-<button class="pill-btn active" data-filter="learning" onclick="if(window.app) window.app.setMainFilter('learning', this)">学习中 (<span id="count-learning">717</span>)</button>
+<button class="pill-btn active" data-filter="learning" onclick="if(window.app) window.app.setMainFilter('learning', this)">学习中 (<span id="count-learning">719</span>)</button>
               <button class="pill-btn" data-filter="mastered" onclick="if(window.app) window.app.setMainFilter('mastered', this)">已掌握 (<span id="count-mastered">0</span>)</button>
-<button class="pill-btn" data-filter="all" onclick="if(window.app) window.app.setMainFilter('all', this)">全部 (<span id="count-all">717</span>)</button>
+<button class="pill-btn" data-filter="all" onclick="if(window.app) window.app.setMainFilter('all', this)">全部 (<span id="count-all">719</span>)</button>
             </div>
             <div class="tag-filter-dropdown-wrapper" id="tagDropdownContainer">
               <button id="tagDropdownBtn" class="pill-btn tag-dropdown-btn" onclick="if(window.app) window.app.toggleTagDropdown(event)" title="按标签/Label过滤 (可多选)" style="display: inline-flex; align-items: center; gap: 4px;">
@@ -41755,6 +41755,41 @@ class KrVocabApp {
       {"kr": "찬물을 마셨더니 이가 쏜다.", "cn": "一喝凉水，牙齿就一阵阵刺痛。"}
     ]
   }
+  ,{
+    "id": "kr_718",
+    "word": "단단하다",
+    "reading": "[단단하다]",
+    "meaning": "adj. 坚硬，结实；（身心）坚韧；（组织）牢固",
+    "example": "이 빵은 너무 오래돼서 돌덩이처럼 단단해졌어요.\n운동으로 다진 몸이라 근육이 단단하다.\n실패를 겪으며 그의 심지는 한층 더 단단해졌다.\n팀의 결속이 단단해야 큰 위기도 넘을 수 있다.",
+    "exampleTrans": "这面包放太久了，变得像石头一样硬。\n因为是坚持锻炼出来的身体，肌肉很结实。\n经历失败之后，他的意志变得更加坚韧了。\n团队的凝聚力牢固，才能渡过大的危机。",
+    "tags": ["形容词"],
+    "notes": "형용사. ①물건이 겉으로 딱딱하고 굳다(빵·돌·귤 껍질 등) ②몸이 군살 없이 굳세다 ③마음·심지가 흔들리지 않고 굳다 ④조직·기반이 약해짐 없이 튼실하다. 부사형 단단히(마음을 단단히 먹다=下定决心)도 자주 씀.",
+    "mastered": false,
+    "createdAt": 1786579200005,
+    "examples": [
+      {"kr": "이 빵은 너무 오래돼서 돌덩이처럼 단단해졌어요.", "cn": "这面包放太久了，变得像石头一样硬。"},
+      {"kr": "운동으로 다진 몸이라 근육이 단단하다.", "cn": "因为是坚持锻炼出来的身体，肌肉很结实。"},
+      {"kr": "실패를 겪으며 그의 심지는 한층 더 단단해졌다.", "cn": "经历失败之后，他的意志变得更加坚韧了。"},
+      {"kr": "팀의 결속이 단단해야 큰 위기도 넘을 수 있다.", "cn": "团队的凝聚力牢固，才能渡过大的危机。"}
+    ]
+  }
+  ,{
+    "id": "kr_719",
+    "word": "간파하다",
+    "reading": "[간파하다]",
+    "meaning": "v. 看穿，识破（心思、伎俩与真相）",
+    "example": "상대의 진짜 속셈을 간파한 그는 조용히 자리를 떠났다.\n경찰은 범인의 거짓 알리바이를 단번에 간파했다.\n눈빛만 봐도 아이의 거짓말을 간파하는 게 어머니다.",
+    "exampleTrans": "看穿对方真实的算计后，他默默地离开了座位。\n警察一眼识破了罪犯编造的假不在场证明。\n只看眼神就能识破孩子谎言的，正是母亲。",
+    "tags": ["动词"],
+    "notes": "타동사. '속을 훤히 들여다보아 알아차리다'라는 뜻으로, 상대의 속마음·계략·거짓말·정체처럼 겉으로 드러나지 않는 것을 정확히 꿰뚫어 보는 상황에 씀. 꿰뚫다보다 다소 문어적.",
+    "mastered": false,
+    "createdAt": 1786579200006,
+    "examples": [
+      {"kr": "상대의 진짜 속셈을 간파한 그는 조용히 자리를 떠났다.", "cn": "看穿对方真实的算计后，他默默地离开了座位。"},
+      {"kr": "경찰은 범인의 거짓 알리바이를 단번에 간파했다.", "cn": "警察一眼识破了罪犯编造的假不在场证明。"},
+      {"kr": "눈빛만 봐도 아이의 거짓말을 간파하는 게 어머니다.", "cn": "只看眼神就能识破孩子谎言的，正是母亲。"}
+    ]
+  }
 ];
 
     applyKrContentRepairs(samples);
@@ -61280,6 +61315,41 @@ document.addEventListener('DOMContentLoaded', () => {
       {"kr": "한낮의 햇빛이 창문으로 강렬하게 쏘아 들어온다.", "cn": "正午的阳光强烈地直射进窗户。"},
       {"kr": "오늘 저녁은 내가 쏠게, 마음껏 먹어!", "cn": "今天晚饭我请客，放开吃吧！"},
       {"kr": "찬물을 마셨더니 이가 쏜다.", "cn": "一喝凉水，牙齿就一阵阵刺痛。"}
+    ]
+  }
+  ,{
+    "id": "kr_718",
+    "word": "단단하다",
+    "reading": "[단단하다]",
+    "meaning": "adj. 坚硬，结实；（身心）坚韧；（组织）牢固",
+    "example": "이 빵은 너무 오래돼서 돌덩이처럼 단단해졌어요.\n운동으로 다진 몸이라 근육이 단단하다.\n실패를 겪으며 그의 심지는 한층 더 단단해졌다.\n팀의 결속이 단단해야 큰 위기도 넘을 수 있다.",
+    "exampleTrans": "这面包放太久了，变得像石头一样硬。\n因为是坚持锻炼出来的身体，肌肉很结实。\n经历失败之后，他的意志变得更加坚韧了。\n团队的凝聚力牢固，才能渡过大的危机。",
+    "tags": ["形容词"],
+    "notes": "형용사. ①물건이 겉으로 딱딱하고 굳다(빵·돌·귤 껍질 등) ②몸이 군살 없이 굳세다 ③마음·심지가 흔들리지 않고 굳다 ④조직·기반이 약해짐 없이 튼실하다. 부사형 단단히(마음을 단단히 먹다=下定决心)도 자주 씀.",
+    "mastered": false,
+    "createdAt": 1786579200005,
+    "examples": [
+      {"kr": "이 빵은 너무 오래돼서 돌덩이처럼 단단해졌어요.", "cn": "这面包放太久了，变得像石头一样硬。"},
+      {"kr": "운동으로 다진 몸이라 근육이 단단하다.", "cn": "因为是坚持锻炼出来的身体，肌肉很结实。"},
+      {"kr": "실패를 겪으며 그의 심지는 한층 더 단단해졌다.", "cn": "经历失败之后，他的意志变得更加坚韧了。"},
+      {"kr": "팀의 결속이 단단해야 큰 위기도 넘을 수 있다.", "cn": "团队的凝聚力牢固，才能渡过大的危机。"}
+    ]
+  }
+  ,{
+    "id": "kr_719",
+    "word": "간파하다",
+    "reading": "[간파하다]",
+    "meaning": "v. 看穿，识破（心思、伎俩与真相）",
+    "example": "상대의 진짜 속셈을 간파한 그는 조용히 자리를 떠났다.\n경찰은 범인의 거짓 알리바이를 단번에 간파했다.\n눈빛만 봐도 아이의 거짓말을 간파하는 게 어머니다.",
+    "exampleTrans": "看穿对方真实的算计后，他默默地离开了座位。\n警察一眼识破了罪犯编造的假不在场证明。\n只看眼神就能识破孩子谎言的，正是母亲。",
+    "tags": ["动词"],
+    "notes": "타동사. '속을 훤히 들여다보아 알아차리다'라는 뜻으로, 상대의 속마음·계략·거짓말·정체처럼 겉으로 드러나지 않는 것을 정확히 꿰뚫어 보는 상황에 씀. 꿰뚫다보다 다소 문어적.",
+    "mastered": false,
+    "createdAt": 1786579200006,
+    "examples": [
+      {"kr": "상대의 진짜 속셈을 간파한 그는 조용히 자리를 떠났다.", "cn": "看穿对方真实的算计后，他默默地离开了座位。"},
+      {"kr": "경찰은 범인의 거짓 알리바이를 단번에 간파했다.", "cn": "警察一眼识破了罪犯编造的假不在场证明。"},
+      {"kr": "눈빛만 봐도 아이의 거짓말을 간파하는 게 어머니다.", "cn": "只看眼神就能识破孩子谎言的，正是母亲。"}
     ]
   }
 ];
