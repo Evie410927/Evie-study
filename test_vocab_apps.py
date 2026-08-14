@@ -502,6 +502,35 @@ class VocabAppTester:
         )) and "const tags = existingWord && Array.isArray(existingWord.tags) ? [...existingWord.tags] : ['名词'];" not in content
         self.assert_true(add_only_modal_tag_editor, f"[{lang_name}] 新增弹窗-空白 Tag 编辑器支持增改删且编辑旧词时隐藏", "新增弹窗缺少零默认 Tag 编辑器、增改删方法，或编辑旧词时没有隐藏标签字段/保留原 Tag")
 
+        add_modal_rating_editor = all(token in content for token in (
+            'id="addWordRatingGroup"',
+            'id="modalDraftRating"',
+            'this.editingModalRating = 0;',
+            "addWordRatingGroup.style.display = word ? 'none' : 'block';",
+            'renderModalDraftRating()',
+            'setModalDraftRatingFromPointer(event)',
+            'handleModalDraftRatingKeydown(event)',
+            'rating: draftRating,',
+        ))
+        self.assert_true(add_modal_rating_editor, f"[{lang_name}] 新增弹窗-可点击与键盘编辑星级并随新词保存", "新增弹窗缺少草稿星级控件、交互方法或保存字段")
+
+        add_modal_similar_picker = all(token in content for token in (
+            'id="addWordSimilarGroup"',
+            'id="modalSimilarSearchInput"',
+            'id="modalSimilarSearchResults"',
+            'id="modalSelectedSimilarWords"',
+            'this.editingModalSimilarWordIds = [];',
+            "addWordSimilarGroup.style.display = word ? 'none' : 'block';",
+            'renderModalSelectedSimilarWords()',
+            'searchModalSimilarWordOptions(input)',
+            'addModalSimilarWord(similarWordId)',
+            'removeModalSimilarWord(similarWordId)',
+            'manualSimilarWordIds: [...draftSimilarWordIds],',
+            'newWord.autoSimilarWordIds = [];',
+            'similarWord.manualSimilarWordIds.push(String(newWord.id))',
+        ))
+        self.assert_true(add_modal_similar_picker, f"[{lang_name}] 新增弹窗-相近词面板支持库内搜索、增删与双向持久关联", "新增弹窗缺少相近词搜索面板、草稿选择方法、空自动快照或保存后的反向关联")
+
         word_list_isolated_scroll = 'flex-shrink: 0;' in content and '#wordList::-webkit-scrollbar' in content
         self.assert_true(word_list_isolated_scroll, f"[{lang_name}] 布局-#wordList 独立滚动与搜索/Tag控件置顶固定不动", "缺少 #wordList 独立滚动或 flex-shrink: 0 防压缩设置")
 
@@ -1593,7 +1622,103 @@ class VocabAppTester:
                 f"[{lang_name}] 浏览器新增弹窗-Tag 默认空白并支持输入、改名与删除",
                 f"新增弹窗手动 Tag 编辑全流程失败: {manual_add_tag_editor}",
             )
-            driver.execute_script("document.getElementById('wordModal')?.classList.remove('active')")
+            manual_add_rating_similar = driver.execute_script("""
+                const app = window.app;
+                const ratingGroup = document.getElementById('addWordRatingGroup');
+                const similarGroup = document.getElementById('addWordSimilarGroup');
+                const ratingWidget = document.querySelector('#modalDraftRating .modal-draft-star-rating');
+                const searchInput = document.getElementById('modalSimilarSearchInput');
+                const results = document.getElementById('modalSimilarSearchResults');
+                const selectedList = document.getElementById('modalSelectedSimilarWords');
+                const target = app.words[0];
+                if (!ratingGroup || !similarGroup || !ratingWidget || !searchInput || !results || !selectedList || !target) return null;
+                const originalTarget = JSON.parse(JSON.stringify(target));
+                const originalState = {
+                  currentFilter: app.currentFilter,
+                  searchQuery: app.searchQuery,
+                  currentPage: app.currentPage,
+                  ratingSort: app.ratingSort
+                };
+                const groupsVisible = getComputedStyle(ratingGroup).display !== 'none' && getComputedStyle(similarGroup).display !== 'none';
+                const startsEmpty = app.editingModalRating === 0
+                  && app.editingModalSimilarWordIds.length === 0
+                  && ratingWidget.querySelectorAll('.rating-star.filled').length === 0;
+
+                const ratingRect = ratingWidget.getBoundingClientRect();
+                ratingWidget.dispatchEvent(new MouseEvent('click', {
+                  bubbles: true,
+                  clientX: ratingRect.left + ratingRect.width * 0.72,
+                  clientY: ratingRect.top + ratingRect.height / 2
+                }));
+                const ratingSet = app.editingModalRating === 4
+                  && document.querySelectorAll('#modalDraftRating .rating-star.filled').length === 4
+                  && document.querySelector('#modalDraftRating .modal-draft-star-rating')?.getAttribute('aria-valuenow') === '4';
+
+                const findTargetResult = () => Array.from(results.querySelectorAll('.similar-word-search-result')).find(button =>
+                  button.querySelector('strong')?.textContent === target.word
+                );
+                searchInput.value = target.word;
+                searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+                const firstResult = findTargetResult();
+                const searchFound = !!firstResult;
+                firstResult?.click();
+                const selected = app.editingModalSimilarWordIds.map(String).includes(String(target.id));
+                const selectedChip = selectedList.querySelector(`[data-similar-word-id="${target.id}"]`);
+                const selectedRendered = !!selectedChip && selectedChip.querySelector('.modal-draft-selected-word-title')?.textContent.includes(target.word);
+                selectedChip?.querySelector('.similar-word-remove-btn')?.click();
+                const removed = !app.editingModalSimilarWordIds.map(String).includes(String(target.id))
+                  && !selectedList.querySelector(`[data-similar-word-id="${target.id}"]`);
+                const secondResult = findTargetResult();
+                secondResult?.click();
+                const readded = app.editingModalSimilarWordIds.map(String).includes(String(target.id));
+
+                const testWord = `新增弹窗星级相近词测试_${Date.now()}`;
+                document.getElementById('inputWord').value = testWord;
+                document.getElementById('inputReading').value = '[test-reading]';
+                document.getElementById('inputMeaning').value = 'n. 新增弹窗测试释义';
+                const krMeaningInput = document.getElementById('inputKrMeaning');
+                if (krMeaningInput) krMeaningInput.value = '추가 창 테스트 뜻';
+                document.querySelectorAll('#examplePairsEditor .example-pair-row').forEach((row, index) => {
+                  row.querySelector('.example-source-input').value = `新增测试原句 ${index + 1}`;
+                  row.querySelector('.example-translation-input').value = `新增测试译文 ${index + 1}`;
+                });
+                app.saveWordFromForm();
+                const newWord = app.words.find(word => word.word === testWord);
+                const savedRating = newWord?.rating === 4;
+                const savedManualRelation = Array.isArray(newWord?.manualSimilarWordIds)
+                  && newWord.manualSimilarWordIds.map(String).includes(String(target.id));
+                const automaticSnapshotEmpty = Array.isArray(newWord?.autoSimilarWordIds) && newWord.autoSimilarWordIds.length === 0;
+                const reverseRelation = Array.isArray(target.manualSimilarWordIds)
+                  && target.manualSimilarWordIds.map(String).includes(String(newWord?.id));
+                const mutualRecommendation = !!newWord
+                  && app.getSimilarWords(newWord, 3).some(word => String(word.id) === String(target.id))
+                  && app.getSimilarWords(target, 3).some(word => String(word.id) === String(newWord.id));
+                const storedNewWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(newWord?.id));
+                const persisted = storedNewWord?.rating === 4
+                  && storedNewWord.manualSimilarWordIds?.map(String).includes(String(target.id));
+                const modalClosed = document.getElementById('wordModal')?.classList.contains('active') === false;
+
+                if (newWord) app.words = app.words.filter(word => String(word.id) !== String(newWord.id));
+                const targetIndex = app.words.findIndex(word => String(word.id) === String(originalTarget.id));
+                if (targetIndex >= 0) app.words[targetIndex] = originalTarget;
+                app.currentFilter = originalState.currentFilter;
+                app.searchQuery = originalState.searchQuery;
+                app.currentPage = originalState.currentPage;
+                app.ratingSort = originalState.ratingSort;
+                app.saveData();
+                app.renderWordList();
+                app.closeWordModal();
+                return {
+                  groupsVisible, startsEmpty, ratingSet, searchFound, selected,
+                  selectedRendered, removed, readded, savedRating, savedManualRelation,
+                  automaticSnapshotEmpty, reverseRelation, mutualRecommendation, persisted, modalClosed
+                };
+            """)
+            self.assert_true(
+                bool(manual_add_rating_similar and all(manual_add_rating_similar.values())),
+                f"[{lang_name}] 浏览器新增弹窗-星级编辑与相近词搜索增删、保存及双向持久化全流程",
+                f"新增弹窗星级或相近词交互失败: {manual_add_rating_similar}",
+            )
 
             first_card = driver.find_element(By.CSS_SELECTOR, '.word-card')
             driver.execute_script('arguments[0].scrollIntoView({block: "center"})', first_card)
@@ -1640,7 +1765,10 @@ class VocabAppTester:
                 const modal = document.getElementById('wordModal');
                 const rows = Array.from(document.querySelectorAll('#examplePairsEditor .example-pair-row'));
                 const editModalOpened = modal?.classList.contains('active') === true;
-                const addTagEditorHidden = getComputedStyle(document.getElementById('addWordTagsGroup')).display === 'none';
+                const addOnlyControlsHidden = ['addWordTagsGroup', 'addWordRatingGroup', 'addWordSimilarGroup'].every(id => {
+                  const element = document.getElementById(id);
+                  return !!element && getComputedStyle(element).display === 'none';
+                });
                 const exactlyThreeRows = rows.length === 3;
                 const existingPairsLoaded = expectedPairs.length === 3 && rows.every((row, index) =>
                   row.querySelector('.example-source-input')?.value === expectedPairs[index].example &&
@@ -1699,7 +1827,7 @@ class VocabAppTester:
                 app.renderWordList();
                 app.closeDetailModal();
                 return {
-                  editModalOpened, addTagEditorHidden, exactlyThreeRows, existingPairsLoaded, incompleteRejected,
+                  editModalOpened, addOnlyControlsHidden, exactlyThreeRows, existingPairsLoaded, incompleteRejected,
                   structuredSaved, tagsPreserved, legacySaved, modalClosedAfterSave, persisted,
                   listPreviewUpdated, detailShowsThreePairs, reviewShowsThreePairs
                 };

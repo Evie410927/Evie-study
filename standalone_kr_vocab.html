@@ -1503,6 +1503,59 @@ body::-webkit-scrollbar,
   text-align: center;
 }
 
+.modal-draft-rating-shell {
+  min-height: 40px;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+}
+.modal-draft-star-rating {
+  width: fit-content;
+}
+.modal-draft-similar-panel {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+  box-sizing: border-box;
+}
+.modal-draft-similar-panel .similar-word-picker {
+  display: block;
+  margin-bottom: 8px;
+}
+.modal-draft-selected-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.modal-draft-selected-word {
+  position: relative;
+  padding: 7px 34px 7px 9px;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.modal-draft-selected-word-title {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+.modal-draft-selected-word-meaning {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.modal-draft-selected-word .similar-word-remove-btn {
+  top: 50%;
+  right: 7px;
+  transform: translateY(-50%);
+}
+
 /* Compact user explanation shown consistently in list, detail, review and similar-word cards. */
 .user-note-row {
   width: 100%;
@@ -16927,6 +16980,23 @@ body::-webkit-scrollbar,
             <div id="modalTagsContainer" class="word-tags" style="min-height:38px; padding:8px 12px; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-md); display:flex; flex-wrap:wrap; align-items:center; gap:6px; position:relative;"></div>
           </div>
 
+          <div id="addWordRatingGroup" class="form-group" style="display:none;">
+            <label class="form-label">星级</label>
+            <div id="modalDraftRating" class="modal-draft-rating-shell"></div>
+          </div>
+
+          <div id="addWordSimilarGroup" class="form-group" style="display:none;">
+            <label class="form-label">相近词汇</label>
+            <div class="modal-draft-similar-panel">
+              <div class="similar-panel-heading"><span>🔗 搜索并添加</span></div>
+              <div class="similar-word-picker active">
+                <input id="modalSimilarSearchInput" type="search" class="similar-word-search-input" placeholder="搜索当前词库中的韩语表达" autocomplete="off" onkeydown="if(event.key === 'Enter') event.preventDefault();" oninput="if(window.app) window.app.searchModalSimilarWordOptions(this)">
+                <div id="modalSimilarSearchResults" class="similar-word-search-results"><div class="similar-word-search-hint">输入单词、读音或释义进行搜索</div></div>
+              </div>
+              <div id="modalSelectedSimilarWords" class="modal-draft-selected-list"></div>
+            </div>
+          </div>
+
           <button type="submit" class="btn-primary" style="margin-top: 10px;">保存韩语单词</button>
         </form>
       </div>
@@ -20670,10 +20740,16 @@ class KrVocabApp {
     const meaningInput = document.getElementById('inputMeaning');
     const userNoteInput = document.getElementById('inputUserNote');
     const addWordTagsGroup = document.getElementById('addWordTagsGroup');
-    if (!modal || !form || !title || !wordIdInput || !wordInput || !readingInput || !meaningInput || !userNoteInput || !addWordTagsGroup) return;
+    const addWordRatingGroup = document.getElementById('addWordRatingGroup');
+    const addWordSimilarGroup = document.getElementById('addWordSimilarGroup');
+    if (!modal || !form || !title || !wordIdInput || !wordInput || !readingInput || !meaningInput || !userNoteInput || !addWordTagsGroup || !addWordRatingGroup || !addWordSimilarGroup) return;
     form.reset();
     this.editingModalTags = [];
+    this.editingModalRating = 0;
+    this.editingModalSimilarWordIds = [];
     addWordTagsGroup.style.display = word ? 'none' : 'block';
+    addWordRatingGroup.style.display = word ? 'none' : 'block';
+    addWordSimilarGroup.style.display = word ? 'none' : 'block';
 
     if (word) {
       title.textContent = '编辑韩语单词';
@@ -20688,7 +20764,16 @@ class KrVocabApp {
     }
 
     this.fillExamplePairsEditor(word);
-    if (!word) this.renderModalTags();
+    if (!word) {
+      this.renderModalTags();
+      this.renderModalDraftRating();
+      this.renderModalSelectedSimilarWords();
+      const modalSimilarSearchInput = document.getElementById('modalSimilarSearchInput');
+      if (modalSimilarSearchInput) {
+        modalSimilarSearchInput.value = '';
+        this.searchModalSimilarWordOptions(modalSimilarSearchInput);
+      }
+    }
     modal.classList.add('active');
   }
 
@@ -20782,6 +20867,95 @@ class KrVocabApp {
     const cleanTag = String(tagName || '').replace(/^#/, '').trim();
     this.editingModalTags = (this.editingModalTags || []).filter(tag => tag !== cleanTag);
     this.renderModalTags();
+  }
+
+  renderModalDraftRating() {
+    const container = document.getElementById('modalDraftRating');
+    if (!container) return;
+    const rating = this.normalizeRating(this.editingModalRating);
+    const stars = Array.from({ length: 5 }, (_, index) => `<span class="rating-star${index < rating ? ' filled' : ''}" aria-hidden="true">${index < rating ? '★' : '☆'}</span>`).join('');
+    container.innerHTML = `<div class="star-rating modal-draft-star-rating" data-rating="${rating}" role="slider" tabindex="0" aria-label="新单词星级" aria-valuemin="0" aria-valuemax="5" aria-valuenow="${rating}" aria-valuetext="${rating > 0 ? `${rating} 星` : '未设置星级'}" title="点击设置星级；双击清零" onclick="event.stopPropagation(); (window.app||window.vocabApp).setModalDraftRatingFromPointer(event)" ondblclick="event.stopPropagation(); (window.app||window.vocabApp).setModalDraftRating(0)" onkeydown="(window.app||window.vocabApp).handleModalDraftRatingKeydown(event)">${stars}</div>`;
+  }
+
+  setModalDraftRating(value, refocus = false) {
+    this.editingModalRating = this.normalizeRating(value);
+    this.renderModalDraftRating();
+    if (refocus) document.querySelector('#modalDraftRating .modal-draft-star-rating')?.focus();
+  }
+
+  setModalDraftRatingFromPointer(event) {
+    const widget = event && event.currentTarget;
+    if (!widget) return;
+    const rect = widget.getBoundingClientRect();
+    if (!rect.width) return;
+    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    this.setModalDraftRating(Math.max(1, Math.ceil(ratio * 5)));
+  }
+
+  handleModalDraftRatingKeydown(event) {
+    if (!event) return;
+    const current = this.normalizeRating(this.editingModalRating);
+    let next = null;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowUp') next = Math.min(5, current + 1);
+    else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') next = Math.max(0, current - 1);
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = 5;
+    else if (/^[0-5]$/.test(event.key)) next = Number(event.key);
+    if (next === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.setModalDraftRating(next, true);
+  }
+
+  renderModalSelectedSimilarWords() {
+    const container = document.getElementById('modalSelectedSimilarWords');
+    if (!container) return;
+    const selectedIds = Array.isArray(this.editingModalSimilarWordIds) ? this.editingModalSimilarWordIds.map(String) : [];
+    const selectedWords = selectedIds.map(id => this.words.find(word => String(word.id) === id)).filter(Boolean);
+    container.innerHTML = selectedWords.length ? selectedWords.map(word => `
+      <div class="modal-draft-selected-word" data-similar-word-id="${this.escapeHtml(String(word.id))}">
+        <div class="modal-draft-selected-word-title">${this.escapeHtml(word.word)}${word.reading ? ` <span style="color:var(--accent-secondary); font-weight:500;">${this.escapeHtml(word.reading)}</span>` : ''}</div>
+        <div class="modal-draft-selected-word-meaning">${this.escapeHtml(word.meaning)}</div>
+        <button type="button" class="similar-word-remove-btn" onclick="event.stopPropagation(); (window.app||window.vocabApp).removeModalSimilarWord('${this.escapeHtml(String(word.id))}')" aria-label="移除相近词 ${this.escapeHtml(word.word)}" title="移除">×</button>
+      </div>
+    `).join('') : '<div class="similar-word-empty">尚未添加相近词汇</div>';
+  }
+
+  searchModalSimilarWordOptions(input) {
+    const results = document.getElementById('modalSimilarSearchResults');
+    if (!input || !results) return;
+    const query = String(input.value || '').trim().toLowerCase();
+    if (!query) {
+      results.innerHTML = '<div class="similar-word-search-hint">输入单词、读音或释义进行搜索</div>';
+      return;
+    }
+    const selectedIds = new Set((this.editingModalSimilarWordIds || []).map(String));
+    const matches = this.words.filter(word => word && [word.word, word.reading, word.meaning].some(value => String(value || '').toLowerCase().includes(query))).slice(0, 20);
+    results.innerHTML = matches.length ? matches.map(word => {
+      const isAdded = selectedIds.has(String(word.id));
+      return `<button type="button" class="similar-word-search-result${isAdded ? ' is-added' : ''}" ${isAdded ? 'disabled aria-disabled="true"' : `onclick="event.stopPropagation(); (window.app||window.vocabApp).addModalSimilarWord('${this.escapeHtml(String(word.id))}')"`}>
+        <div class="similar-word-search-result-row"><span><strong>${this.escapeHtml(word.word)}</strong>${word.reading ? ` <span style="color:var(--accent-secondary);">${this.escapeHtml(word.reading)}</span>` : ''}</span>${isAdded ? '<span class="similar-word-added-badge">已添加</span>' : ''}</div>
+        <div style="margin-top:2px; color:var(--text-secondary); font-size:12px;">${this.escapeHtml(word.meaning)}</div>
+      </button>`;
+    }).join('') : '<div class="similar-word-search-hint">当前词库中没有匹配的单词</div>';
+  }
+
+  addModalSimilarWord(similarWordId) {
+    const id = String(similarWordId || '');
+    if (!id || !this.words.some(word => String(word.id) === id)) return;
+    if (!Array.isArray(this.editingModalSimilarWordIds)) this.editingModalSimilarWordIds = [];
+    if (!this.editingModalSimilarWordIds.map(String).includes(id)) this.editingModalSimilarWordIds.push(id);
+    this.renderModalSelectedSimilarWords();
+    const input = document.getElementById('modalSimilarSearchInput');
+    if (input) this.searchModalSimilarWordOptions(input);
+  }
+
+  removeModalSimilarWord(similarWordId) {
+    const id = String(similarWordId || '');
+    this.editingModalSimilarWordIds = (this.editingModalSimilarWordIds || []).map(String).filter(selectedId => selectedId !== id);
+    this.renderModalSelectedSimilarWords();
+    const input = document.getElementById('modalSimilarSearchInput');
+    if (input) this.searchModalSimilarWordOptions(input);
   }
 
   getParsedExamples(w) {
@@ -21189,6 +21363,8 @@ class KrVocabApp {
 
     const existingWord = id ? this.words.find(w => w.id === id) : null;
     const tags = existingWord && Array.isArray(existingWord.tags) ? [...existingWord.tags] : [...(this.editingModalTags || [])];
+    const draftRating = existingWord ? this.normalizeRating(existingWord.rating) : this.normalizeRating(this.editingModalRating);
+    const draftSimilarWordIds = existingWord ? [] : [...new Set((this.editingModalSimilarWordIds || []).map(String))].filter(similarId => this.words.some(word => String(word.id) === similarId));
     const examples = examplePairs.map(pair => ({ example: pair.example, trans: pair.trans }));
     const example = examples.map(pair => pair.example).join('\n');
     const exampleTrans = examples.map(pair => pair.trans).join('\n');
@@ -21222,7 +21398,8 @@ class KrVocabApp {
         tags,
         userNote,
         mastered: false,
-        rating: 0,
+        rating: draftRating,
+        manualSimilarWordIds: [...draftSimilarWordIds],
         reviewCount: 0,
         createdAt: Date.now()
       };
@@ -21230,6 +21407,15 @@ class KrVocabApp {
       // 完全由用户通过＋手动搜索添加并持久化。existing 词条保持既有快照不变。
       newWord.autoSimilarWordIds = [];
       this.words.unshift(newWord);
+      draftSimilarWordIds.forEach(similarId => {
+        const similarWord = this.words.find(word => String(word.id) === similarId);
+        if (!similarWord) return;
+        similarWord.manualSimilarWordIds = Array.isArray(similarWord.manualSimilarWordIds) ? similarWord.manualSimilarWordIds.map(String) : [];
+        similarWord.hiddenSimilarWordIds = Array.isArray(similarWord.hiddenSimilarWordIds) ? similarWord.hiddenSimilarWordIds.map(String) : [];
+        if (!similarWord.manualSimilarWordIds.includes(String(newWord.id))) similarWord.manualSimilarWordIds.push(String(newWord.id));
+        similarWord.hiddenSimilarWordIds = similarWord.hiddenSimilarWordIds.filter(hiddenId => hiddenId !== String(newWord.id));
+        similarWord.updatedAt = Date.now();
+      });
       this.showToast('🎉 新韩语单词已添加');
     }
 
