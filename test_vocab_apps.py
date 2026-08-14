@@ -742,6 +742,13 @@ class VocabAppTester:
         ))
         self.assert_true(user_note_compact_spacing, f"[{lang_name}] 自定义说明-列表、详情与相近词卡片使用紧凑间距", "自定义说明与释义、例句之间仍保留过大的垂直间距")
 
+        user_note_readable_color = bool(re.search(
+            r'\.user-note-text\s*\{[^}]*color:\s*var\(--text-secondary\);',
+            content,
+            re.S,
+        ))
+        self.assert_true(user_note_readable_color, f"[{lang_name}] 自定义说明-文字颜色与中文释义使用同一灰色", "自定义说明仍使用过暗的 text-muted，阅读对比度不足")
+
         # ---------------------------------------------------------------------
         # 测试点 31C: 编辑弹窗固定三行双栏对照例句编辑器
         # ---------------------------------------------------------------------
@@ -2002,6 +2009,9 @@ class VocabAppTester:
                 const listRow = listCard && listCard.querySelector('.user-note-row');
                 const listDisplayed = listMeaning?.nextElementSibling === listRow && listRow?.querySelector('.user-note-text')?.textContent === '我的自定义说明';
                 const listExample = listCard && listCard.querySelector('.word-example-preview');
+                const listNoteText = listRow && listRow.querySelector('.user-note-text');
+                const listColorMatchesMeaning = !!listMeaning && !!listNoteText
+                  && getComputedStyle(listMeaning).color === getComputedStyle(listNoteText).color;
                 const listCompact = isCompactNote(listRow)
                   && verticalGap(listMeaning, listRow) <= 6
                   && (!listExample || verticalGap(listRow, listExample) <= 6);
@@ -2032,6 +2042,9 @@ class VocabAppTester:
                 const similarRow = similarChip && similarChip.querySelector('.user-note-row');
                 const similarDisplayed = similarMeaning?.nextElementSibling === similarRow && similarRow?.querySelector('.user-note-text')?.textContent === '相近词自定义说明';
                 const similarExample = similarChip && similarChip.querySelector('.similar-word-example');
+                const similarNoteText = similarRow && similarRow.querySelector('.user-note-text');
+                const similarColorMatchesMeaning = !!similarMeaning && !!similarNoteText
+                  && getComputedStyle(similarMeaning).color === getComputedStyle(similarNoteText).color;
                 const similarCompact = isCompactNote(similarRow)
                   && verticalGap(similarMeaning, similarRow) <= 6
                   && (!similarExample || verticalGap(similarRow, similarExample) <= 6);
@@ -2072,7 +2085,8 @@ class VocabAppTester:
                   noExternalControls, editorOpenedBlank, savedViaModal, persisted,
                   listDisplayed, detailDisplayed, reviewDisplayed, similarDisplayed,
                   existingNotePreloaded, sourceCleared, clearedDetailCollapsed, clearedSimilarCollapsed,
-                  listCompact, detailCompact, reviewCompact, similarCompact
+                  listCompact, detailCompact, reviewCompact, similarCompact,
+                  listColorMatchesMeaning, similarColorMatchesMeaning
                 };
             """)
             self.assert_true(
@@ -2085,6 +2099,12 @@ class VocabAppTester:
                 bool(user_note_lifecycle and all(user_note_lifecycle.get(key) for key in note_compact_keys)),
                 f"[{lang_name}] 浏览器自定义说明-四视图无背景中括号展示且释义/例句间距紧凑",
                 f"自定义说明实际渲染尺寸或间距过大: {user_note_lifecycle}",
+            )
+            note_color_keys = ('listColorMatchesMeaning', 'similarColorMatchesMeaning')
+            self.assert_true(
+                bool(user_note_lifecycle and all(user_note_lifecycle.get(key) for key in note_color_keys)),
+                f"[{lang_name}] 浏览器自定义说明-实际文字颜色与中文释义灰色完全一致",
+                f"自定义说明与中文释义的计算后颜色不一致: {user_note_lifecycle}",
             )
 
             detail_scroll_reset = driver.execute_script("""
