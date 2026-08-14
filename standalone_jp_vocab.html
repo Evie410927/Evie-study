@@ -2045,6 +2045,39 @@ body::-webkit-scrollbar,
   min-height: 64px;
 }
 
+.example-pairs-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+}
+.example-pair-columns,
+.example-pair-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+.example-pair-columns {
+  padding: 0 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  box-sizing: border-box;
+}
+.example-pair-input {
+  min-width: 0;
+  padding: 10px 11px;
+  font-size: 13px;
+}
+@media (max-width: 420px) {
+  .example-pair-row { gap: 6px; }
+  .example-pair-input {
+    padding: 9px 8px;
+    font-size: 12px;
+  }
+}
+
 .settings-section {
   background: var(--bg-card-solid);
   border: 1px solid var(--border-color);
@@ -2915,13 +2948,22 @@ body::-webkit-scrollbar,
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="inputExample">日语例句</label>
-            <textarea id="inputExample" class="form-textarea" placeholder="输入日语例句，如：오늘 정말 행복해요."></textarea>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label" for="inputExampleTrans">例句中文翻译</label>
-            <input type="text" id="inputExampleTrans" class="form-input" placeholder="输入例句翻译，如：今天真的很幸福。">
+            <label class="form-label">例句</label>
+            <div id="examplePairsEditor" class="example-pairs-editor">
+              <div class="example-pair-columns" aria-hidden="true"><span>日语原句</span><span>中文翻译</span></div>
+              <div class="example-pair-row" data-example-index="0">
+                <input type="text" class="form-input example-pair-input example-source-input" placeholder="日语例句 1" aria-label="日语例句 1" autocomplete="off" required>
+                <input type="text" class="form-input example-pair-input example-translation-input" placeholder="中文翻译 1" aria-label="例句中文翻译 1" autocomplete="off" required>
+              </div>
+              <div class="example-pair-row" data-example-index="1">
+                <input type="text" class="form-input example-pair-input example-source-input" placeholder="日语例句 2" aria-label="日语例句 2" autocomplete="off" required>
+                <input type="text" class="form-input example-pair-input example-translation-input" placeholder="中文翻译 2" aria-label="例句中文翻译 2" autocomplete="off" required>
+              </div>
+              <div class="example-pair-row" data-example-index="2">
+                <input type="text" class="form-input example-pair-input example-source-input" placeholder="日语例句 3" aria-label="日语例句 3" autocomplete="off" required>
+                <input type="text" class="form-input example-pair-input example-translation-input" placeholder="中文翻译 3" aria-label="例句中文翻译 3" autocomplete="off" required>
+              </div>
+            </div>
           </div>
 
           <div class="form-group">
@@ -6897,22 +6939,27 @@ class JpVocabApp {
     const modal = document.getElementById('wordModal');
     const form = document.getElementById('wordForm');
     const title = document.getElementById('modalTitle');
+    const wordIdInput = document.getElementById('wordId');
+    const wordInput = document.getElementById('inputWord');
+    const readingInput = document.getElementById('inputReading');
+    const meaningInput = document.getElementById('inputMeaning');
+    if (!modal || !form || !title || !wordIdInput || !wordInput || !readingInput || !meaningInput) return;
     form.reset();
 
     if (word) {
       title.textContent = '编辑日语单词';
-      document.getElementById('wordId').value = word.id;
-      document.getElementById('inputWord').value = word.word || '';
-      document.getElementById('inputReading').value = word.reading || '';
-      document.getElementById('inputMeaning').value = word.meaning || '';
-      document.getElementById('inputExample').value = word.example || '';
-      document.getElementById('inputExampleTrans').value = word.exampleTrans || '';
+      wordIdInput.value = word.id;
+      wordInput.value = word.word || '';
+      readingInput.value = word.reading || '';
+      meaningInput.value = word.meaning || '';
       this.editingModalTags = word.tags ? word.tags.filter(tag => tag !== '\u6613\u6df7') : [];
     } else {
       title.textContent = '添加日语单词';
-      document.getElementById('wordId').value = '';
+      wordIdInput.value = '';
       this.editingModalTags = ['名词'];
     }
+
+    this.fillExamplePairsEditor(word);
 
     this.renderModalTags();
     modal.classList.add('active');
@@ -6920,7 +6967,8 @@ class JpVocabApp {
 
   closeWordModal() {
     this.closeTagDropdown();
-    document.getElementById('wordModal').classList.remove('active');
+    const modal = document.getElementById('wordModal');
+    if (modal) modal.classList.remove('active');
   }
 
   renderModalTags() {
@@ -7042,6 +7090,32 @@ class JpVocabApp {
       example: ex,
       trans: trLines[idx] || ''
     }));
+  }
+
+  fillExamplePairsEditor(word = null) {
+    const editor = document.getElementById('examplePairsEditor');
+    if (!editor) return;
+    const parsedExamples = word ? this.getParsedExamples(word).slice(0, 3) : [];
+    editor.querySelectorAll('.example-pair-row').forEach((row, index) => {
+      const sourceInput = row.querySelector('.example-source-input');
+      const translationInput = row.querySelector('.example-translation-input');
+      const pair = parsedExamples[index] || { example: '', trans: '' };
+      if (sourceInput) sourceInput.value = pair.example || '';
+      if (translationInput) translationInput.value = pair.trans || '';
+    });
+  }
+
+  collectExamplePairsFromEditor() {
+    const editor = document.getElementById('examplePairsEditor');
+    if (!editor) return [];
+    return Array.from(editor.querySelectorAll('.example-pair-row')).map(row => {
+      const sourceInput = row.querySelector('.example-source-input');
+      const translationInput = row.querySelector('.example-translation-input');
+      return {
+        example: sourceInput ? sourceInput.value.trim() : '',
+        trans: translationInput ? translationInput.value.trim() : ''
+      };
+    });
   }
 
   
@@ -7365,20 +7439,31 @@ class JpVocabApp {
   }
 
   saveWordFromForm() {
-    const id = document.getElementById('wordId').value;
-    const wordText = document.getElementById('inputWord').value.trim();
-    const reading = document.getElementById('inputReading').value.trim();
-    const meaning = document.getElementById('inputMeaning').value.trim();
-    const example = document.getElementById('inputExample').value.trim();
-    const exampleTrans = document.getElementById('inputExampleTrans').value.trim();
+    const wordIdInput = document.getElementById('wordId');
+    const wordInput = document.getElementById('inputWord');
+    const readingInput = document.getElementById('inputReading');
+    const meaningInput = document.getElementById('inputMeaning');
+    if (!wordIdInput || !wordInput || !readingInput || !meaningInput) return;
+    const id = wordIdInput.value;
+    const wordText = wordInput.value.trim();
+    const reading = readingInput.value.trim();
+    const meaning = meaningInput.value.trim();
+    const examplePairs = this.collectExamplePairsFromEditor();
 
     if (!wordText || !meaning) {
       this.showToast('请填写日语单词与释义');
       return;
     }
 
+    if (examplePairs.length !== 3 || examplePairs.some(pair => !pair.example || !pair.trans)) {
+      this.showToast('请完整填写三组日语例句及对应中文翻译');
+      return;
+    }
+
     const tags = this.editingModalTags ? [...this.editingModalTags] : [];
-    const examples = this.getParsedExamples({ example, exampleTrans });
+    const examples = examplePairs.map(pair => ({ example: pair.example, trans: pair.trans }));
+    const example = examples.map(pair => pair.example).join('\n');
+    const exampleTrans = examples.map(pair => pair.trans).join('\n');
 
     if (id) {
       const index = this.words.findIndex(w => w.id === id);

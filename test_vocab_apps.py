@@ -691,6 +691,47 @@ class VocabAppTester:
         self.assert_true(user_note_style, f"[{lang_name}] 自定义说明-浅色背景、小字号与紧凑原地编辑样式完整", "自定义说明缺少浅色背景、小字号或紧凑输入样式")
 
         # ---------------------------------------------------------------------
+        # 测试点 31C: 编辑弹窗固定三行双栏对照例句编辑器
+        # ---------------------------------------------------------------------
+        example_pair_editor = all(token in content for token in (
+            'id="examplePairsEditor"',
+            'class="example-pair-columns"',
+            'data-example-index="0"',
+            'data-example-index="1"',
+            'data-example-index="2"',
+            'example-source-input',
+            'example-translation-input',
+            'fillExamplePairsEditor(word = null)',
+            'collectExamplePairsFromEditor()',
+        )) and content.count('class="example-pair-row"') == 3
+        self.assert_true(example_pair_editor, f"[{lang_name}] 编辑弹窗-例句字段固定三行且每行原句/中文翻译双栏一一对应", "编辑弹窗缺少固定三行、双栏输入框或例句装载/收集方法")
+
+        legacy_example_inputs_removed = all(token not in content for token in (
+            'id="inputExample"',
+            'id="inputExampleTrans"',
+            "document.getElementById('inputExample')",
+            "document.getElementById('inputExampleTrans')",
+        ))
+        self.assert_true(legacy_example_inputs_removed, f"[{lang_name}] 编辑弹窗-旧原句大文本框与独立翻译框已完全移除", "旧 inputExample/inputExampleTrans 控件或读写逻辑仍残留，可能与三行编辑器冲突")
+
+        example_pair_persistence = all(token in content for token in (
+            'examplePairs.length !== 3',
+            'examplePairs.some(pair => !pair.example || !pair.trans)',
+            'const examples = examplePairs.map(pair => ({ example: pair.example, trans: pair.trans }))',
+            "const example = examples.map(pair => pair.example).join('\\n')",
+            "const exampleTrans = examples.map(pair => pair.trans).join('\\n')",
+        ))
+        self.assert_true(example_pair_persistence, f"[{lang_name}] 编辑弹窗-三组例句完整性校验并同步结构化与旧版兼容字段", "三组例句未校验成对完整性，或保存时没有同步 examples/example/exampleTrans")
+
+        example_pair_layout = all(token in content for token in (
+            '.example-pairs-editor {',
+            '.example-pair-row {',
+            'grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);',
+            '.example-pair-input {',
+        ))
+        self.assert_true(example_pair_layout, f"[{lang_name}] 编辑弹窗-三行对照例句双等分布局与手机端紧凑适配", "例句双栏缺少稳定等分网格、输入框约束或手机端适配")
+
+        # ---------------------------------------------------------------------
         # 测试点 32: 复习卡片语义与 Tag 聚类出词算法防护 (clusterBySimilarity)
         # ---------------------------------------------------------------------
         cluster_by_sim = 'clusterBySimilarity(' in content and 'this.clusterBySimilarity(' in content
@@ -1432,6 +1473,28 @@ class VocabAppTester:
                 f"[{lang_name}] 浏览器真实点击-加词按钮打开编辑弹窗",
                 "点击 #quickAddBtn 后 #wordModal 未进入 active 状态",
             )
+            blank_example_pair_editor = driver.execute_script("""
+                const rows = Array.from(document.querySelectorAll('#examplePairsEditor .example-pair-row'));
+                return {
+                  threeRows: rows.length === 3,
+                  twoInputsPerRow: rows.every(row => row.querySelectorAll('input').length === 2),
+                  allBlank: rows.every(row => Array.from(row.querySelectorAll('input')).every(input => input.value === '')),
+                  allRequired: rows.every(row => Array.from(row.querySelectorAll('input')).every(input => input.required)),
+                  pairedColumns: rows.every(row => {
+                    const source = row.querySelector('.example-source-input');
+                    const translation = row.querySelector('.example-translation-input');
+                    if (!source || !translation) return false;
+                    const sourceRect = source.getBoundingClientRect();
+                    const translationRect = translation.getBoundingClientRect();
+                    return sourceRect.right <= translationRect.left && Math.abs(sourceRect.width - translationRect.width) < 2;
+                  })
+                };
+            """)
+            self.assert_true(
+                bool(blank_example_pair_editor and all(blank_example_pair_editor.values())),
+                f"[{lang_name}] 浏览器新增弹窗-例句区三行双栏、默认空白且原句/译文等宽成对",
+                f"新增弹窗例句双栏结构异常: {blank_example_pair_editor}",
+            )
             driver.execute_script("document.getElementById('wordModal')?.classList.remove('active')")
 
             first_card = driver.find_element(By.CSS_SELECTOR, '.word-card')
@@ -1458,6 +1521,92 @@ class VocabAppTester:
                 detail_modal_active,
                 f"[{lang_name}] 浏览器真实点击-单词卡片打开详情弹窗",
                 "点击第一张 .word-card 后 #detailModal 未进入 active 状态",
+            )
+
+            example_pair_edit_lifecycle = driver.execute_script("""
+                const app = window.app;
+                const currentId = app.currentDetailWordId;
+                const wordIndex = app.words.findIndex(word => String(word.id) === String(currentId));
+                if (wordIndex < 0) return null;
+                const originalWord = JSON.parse(JSON.stringify(app.words[wordIndex]));
+                const originalState = {
+                  currentFilter: app.currentFilter,
+                  searchQuery: app.searchQuery,
+                  currentPage: app.currentPage,
+                  reviewList: app.reviewList,
+                  currentReviewIndex: app.currentReviewIndex
+                };
+                const expectedPairs = app.getParsedExamples(app.words[wordIndex]).slice(0, 3);
+                document.getElementById('detailEditBtn')?.click();
+                const modal = document.getElementById('wordModal');
+                const rows = Array.from(document.querySelectorAll('#examplePairsEditor .example-pair-row'));
+                const editModalOpened = modal?.classList.contains('active') === true;
+                const exactlyThreeRows = rows.length === 3;
+                const existingPairsLoaded = expectedPairs.length === 3 && rows.every((row, index) =>
+                  row.querySelector('.example-source-input')?.value === expectedPairs[index].example &&
+                  row.querySelector('.example-translation-input')?.value === expectedPairs[index].trans
+                );
+
+                const beforeIncompleteSave = JSON.stringify(app.words[wordIndex].examples);
+                const missingTranslation = rows[1]?.querySelector('.example-translation-input');
+                if (missingTranslation) missingTranslation.value = '';
+                app.saveWordFromForm();
+                const incompleteRejected = JSON.stringify(app.words[wordIndex].examples) === beforeIncompleteSave && modal?.classList.contains('active') === true;
+
+                rows.forEach((row, index) => {
+                  const source = row.querySelector('.example-source-input');
+                  const translation = row.querySelector('.example-translation-input');
+                  if (source) source.value = `编辑原句 ${index + 1}`;
+                  if (translation) translation.value = `编辑译文 ${index + 1}`;
+                });
+                app.saveWordFromForm();
+                const savedWord = app.words[wordIndex];
+                const parsedAfterSave = app.getParsedExamples(savedWord);
+                const structuredSaved = parsedAfterSave.length === 3 && parsedAfterSave.every((pair, index) =>
+                  pair.example === `编辑原句 ${index + 1}` && pair.trans === `编辑译文 ${index + 1}`
+                );
+                const legacySaved = savedWord.example.split(String.fromCharCode(10)).join('|') === '编辑原句 1|编辑原句 2|编辑原句 3' &&
+                  savedWord.exampleTrans.split(String.fromCharCode(10)).join('|') === '编辑译文 1|编辑译文 2|编辑译文 3';
+                const modalClosedAfterSave = modal?.classList.contains('active') === false;
+                const storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(savedWord.id));
+                const persisted = storedWord?.examples?.length === 3 && storedWord.example === savedWord.example && storedWord.exampleTrans === savedWord.exampleTrans;
+
+                app.currentFilter = 'all';
+                app.searchQuery = String(savedWord.word || '').toLowerCase();
+                app.currentPage = 1;
+                app.renderWordList();
+                const savedCard = Array.from(document.querySelectorAll('#wordList .word-card')).find(card => String(card.dataset.id) === String(savedWord.id));
+                const listPreviewUpdated = savedCard?.querySelector('.ex-preview-text')?.textContent === '编辑原句 1' &&
+                  savedCard?.querySelector('.ex-preview-trans')?.textContent === '编辑译文 1';
+
+                app.showDetailModal(savedWord.id);
+                const detailShowsThreePairs = document.querySelectorAll('#detailExamplesList .detail-example-item').length === 3 &&
+                  document.querySelector('#detailExamplesList .detail-example-text')?.textContent === '编辑原句 1';
+                app.reviewList = [savedWord];
+                app.currentReviewIndex = 0;
+                app.renderCurrentCard();
+                const reviewShowsThreePairs = document.querySelectorAll('#cardBackExampleBlock .word-example-item').length === 3 &&
+                  document.querySelector('#cardBackExampleBlock .word-example')?.textContent === '编辑原句 1';
+
+                app.words[wordIndex] = originalWord;
+                app.currentFilter = originalState.currentFilter;
+                app.searchQuery = originalState.searchQuery;
+                app.currentPage = originalState.currentPage;
+                app.reviewList = originalState.reviewList;
+                app.currentReviewIndex = originalState.currentReviewIndex;
+                app.saveData();
+                app.renderWordList();
+                app.closeDetailModal();
+                return {
+                  editModalOpened, exactlyThreeRows, existingPairsLoaded, incompleteRejected,
+                  structuredSaved, legacySaved, modalClosedAfterSave, persisted,
+                  listPreviewUpdated, detailShowsThreePairs, reviewShowsThreePairs
+                };
+            """)
+            self.assert_true(
+                bool(example_pair_edit_lifecycle and all(example_pair_edit_lifecycle.values())),
+                f"[{lang_name}] 浏览器编辑弹窗-三组例句回填、成对校验、保存持久化及各视图联动",
+                f"编辑弹窗三行双栏例句全流程失败: {example_pair_edit_lifecycle}",
             )
 
             similar_manual_crud = driver.execute_script("""
