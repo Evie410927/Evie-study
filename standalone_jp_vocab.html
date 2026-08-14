@@ -846,7 +846,7 @@ body::-webkit-scrollbar,
   font-size: 15px;
   color: var(--text-secondary);
   line-height: 1.4;
-  margin-bottom: 8px;
+  margin-bottom: 3px;
 }
 
 .word-example-box {
@@ -1344,29 +1344,41 @@ body::-webkit-scrollbar,
   text-align: center;
 }
 
-/* User-authored explanation shown consistently in list, detail, review and similar-word cards. */
+/* Compact user explanation shown consistently in list, detail, review and similar-word cards. */
 .user-note-row {
   width: 100%;
-  margin: 5px 0 8px;
+  margin: 0 0 3px;
   box-sizing: border-box;
   text-align: left;
 }
 .user-note-display {
   width: 100%;
-  padding: 6px 7px 6px 9px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-left: 2px solid rgba(236, 72, 153, 0.48);
-  border-radius: 6px;
-  background: rgba(148, 163, 184, 0.09);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   box-sizing: border-box;
 }
 .user-note-text {
-  display: block;
-  color: var(--text-secondary);
+  display: inline;
+  color: var(--text-muted);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.35;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.user-note-text::before { content: "【"; }
+.user-note-text::after { content: "】"; }
+.user-note-row + .word-example-preview {
+  margin-top: 3px;
+  padding-top: 6px;
+}
+.similar-word-chip .user-note-row {
+  margin-bottom: 0;
+}
+.similar-word-chip .user-note-row + .similar-word-example {
+  margin-top: 0 !important;
+  padding-top: 5px !important;
 }
 .detail-user-note-slot,
 .review-user-note-slot {
@@ -1417,10 +1429,14 @@ body::-webkit-scrollbar,
 
 .detail-body {
   overflow-y: auto;
-  padding: 10px 0;
+  padding: 4px 0 8px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 6px;
+}
+
+.detail-sheet .modal-header {
+  margin-bottom: 4px;
 }
 
 .detail-meaning {
@@ -1750,7 +1766,7 @@ body::-webkit-scrollbar,
   overflow-y: auto;
   align-items: stretch;
   justify-content: flex-start;
-  gap: 10px;
+  gap: 7px;
 }
 
 .card-hint {
@@ -1781,8 +1797,8 @@ body::-webkit-scrollbar,
   font-size: 20px;
   font-weight: 700;
   color: var(--text-primary);
-  margin-top: 10px;
-  margin-bottom: 12px;
+  margin-top: 4px;
+  margin-bottom: 2px;
 }
 
 .card-example-block {

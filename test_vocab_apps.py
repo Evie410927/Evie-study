@@ -718,13 +718,29 @@ class VocabAppTester:
         user_note_style = all(token in content for token in (
             '.user-note-display {',
             '.user-note-text {',
+            '.user-note-text::before { content: "【"; }',
+            '.user-note-text::after { content: "】"; }',
             '.detail-user-note-slot:empty,',
             '.review-user-note-slot:empty {',
             'display: none;',
-            'background: rgba(148, 163, 184, 0.09);',
+            'background: transparent;',
+            'padding: 0;',
+            'border: 0;',
             'font-size: 12px;',
         ))
-        self.assert_true(user_note_style, f"[{lang_name}] 自定义说明-浅色小字号展示且空内容完全隐藏不占位", "自定义说明缺少展示样式，或详情/复习空插槽没有自适应隐藏")
+        self.assert_true(user_note_style, f"[{lang_name}] 自定义说明-无背景中括号小字展示且空内容完全隐藏不占位", "自定义说明缺少紧凑纯文本样式，或详情/复习空插槽没有自适应隐藏")
+
+        user_note_compact_spacing = all(token in content for token in (
+            'margin: 0 0 3px;',
+            '.user-note-row + .word-example-preview {',
+            'margin-top: 3px;',
+            '.similar-word-chip .user-note-row + .similar-word-example {',
+            'margin-top: 0 !important;',
+            '.detail-sheet .modal-header {',
+            'padding: 4px 0 8px;',
+            'gap: 6px;',
+        ))
+        self.assert_true(user_note_compact_spacing, f"[{lang_name}] 自定义说明-列表、详情与相近词卡片使用紧凑间距", "自定义说明与释义、例句之间仍保留过大的垂直间距")
 
         # ---------------------------------------------------------------------
         # 测试点 31C: 编辑弹窗固定三行双栏对照例句编辑器
@@ -1927,6 +1943,26 @@ class VocabAppTester:
                   reviewList: app.reviewList,
                   currentReviewIndex: app.currentReviewIndex
                 };
+                const verticalGap = (upper, lower) => {
+                  if (!upper || !lower) return Infinity;
+                  return Math.max(0, lower.getBoundingClientRect().top - upper.getBoundingClientRect().bottom);
+                };
+                const isCompactNote = row => {
+                  const display = row && row.querySelector('.user-note-display');
+                  const text = row && row.querySelector('.user-note-text');
+                  if (!row || !display || !text) return false;
+                  const style = getComputedStyle(display);
+                  const before = getComputedStyle(text, '::before').content;
+                  const after = getComputedStyle(text, '::after').content;
+                  const transparent = style.backgroundColor === 'rgba(0, 0, 0, 0)' || style.backgroundColor === 'transparent';
+                  return transparent
+                    && parseFloat(style.paddingTop) === 0
+                    && parseFloat(style.paddingRight) === 0
+                    && parseFloat(style.borderTopWidth) === 0
+                    && row.getBoundingClientRect().height <= 22
+                    && before.includes('【')
+                    && after.includes('】');
+                };
                 source.userNote = '';
                 target.userNote = '';
                 app.currentFilter = 'all';
@@ -1965,14 +2001,24 @@ class VocabAppTester:
                 const listMeaning = listCard && listCard.querySelector('.word-meaning');
                 const listRow = listCard && listCard.querySelector('.user-note-row');
                 const listDisplayed = listMeaning?.nextElementSibling === listRow && listRow?.querySelector('.user-note-text')?.textContent === '我的自定义说明';
+                const listExample = listCard && listCard.querySelector('.word-example-preview');
+                const listCompact = isCompactNote(listRow)
+                  && verticalGap(listMeaning, listRow) <= 6
+                  && (!listExample || verticalGap(listRow, listExample) <= 6);
                 app.showDetailModal(sourceId);
                 const detailRow = detailSlot && detailSlot.querySelector('.user-note-row');
                 const detailDisplayed = document.getElementById('detailMeaning')?.nextElementSibling === detailSlot && detailRow?.querySelector('.user-note-text')?.textContent === '我的自定义说明';
+                const detailHeader = document.querySelector('#detailModal .modal-header');
+                const detailMeaning = document.getElementById('detailMeaning');
+                const detailCompact = isCompactNote(detailRow)
+                  && verticalGap(detailHeader, detailMeaning) <= 12
+                  && verticalGap(detailMeaning, detailRow) <= 8;
                 app.reviewList = [savedSource];
                 app.currentReviewIndex = 0;
                 app.renderCurrentCard();
                 const reviewRow = reviewSlot && reviewSlot.querySelector('.user-note-row');
                 const reviewDisplayed = document.getElementById('cardBackMeaning')?.nextElementSibling === reviewSlot && reviewRow?.querySelector('.user-note-text')?.textContent === '我的自定义说明';
+                const reviewCompact = isCompactNote(reviewRow);
 
                 app.openWordModal(app.words.find(word => String(word.id) === String(targetId)));
                 const targetInput = document.getElementById('inputUserNote');
@@ -1985,6 +2031,10 @@ class VocabAppTester:
                 const similarMeaning = similarChip && similarChip.querySelector('.similar-word-meaning');
                 const similarRow = similarChip && similarChip.querySelector('.user-note-row');
                 const similarDisplayed = similarMeaning?.nextElementSibling === similarRow && similarRow?.querySelector('.user-note-text')?.textContent === '相近词自定义说明';
+                const similarExample = similarChip && similarChip.querySelector('.similar-word-example');
+                const similarCompact = isCompactNote(similarRow)
+                  && verticalGap(similarMeaning, similarRow) <= 6
+                  && (!similarExample || verticalGap(similarRow, similarExample) <= 6);
 
                 app.openWordModal(app.words.find(word => String(word.id) === String(sourceId)));
                 const clearSourceInput = document.getElementById('inputUserNote');
@@ -2021,13 +2071,20 @@ class VocabAppTester:
                   blankListCollapsed, blankDetailCollapsed, blankSimilarCollapsed, blankReviewCollapsed,
                   noExternalControls, editorOpenedBlank, savedViaModal, persisted,
                   listDisplayed, detailDisplayed, reviewDisplayed, similarDisplayed,
-                  existingNotePreloaded, sourceCleared, clearedDetailCollapsed, clearedSimilarCollapsed
+                  existingNotePreloaded, sourceCleared, clearedDetailCollapsed, clearedSimilarCollapsed,
+                  listCompact, detailCompact, reviewCompact, similarCompact
                 };
             """)
             self.assert_true(
                 bool(user_note_lifecycle and all(user_note_lifecycle.values())),
                 f"[{lang_name}] 浏览器自定义说明-仅编辑弹窗维护、四视图条件展示与清空零占位全流程",
                 f"自定义说明弹窗维护或条件展示失败: {user_note_lifecycle}",
+            )
+            note_compact_keys = ('listCompact', 'detailCompact', 'reviewCompact', 'similarCompact')
+            self.assert_true(
+                bool(user_note_lifecycle and all(user_note_lifecycle.get(key) for key in note_compact_keys)),
+                f"[{lang_name}] 浏览器自定义说明-四视图无背景中括号展示且释义/例句间距紧凑",
+                f"自定义说明实际渲染尺寸或间距过大: {user_note_lifecycle}",
             )
 
             detail_scroll_reset = driver.execute_script("""
