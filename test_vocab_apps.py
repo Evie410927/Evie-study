@@ -307,6 +307,17 @@ class VocabAppTester:
         star_sort_branch = 'sortWordsByRating(filtered, this.ratingSort)' in content
         self.assert_true(star_sort_branch, f"[{lang_name}] 排序-renderWordList 星级排序分支联动", "renderWordList 缺少 sortWordsByRating 星级排序分发")
 
+        status_rating_commit_chain = all(token in content for token in (
+            'word.updatedAt = Math.max(Date.now(), Number(word.updatedAt || 0) + 1);',
+            'if (this.markPendingCloudChanges) this.markPendingCloudChanges([String(word.id)], word.updatedAt);',
+            'const word = this.words.find(w => String(w.id) === String(id));',
+            'if (options.rerender !== false) this.renderWordList();',
+            'this.syncRatingWidgets(wordId);',
+            'this.syncMasteredWidgets(id);',
+            'this.updateStats();',
+        )) and content.count('word.updatedAt = Math.max(Date.now(), Number(word.updatedAt || 0) + 1);') >= 2 and content.count('this.markPendingCloudChanges([String(word.id)], word.updatedAt)') >= 2
+        self.assert_true(status_rating_commit_chain, f"[{lang_name}] 状态与星级-显式更新时间、持久化后重绘并刷新统计", "学习状态或星级仍依赖隐式指纹更新，可能出现提示成功但数据/统计/卡片未更新")
+
         # ---------------------------------------------------------------------
         # 测试点 11: bindEvents 事件绑定初始化与语法声明校验 (Event Binding Initialization)
         # ---------------------------------------------------------------------
@@ -1718,6 +1729,101 @@ class VocabAppTester:
                 bool(manual_add_rating_similar and all(manual_add_rating_similar.values())),
                 f"[{lang_name}] 浏览器新增弹窗-星级编辑与相近词搜索增删、保存及双向持久化全流程",
                 f"新增弹窗星级或相近词交互失败: {manual_add_rating_similar}",
+            )
+
+            status_rating_persistence = driver.execute_script("""
+                const app = window.app;
+                const target = app.words.find(word => word && !word.mastered);
+                if (!target) return null;
+                const targetId = String(target.id);
+                const originalWord = JSON.parse(JSON.stringify(target));
+                const originalPending = JSON.parse(JSON.stringify(app.getPendingCloudChanges()));
+                const originalState = {
+                  currentFilter: app.currentFilter,
+                  subFilter: app.subFilter,
+                  searchQuery: app.searchQuery,
+                  selectedTags: Array.from(app.selectedTags || []),
+                  currentPage: app.currentPage,
+                  ratingSort: app.ratingSort
+                };
+
+                app.currentFilter = 'learning';
+                app.subFilter = 'all';
+                app.searchQuery = String(target.word || '').toLowerCase();
+                app.selectedTags = new Set();
+                app.currentPage = 1;
+                app.renderWordList();
+                const initialCard = Array.from(document.querySelectorAll('#wordList .word-card')).find(card => String(card.dataset.id) === targetId);
+                const statusButton = initialCard?.querySelector('.card-actions button[onclick*="toggleMastered"]');
+                const beforeUpdatedAt = Number(target.updatedAt || 0);
+                statusButton?.click();
+
+                const masteredWord = app.words.find(word => String(word.id) === targetId);
+                const statusMemoryUpdated = masteredWord?.mastered === true;
+                const statusTimestampUpdated = Number(masteredWord?.updatedAt || 0) > beforeUpdatedAt;
+                const hiddenFromLearning = !Array.from(document.querySelectorAll('#wordList .word-card')).some(card => String(card.dataset.id) === targetId);
+                const statusStoredWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === targetId);
+                const statusStored = statusStoredWord?.mastered === true && Number(statusStoredWord.updatedAt || 0) === Number(masteredWord?.updatedAt || 0);
+                const searchMatchesAfterStatus = app.getSearchFilteredWords();
+                const expectedLearning = searchMatchesAfterStatus.filter(word => !word.mastered).length;
+                const expectedMastered = searchMatchesAfterStatus.filter(word => word.mastered).length;
+                const statusStatsUpdated = Number(document.getElementById('count-learning')?.textContent) === expectedLearning
+                  && Number(document.getElementById('count-mastered')?.textContent) === expectedMastered
+                  && Number(document.getElementById('count-all')?.textContent) === searchMatchesAfterStatus.length;
+                const statusPendingMeta = app.getPendingCloudMeta(app.getPendingCloudChanges()[targetId]);
+                const statusQueuedForCloud = statusPendingMeta.source === 'user'
+                  && statusPendingMeta.changedAt >= Number(masteredWord?.updatedAt || 0);
+                const statusUpdatedAt = Number(masteredWord?.updatedAt || 0);
+
+                app.currentFilter = 'all';
+                app.currentPage = 1;
+                app.renderWordList();
+                const masteredCard = Array.from(document.querySelectorAll('#wordList .word-card')).find(card => String(card.dataset.id) === targetId);
+                const masteredLabelUpdated = masteredCard?.querySelector('.card-actions button[onclick*="toggleMastered"]')?.textContent.includes('已掌握');
+                const ratingWidget = masteredCard?.querySelector('.word-card-rating');
+                const initialRating = app.normalizeRating(masteredWord?.rating);
+                const nextRating = initialRating === 5 ? 4 : initialRating + 1;
+                if (ratingWidget) {
+                  const rect = ratingWidget.getBoundingClientRect();
+                  const clientX = rect.left + rect.width * ((nextRating - 0.5) / 5);
+                  ratingWidget.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 77, button: 0, buttons: 1, clientX, clientY: rect.top + rect.height / 2 }));
+                  ratingWidget.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 77, button: 0, buttons: 0, clientX, clientY: rect.top + rect.height / 2 }));
+                }
+
+                const ratedWord = app.words.find(word => String(word.id) === targetId);
+                const ratingMemoryUpdated = app.normalizeRating(ratedWord?.rating) === nextRating;
+                const ratingTimestampUpdated = Number(ratedWord?.updatedAt || 0) > statusUpdatedAt;
+                const ratingStoredWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === targetId);
+                const ratingStored = app.normalizeRating(ratingStoredWord?.rating) === nextRating
+                  && Number(ratingStoredWord?.updatedAt || 0) === Number(ratedWord?.updatedAt || 0);
+                const rerenderedRating = document.querySelector(`.word-card[data-id="${targetId}"] .word-card-rating`);
+                const ratingUiUpdated = rerenderedRating?.querySelectorAll('.rating-star.filled').length === nextRating
+                  && rerenderedRating?.getAttribute('aria-valuenow') === String(nextRating);
+                const ratingPendingMeta = app.getPendingCloudMeta(app.getPendingCloudChanges()[targetId]);
+                const ratingQueuedForCloud = ratingPendingMeta.source === 'user'
+                  && ratingPendingMeta.changedAt >= Number(ratedWord?.updatedAt || 0);
+
+                const targetIndex = app.words.findIndex(word => String(word.id) === targetId);
+                if (targetIndex >= 0) app.words[targetIndex] = originalWord;
+                app.savePendingCloudChanges(originalPending);
+                app.persistSyncedData();
+                app.currentFilter = originalState.currentFilter;
+                app.subFilter = originalState.subFilter;
+                app.searchQuery = originalState.searchQuery;
+                app.selectedTags = new Set(originalState.selectedTags);
+                app.currentPage = originalState.currentPage;
+                app.ratingSort = originalState.ratingSort;
+                app.renderWordList();
+                return {
+                  statusMemoryUpdated, statusTimestampUpdated, hiddenFromLearning, statusStored,
+                  statusStatsUpdated, statusQueuedForCloud, masteredLabelUpdated, ratingMemoryUpdated,
+                  ratingTimestampUpdated, ratingStored, ratingUiUpdated, ratingQueuedForCloud
+                };
+            """)
+            self.assert_true(
+                bool(status_rating_persistence and all(status_rating_persistence.values())),
+                f"[{lang_name}] 浏览器列表快捷操作-学习状态与星级即时更新内存、统计、本地存储及云同步队列",
+                f"学习状态或星级仍存在提示成功但数据未完整更新: {status_rating_persistence}",
             )
 
             first_card = driver.find_element(By.CSS_SELECTOR, '.word-card')

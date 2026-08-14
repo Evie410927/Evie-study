@@ -6574,10 +6574,12 @@ class JpVocabApp {
     word.rating = nextRating;
     this.syncRatingWidgets(wordId);
     if (!changed) return;
+    word.updatedAt = Math.max(Date.now(), Number(word.updatedAt || 0) + 1);
+    if (this.markPendingCloudChanges) this.markPendingCloudChanges([String(word.id)], word.updatedAt);
     this.saveData();
-    if ((this.ratingSort === 'asc' || this.ratingSort === 'desc') && options.rerender !== false) {
-      this.renderWordList();
-    }
+    if (options.rerender !== false) this.renderWordList();
+    this.syncRatingWidgets(wordId);
+    this.updateStats();
   }
 
   beginRatingDrag(event, wordId) {
@@ -7564,12 +7566,15 @@ class JpVocabApp {
   }
 
   toggleMastered(id) {
-    const word = this.words.find(w => w.id === id);
+    const word = this.words.find(w => String(w.id) === String(id));
     if (word) {
       word.mastered = !word.mastered;
+      word.updatedAt = Math.max(Date.now(), Number(word.updatedAt || 0) + 1);
+      if (this.markPendingCloudChanges) this.markPendingCloudChanges([String(word.id)], word.updatedAt);
       this.saveData();
-      this.syncMasteredWidgets(id);
       this.renderWordList();
+      this.syncMasteredWidgets(id);
+      this.updateStats();
       this.showToast(word.mastered ? '🌟 已标记为掌握' : '📖 标记为学习中');
     }
   }
