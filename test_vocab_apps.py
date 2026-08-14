@@ -651,7 +651,7 @@ class VocabAppTester:
         self.assert_true(similar_word_status_control and status_before_rating, f"[{lang_name}] 相近表达-卡片星级左侧显示可切换的学习中/已掌握状态", "相近词卡片缺少状态按钮、未复用星级控件、状态未同步，或状态按钮没有位于星级左侧")
 
         # ---------------------------------------------------------------------
-        # 测试点 31B: 用户自定义说明在四种卡片视图中原地增删改并持久化
+        # 测试点 31B: 用户自定义说明仅在卡片编辑弹窗维护并按内容条件展示
         # ---------------------------------------------------------------------
         user_note_views = all(token in content for token in (
             'id="detailUserNote"',
@@ -660,35 +660,49 @@ class VocabAppTester:
             "this.renderUserNoteHtml(w, 'similar')",
             "this.renderUserNoteHtml(word, 'detail')",
             "this.renderUserNoteHtml(word, 'review')",
-            'class="user-note-add-btn"',
-            '>【+】</button>',
+            "const note = typeof word.userNote === 'string' ? word.userNote.trim() : '';",
+            "if (!note) return '';",
+            'class="user-note-display"',
+            'class="user-note-text"',
         ))
-        self.assert_true(user_note_views, f"[{lang_name}] 自定义说明-列表、详情、复习背面与相近词卡片均在释义下方显示【+】入口", "自定义说明缺少某个视图插槽、渲染调用或默认【+】入口")
+        self.assert_true(user_note_views, f"[{lang_name}] 自定义说明-仅有内容时在列表、详情、复习背面与相近词卡片展示", "自定义说明缺少某个视图渲染调用、非空判断或只读展示结构")
 
-        user_note_crud = all(token in content for token in (
-            'renderUserNoteInnerHtml(word)',
-            'syncUserNoteWidgets(wordId)',
-            'startUserNoteEdit(event, wordId)',
-            'handleUserNoteKeydown(event, wordId)',
-            'saveUserNoteFromEditor(event, wordId)',
-            'saveUserNote(wordId, value)',
-            'deleteUserNote(event, wordId)',
-            "word.userNote = String(value || '').trim();",
-            "word.userNote = '';",
-            'word.updatedAt = Date.now();',
-            'this.saveData();',
+        user_note_modal_editor = all(token in content for token in (
+            '<label class="form-label" for="inputUserNote">说明</label>',
+            'id="inputUserNote"',
+            'maxlength="500"',
+            "const userNoteInput = document.getElementById('inputUserNote');",
+            "userNoteInput.value = typeof word.userNote === 'string' ? word.userNote : '';",
+            'const userNote = userNoteInput.value.trim();',
+            'userNote,',
         ))
-        self.assert_true(user_note_crud, f"[{lang_name}] 自定义说明-原地输入、保存、编辑、删除、跨视图同步与云同步时间戳完整", "自定义说明 CRUD、视图同步、持久化或 updatedAt 云同步追踪不完整")
+        self.assert_true(user_note_modal_editor, f"[{lang_name}] 自定义说明-编辑弹窗说明字段支持回填、保存与清空", "编辑弹窗缺少说明字段，或 userNote 未接入新增/编辑保存流程")
+
+        user_note_external_controls_removed = all(token not in content for token in (
+            'user-note-add-btn',
+            'user-note-edit-btn',
+            'user-note-delete-btn',
+            'user-note-input',
+            'startUserNoteEdit',
+            'saveUserNoteFromEditor',
+            'deleteUserNote',
+            '>【+】</button>',
+            '自定义说明已保存',
+            '自定义说明已清空',
+            '自定义说明已删除',
+        ))
+        self.assert_true(user_note_external_controls_removed, f"[{lang_name}] 自定义说明-四种展示视图无【+】、编辑删除按钮及专属提醒", "展示层仍残留说明新增/编辑/删除控件或说明专属 Toast")
 
         user_note_style = all(token in content for token in (
             '.user-note-display {',
             '.user-note-text {',
-            '.user-note-editor {',
-            '.user-note-input {',
+            '.detail-user-note-slot:empty,',
+            '.review-user-note-slot:empty {',
+            'display: none;',
             'background: rgba(148, 163, 184, 0.09);',
             'font-size: 12px;',
         ))
-        self.assert_true(user_note_style, f"[{lang_name}] 自定义说明-浅色背景、小字号与紧凑原地编辑样式完整", "自定义说明缺少浅色背景、小字号或紧凑输入样式")
+        self.assert_true(user_note_style, f"[{lang_name}] 自定义说明-浅色小字号展示且空内容完全隐藏不占位", "自定义说明缺少展示样式，或详情/复习空插槽没有自适应隐藏")
 
         # ---------------------------------------------------------------------
         # 测试点 31C: 编辑弹窗固定三行双栏对照例句编辑器
@@ -1729,11 +1743,11 @@ class VocabAppTester:
                 const source = app.words.find(word => app.getSimilarWords(word, 1).length > 0);
                 const target = source && app.getSimilarWords(source, 1)[0];
                 if (!source || !target) return null;
-                const original = {
-                  sourceNote: source.userNote,
-                  sourceUpdatedAt: source.updatedAt,
-                  targetNote: target.userNote,
-                  targetUpdatedAt: target.updatedAt,
+                const sourceId = source.id;
+                const targetId = target.id;
+                const originalSource = JSON.parse(JSON.stringify(source));
+                const originalTarget = JSON.parse(JSON.stringify(target));
+                const originalState = {
                   currentFilter: app.currentFilter,
                   searchQuery: app.searchQuery,
                   currentPage: app.currentPage,
@@ -1747,93 +1761,101 @@ class VocabAppTester:
                 app.searchQuery = String(source.word || '').toLowerCase();
                 app.currentPage = 1;
                 app.renderWordList();
-                const listCard = Array.from(document.querySelectorAll('#wordList .word-card')).find(card => String(card.dataset.id) === String(source.id));
-                const listMeaning = listCard && listCard.querySelector('.word-meaning');
-                const listRow = listCard && listCard.querySelector('.user-note-row');
-                const listPlacement = !!listMeaning && listMeaning.nextElementSibling === listRow;
-                const defaultAddVisible = listRow?.querySelector('.user-note-add-btn')?.textContent.trim() === '【+】';
-                const detailBeforeAdd = app.currentDetailWordId;
-                listRow?.querySelector('.user-note-add-btn')?.click();
-                const addInput = listRow && listRow.querySelector('.user-note-input');
-                if (addInput) addInput.value = '我的自定义说明';
-                listRow?.querySelector('.user-note-save-btn')?.click();
-                const added = source.userNote === '我的自定义说明';
-                const addDidNotOpenDetail = app.currentDetailWordId === detailBeforeAdd;
-                const listDisplayed = listRow?.querySelector('.user-note-text')?.textContent === '我的自定义说明';
-                const storedAfterAdd = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(source.id));
-                const persisted = storedAfterAdd?.userNote === '我的自定义说明';
 
-                app.showDetailModal(source.id);
+                const blankListCard = Array.from(document.querySelectorAll('#wordList .word-card')).find(card => String(card.dataset.id) === String(sourceId));
+                const blankListCollapsed = !!blankListCard && !blankListCard.querySelector('.user-note-row');
+                app.showDetailModal(sourceId);
                 const detailSlot = document.getElementById('detailUserNote');
-                const detailMeaning = document.getElementById('detailMeaning');
-                const detailRow = detailSlot && detailSlot.querySelector('.user-note-row');
-                const detailPlacement = detailMeaning?.nextElementSibling === detailSlot;
-                const detailSynced = detailRow?.querySelector('.user-note-text')?.textContent === '我的自定义说明';
-
+                const blankDetailCollapsed = detailSlot?.innerHTML === '' && getComputedStyle(detailSlot).display === 'none';
+                const blankSimilarChip = Array.from(document.querySelectorAll('#detailSimilarBlock .similar-word-chip')).find(chip =>
+                  chip.querySelector('.similar-word-text')?.textContent === target.word
+                );
+                const blankSimilarCollapsed = !!blankSimilarChip && !blankSimilarChip.querySelector('.user-note-row');
                 app.reviewList = [source];
                 app.currentReviewIndex = 0;
                 app.renderCurrentCard();
                 const reviewSlot = document.getElementById('cardBackUserNote');
-                const reviewMeaning = document.getElementById('cardBackMeaning');
-                const reviewRow = reviewSlot && reviewSlot.querySelector('.user-note-row');
-                const reviewPlacement = reviewMeaning?.nextElementSibling === reviewSlot;
-                const reviewSynced = reviewRow?.querySelector('.user-note-text')?.textContent === '我的自定义说明';
+                const blankReviewCollapsed = reviewSlot?.innerHTML === '' && getComputedStyle(reviewSlot).display === 'none';
+                const noExternalControls = !document.querySelector('.user-note-add-btn, .user-note-edit-btn, .user-note-delete-btn, .user-note-input');
 
-                app.showDetailModal(source.id);
-                app.saveUserNote(target.id, '相近词自定义说明');
+                app.showDetailModal(sourceId);
+                document.getElementById('detailEditBtn')?.click();
+                const noteInput = document.getElementById('inputUserNote');
+                const editorOpenedBlank = document.getElementById('wordModal')?.classList.contains('active') === true && noteInput?.value === '';
+                if (noteInput) noteInput.value = '我的自定义说明';
+                app.saveWordFromForm();
+                const savedSource = app.words.find(word => String(word.id) === String(sourceId));
+                const savedViaModal = savedSource?.userNote === '我的自定义说明' && document.getElementById('wordModal')?.classList.contains('active') === false;
+                const storedSource = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(sourceId));
+                const persisted = storedSource?.userNote === '我的自定义说明';
+
+                const listCard = Array.from(document.querySelectorAll('#wordList .word-card')).find(card => String(card.dataset.id) === String(sourceId));
+                const listMeaning = listCard && listCard.querySelector('.word-meaning');
+                const listRow = listCard && listCard.querySelector('.user-note-row');
+                const listDisplayed = listMeaning?.nextElementSibling === listRow && listRow?.querySelector('.user-note-text')?.textContent === '我的自定义说明';
+                app.showDetailModal(sourceId);
+                const detailRow = detailSlot && detailSlot.querySelector('.user-note-row');
+                const detailDisplayed = document.getElementById('detailMeaning')?.nextElementSibling === detailSlot && detailRow?.querySelector('.user-note-text')?.textContent === '我的自定义说明';
+                app.reviewList = [savedSource];
+                app.currentReviewIndex = 0;
+                app.renderCurrentCard();
+                const reviewRow = reviewSlot && reviewSlot.querySelector('.user-note-row');
+                const reviewDisplayed = document.getElementById('cardBackMeaning')?.nextElementSibling === reviewSlot && reviewRow?.querySelector('.user-note-text')?.textContent === '我的自定义说明';
+
+                app.openWordModal(app.words.find(word => String(word.id) === String(targetId)));
+                const targetInput = document.getElementById('inputUserNote');
+                if (targetInput) targetInput.value = '相近词自定义说明';
+                app.saveWordFromForm();
+                app.showDetailModal(sourceId);
                 const similarChip = Array.from(document.querySelectorAll('#detailSimilarBlock .similar-word-chip')).find(chip =>
                   chip.querySelector('.similar-word-text')?.textContent === target.word
                 );
                 const similarMeaning = similarChip && similarChip.querySelector('.similar-word-meaning');
                 const similarRow = similarChip && similarChip.querySelector('.user-note-row');
-                const similarPlacement = !!similarMeaning && similarMeaning.nextElementSibling === similarRow;
-                const similarSynced = similarRow?.querySelector('.user-note-text')?.textContent === '相近词自定义说明';
+                const similarDisplayed = similarMeaning?.nextElementSibling === similarRow && similarRow?.querySelector('.user-note-text')?.textContent === '相近词自定义说明';
 
-                const refreshedDetailRow = document.querySelector('#detailUserNote .user-note-row');
-                refreshedDetailRow?.querySelector('.user-note-edit-btn')?.click();
-                const editInput = refreshedDetailRow && refreshedDetailRow.querySelector('.user-note-input');
-                if (editInput) {
-                  editInput.value = '修改后的说明';
-                  editInput.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true}));
-                }
-                const edited = source.userNote === '修改后的说明';
-                const allVisibleRowsSynced = Array.from(document.querySelectorAll('[data-user-note-word-id]'))
-                  .filter(row => String(row.dataset.userNoteWordId) === String(source.id))
-                  .every(row => row.querySelector('.user-note-text')?.textContent === '修改后的说明');
+                app.openWordModal(app.words.find(word => String(word.id) === String(sourceId)));
+                const clearSourceInput = document.getElementById('inputUserNote');
+                const existingNotePreloaded = clearSourceInput?.value === '我的自定义说明';
+                if (clearSourceInput) clearSourceInput.value = '';
+                app.saveWordFromForm();
+                const sourceCleared = app.words.find(word => String(word.id) === String(sourceId))?.userNote === '';
+                app.openWordModal(app.words.find(word => String(word.id) === String(targetId)));
+                const clearTargetInput = document.getElementById('inputUserNote');
+                if (clearTargetInput) clearTargetInput.value = '';
+                app.saveWordFromForm();
+                app.showDetailModal(sourceId);
+                const clearedDetailCollapsed = detailSlot?.innerHTML === '' && getComputedStyle(detailSlot).display === 'none';
+                const clearedSimilarChip = Array.from(document.querySelectorAll('#detailSimilarBlock .similar-word-chip')).find(chip =>
+                  chip.querySelector('.similar-word-text')?.textContent === target.word
+                );
+                const clearedSimilarCollapsed = !!clearedSimilarChip && !clearedSimilarChip.querySelector('.user-note-row');
 
-                const deleteButton = document.querySelector('#cardBackUserNote .user-note-delete-btn');
-                const flipBeforeDelete = document.getElementById('flashcard')?.classList.contains('is-flipped');
-                deleteButton?.click();
-                const deleted = source.userNote === '';
-                const addRestoredEverywhere = Array.from(document.querySelectorAll('[data-user-note-word-id]'))
-                  .filter(row => String(row.dataset.userNoteWordId) === String(source.id))
-                  .every(row => row.querySelector('.user-note-add-btn')?.textContent.trim() === '【+】');
-                const deleteDidNotFlip = document.getElementById('flashcard')?.classList.contains('is-flipped') === flipBeforeDelete;
-
-                if (original.sourceNote === undefined) delete source.userNote; else source.userNote = original.sourceNote;
-                if (original.targetNote === undefined) delete target.userNote; else target.userNote = original.targetNote;
-                if (original.sourceUpdatedAt === undefined) delete source.updatedAt; else source.updatedAt = original.sourceUpdatedAt;
-                if (original.targetUpdatedAt === undefined) delete target.updatedAt; else target.updatedAt = original.targetUpdatedAt;
-                app.currentFilter = original.currentFilter;
-                app.searchQuery = original.searchQuery;
-                app.currentPage = original.currentPage;
-                app.ratingSort = original.ratingSort;
-                app.reviewList = original.reviewList;
-                app.currentReviewIndex = original.currentReviewIndex;
+                const sourceIndex = app.words.findIndex(word => String(word.id) === String(sourceId));
+                const targetIndex = app.words.findIndex(word => String(word.id) === String(targetId));
+                if (sourceIndex >= 0) app.words[sourceIndex] = originalSource;
+                if (targetIndex >= 0) app.words[targetIndex] = originalTarget;
+                app.currentFilter = originalState.currentFilter;
+                app.searchQuery = originalState.searchQuery;
+                app.currentPage = originalState.currentPage;
+                app.ratingSort = originalState.ratingSort;
+                app.reviewList = originalState.reviewList;
+                app.currentReviewIndex = originalState.currentReviewIndex;
                 app.saveData();
                 app.renderWordList();
+                app.closeWordModal();
                 app.closeDetailModal();
                 return {
-                  listPlacement, defaultAddVisible, added, addDidNotOpenDetail, listDisplayed, persisted,
-                  detailPlacement, detailSynced, reviewPlacement, reviewSynced,
-                  similarPlacement, similarSynced, edited, allVisibleRowsSynced,
-                  deleted, addRestoredEverywhere, deleteDidNotFlip
+                  blankListCollapsed, blankDetailCollapsed, blankSimilarCollapsed, blankReviewCollapsed,
+                  noExternalControls, editorOpenedBlank, savedViaModal, persisted,
+                  listDisplayed, detailDisplayed, reviewDisplayed, similarDisplayed,
+                  existingNotePreloaded, sourceCleared, clearedDetailCollapsed, clearedSimilarCollapsed
                 };
             """)
             self.assert_true(
                 bool(user_note_lifecycle and all(user_note_lifecycle.values())),
-                f"[{lang_name}] 浏览器自定义说明-四视图【+】新增、同步、编辑、持久化与一键删除全流程",
-                f"自定义说明真实交互失败: {user_note_lifecycle}",
+                f"[{lang_name}] 浏览器自定义说明-仅编辑弹窗维护、四视图条件展示与清空零占位全流程",
+                f"自定义说明弹窗维护或条件展示失败: {user_note_lifecycle}",
             )
 
             detail_scroll_reset = driver.execute_script("""

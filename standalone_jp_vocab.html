@@ -1347,33 +1347,11 @@ body::-webkit-scrollbar,
 /* User-authored explanation shown consistently in list, detail, review and similar-word cards. */
 .user-note-row {
   width: 100%;
-  min-height: 24px;
   margin: 5px 0 8px;
   box-sizing: border-box;
   text-align: left;
 }
-.user-note-add-btn {
-  min-width: 34px;
-  height: 24px;
-  padding: 0 6px;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 6px;
-  color: var(--text-muted);
-  background: rgba(148, 163, 184, 0.08);
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
-}
-.user-note-add-btn:hover,
-.user-note-add-btn:focus-visible {
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
-  outline: none;
-}
 .user-note-display {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
   width: 100%;
   padding: 6px 7px 6px 9px;
   border: 1px solid rgba(148, 163, 184, 0.2);
@@ -1383,73 +1361,21 @@ body::-webkit-scrollbar,
   box-sizing: border-box;
 }
 .user-note-text {
-  flex: 1 1 auto;
-  min-width: 0;
+  display: block;
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.user-note-actions,
-.user-note-editor-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  flex: 0 0 auto;
-}
-.user-note-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 23px;
-  height: 23px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  color: var(--text-muted);
-  background: transparent;
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
-}
-.user-note-icon-btn:hover,
-.user-note-icon-btn:focus-visible {
-  border-color: rgba(148, 163, 184, 0.3);
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.06);
-  outline: none;
-}
-.user-note-editor {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  width: 100%;
-}
-.user-note-input {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 34px;
-  max-height: 120px;
-  padding: 7px 9px;
-  border: 1px solid rgba(236, 72, 153, 0.55);
-  border-radius: 6px;
-  color: var(--text-primary);
-  background: var(--bg-input);
-  font-family: inherit;
-  font-size: 12px;
-  line-height: 1.45;
-  resize: vertical;
-  box-sizing: border-box;
-  outline: none;
-}
-.user-note-input:focus {
-  box-shadow: 0 0 0 2px rgba(236, 72, 153, 0.12);
-}
 .detail-user-note-slot,
 .review-user-note-slot {
   width: 100%;
   box-sizing: border-box;
+}
+.detail-user-note-slot:empty,
+.review-user-note-slot:empty {
+  display: none;
 }
 
 
@@ -2945,6 +2871,11 @@ body::-webkit-scrollbar,
           <div class="form-group">
             <label class="form-label" for="inputMeaning">词性与中文释义 *</label>
             <input type="text" id="inputMeaning" class="form-input" placeholder="如：adj. 幸福的，快乐的" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="inputUserNote">说明</label>
+            <textarea id="inputUserNote" class="form-textarea" maxlength="500" rows="2" placeholder="可选：输入你对这个单词的自定义说明"></textarea>
           </div>
 
           <div class="form-group">
@@ -6535,107 +6466,13 @@ class JpVocabApp {
     });
   }
 
-  renderUserNoteInnerHtml(word) {
-    if (!word) return '';
-    const safeId = this.escapeHtml(String(word.id));
-    const note = typeof word.userNote === 'string' ? word.userNote.trim() : '';
-    if (!note) {
-      return `<button type="button" class="user-note-add-btn" onclick="event.stopPropagation(); (window.app||window.vocabApp).startUserNoteEdit(event, '${safeId}')" aria-label="添加自定义说明" title="添加自定义说明">【+】</button>`;
-    }
-    return `
-      <div class="user-note-display">
-        <span class="user-note-text">${this.escapeHtml(note)}</span>
-        <span class="user-note-actions">
-          <button type="button" class="user-note-icon-btn user-note-edit-btn" onclick="event.stopPropagation(); (window.app||window.vocabApp).startUserNoteEdit(event, '${safeId}')" aria-label="编辑自定义说明" title="编辑自定义说明">✏️</button>
-          <button type="button" class="user-note-icon-btn user-note-delete-btn" onclick="event.stopPropagation(); (window.app||window.vocabApp).deleteUserNote(event, '${safeId}')" aria-label="删除自定义说明" title="删除自定义说明">×</button>
-        </span>
-      </div>`;
-  }
-
   renderUserNoteHtml(word, context = 'card') {
     if (!word || !word.id) return '';
+    const note = typeof word.userNote === 'string' ? word.userNote.trim() : '';
+    if (!note) return '';
     const safeId = this.escapeHtml(String(word.id));
     const safeContext = this.escapeHtml(String(context));
-    return `<div class="user-note-row" data-user-note-word-id="${safeId}" data-user-note-context="${safeContext}" onclick="event.stopPropagation()">${this.renderUserNoteInnerHtml(word)}</div>`;
-  }
-
-  syncUserNoteWidgets(wordId) {
-    const word = this.words.find(item => String(item.id) === String(wordId));
-    if (!word) return;
-    document.querySelectorAll('[data-user-note-word-id]').forEach(row => {
-      if (String(row.dataset.userNoteWordId || '') !== String(wordId)) return;
-      row.innerHTML = this.renderUserNoteInnerHtml(word);
-    });
-  }
-
-  startUserNoteEdit(event, wordId) {
-    if (event) event.stopPropagation();
-    const trigger = event && event.currentTarget ? event.currentTarget : null;
-    const row = trigger ? trigger.closest('.user-note-row') : null;
-    const word = this.words.find(item => String(item.id) === String(wordId));
-    if (!row || !word) return;
-    const safeId = this.escapeHtml(String(word.id));
-    const currentNote = typeof word.userNote === 'string' ? word.userNote : '';
-    row.innerHTML = `
-      <div class="user-note-editor">
-        <textarea class="user-note-input" maxlength="500" rows="1" aria-label="自定义说明" onkeydown="(window.app||window.vocabApp).handleUserNoteKeydown(event, '${safeId}')">${this.escapeHtml(currentNote)}</textarea>
-        <span class="user-note-editor-actions">
-          <button type="button" class="user-note-icon-btn user-note-save-btn" onclick="event.stopPropagation(); (window.app||window.vocabApp).saveUserNoteFromEditor(event, '${safeId}')" aria-label="保存自定义说明" title="保存">✓</button>
-          <button type="button" class="user-note-icon-btn user-note-cancel-btn" onclick="event.stopPropagation(); (window.app||window.vocabApp).cancelUserNoteEdit(event, '${safeId}')" aria-label="取消编辑" title="取消">×</button>
-        </span>
-      </div>`;
-    const input = row.querySelector('.user-note-input');
-    if (input) {
-      input.focus();
-      input.setSelectionRange(input.value.length, input.value.length);
-    }
-  }
-
-  handleUserNoteKeydown(event, wordId) {
-    if (!event) return;
-    event.stopPropagation();
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      this.saveUserNoteFromEditor(event, wordId);
-    } else if (event.key === 'Escape') {
-      event.preventDefault();
-      this.cancelUserNoteEdit(event, wordId);
-    }
-  }
-
-  saveUserNoteFromEditor(event, wordId) {
-    if (event) event.stopPropagation();
-    const trigger = event && event.currentTarget ? event.currentTarget : null;
-    const row = trigger ? trigger.closest('.user-note-row') : null;
-    const input = row ? row.querySelector('.user-note-input') : null;
-    if (!input) return;
-    this.saveUserNote(wordId, input.value);
-  }
-
-  saveUserNote(wordId, value) {
-    const word = this.words.find(item => String(item.id) === String(wordId));
-    if (!word) return;
-    word.userNote = String(value || '').trim();
-    word.updatedAt = Date.now();
-    this.saveData();
-    this.syncUserNoteWidgets(wordId);
-    this.showToast(word.userNote ? '✅ 自定义说明已保存' : '自定义说明已清空');
-  }
-
-  cancelUserNoteEdit(event, wordId) {
-    if (event) event.stopPropagation();
-    this.syncUserNoteWidgets(wordId);
-  }
-
-  deleteUserNote(event, wordId) {
-    if (event) event.stopPropagation();
-    const word = this.words.find(item => String(item.id) === String(wordId));
-    if (!word) return;
-    word.userNote = '';
-    word.updatedAt = Date.now();
-    this.saveData();
-    this.syncUserNoteWidgets(wordId);
-    this.showToast('自定义说明已删除');
+    return `<div class="user-note-row" data-user-note-word-id="${safeId}" data-user-note-context="${safeContext}"><div class="user-note-display"><span class="user-note-text">${this.escapeHtml(note)}</span></div></div>`;
   }
 
   setWordRating(wordId, value, options = {}) {
@@ -6943,7 +6780,8 @@ class JpVocabApp {
     const wordInput = document.getElementById('inputWord');
     const readingInput = document.getElementById('inputReading');
     const meaningInput = document.getElementById('inputMeaning');
-    if (!modal || !form || !title || !wordIdInput || !wordInput || !readingInput || !meaningInput) return;
+    const userNoteInput = document.getElementById('inputUserNote');
+    if (!modal || !form || !title || !wordIdInput || !wordInput || !readingInput || !meaningInput || !userNoteInput) return;
     form.reset();
 
     if (word) {
@@ -6952,6 +6790,7 @@ class JpVocabApp {
       wordInput.value = word.word || '';
       readingInput.value = word.reading || '';
       meaningInput.value = word.meaning || '';
+      userNoteInput.value = typeof word.userNote === 'string' ? word.userNote : '';
       this.editingModalTags = word.tags ? word.tags.filter(tag => tag !== '\u6613\u6df7') : [];
     } else {
       title.textContent = '添加日语单词';
@@ -7443,11 +7282,13 @@ class JpVocabApp {
     const wordInput = document.getElementById('inputWord');
     const readingInput = document.getElementById('inputReading');
     const meaningInput = document.getElementById('inputMeaning');
-    if (!wordIdInput || !wordInput || !readingInput || !meaningInput) return;
+    const userNoteInput = document.getElementById('inputUserNote');
+    if (!wordIdInput || !wordInput || !readingInput || !meaningInput || !userNoteInput) return;
     const id = wordIdInput.value;
     const wordText = wordInput.value.trim();
     const reading = readingInput.value.trim();
     const meaning = meaningInput.value.trim();
+    const userNote = userNoteInput.value.trim();
     const examplePairs = this.collectExamplePairsFromEditor();
 
     if (!wordText || !meaning) {
@@ -7477,6 +7318,7 @@ class JpVocabApp {
           exampleTrans,
           examples,
           tags,
+          userNote,
           updatedAt: Date.now()
         };
         this.showToast('✅ 修改保存成功');
@@ -7491,7 +7333,7 @@ class JpVocabApp {
         exampleTrans,
         examples,
         tags,
-        userNote: '',
+        userNote,
         mastered: false,
         rating: 0,
         reviewCount: 0,
