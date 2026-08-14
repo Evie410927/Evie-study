@@ -484,8 +484,21 @@ class VocabAppTester:
         inline_tag_methods = 'showInlineTagInput(' in content and 'handleInlineTagKeydown(' in content and 'saveInlineTag(' in content and 'addQuickTag(' in content
         self.assert_true(inline_tag_methods, f"[{lang_name}] 交互-行内打字加标签 API 方法集 (showInlineTagInput/saveInlineTag/addQuickTag) 健全", "类中缺少 showInlineTagInput / handleInlineTagKeydown / saveInlineTag / addQuickTag 方法")
 
-        modal_inline_tag_methods = 'showModalInlineTagInput(' in content and 'handleModalInlineTagKeydown(' in content and 'saveModalInlineTag(' in content and 'addModalQuickTag(' in content
-        self.assert_true(modal_inline_tag_methods, f"[{lang_name}] 交互-编辑弹窗行内打字加标签 API 方法集健全", "类中缺少 showModalInlineTagInput / saveModalInlineTag 方法")
+        modal_tag_editor_removed = all(token not in content for token in (
+            'id="modalTagsContainer"',
+            '>卡片标签</label>',
+            'editingModalTags',
+            'renderModalTags(',
+            'showModalInlineTagInput(',
+            'handleModalInlineTagKeydown(',
+            'saveModalInlineTag(',
+            'addModalQuickTag(',
+            'removeModalTag(',
+        )) and all(token in content for token in (
+            'const existingWord = id ? this.words.find(w => w.id === id) : null;',
+            "const tags = existingWord && Array.isArray(existingWord.tags) ? [...existingWord.tags] : ['名词'];",
+        ))
+        self.assert_true(modal_tag_editor_removed, f"[{lang_name}] 编辑弹窗-移除卡片标签字段且保存时保留原 Tag", "编辑弹窗仍残留标签 UI/方法，或保存卡片时没有保留现有 Tag")
 
         word_list_isolated_scroll = 'flex-shrink: 0;' in content and '#wordList::-webkit-scrollbar' in content
         self.assert_true(word_list_isolated_scroll, f"[{lang_name}] 布局-#wordList 独立滚动与搜索/Tag控件置顶固定不动", "缺少 #wordList 独立滚动或 flex-shrink: 0 防压缩设置")
@@ -1047,12 +1060,10 @@ class VocabAppTester:
         self.assert_true(dropdown_outside_close, f"[{lang_name}] 基线差异-点击标签下拉外部自动关闭", "缺少 document click 外部区域关闭 Tag 下拉逻辑")
 
         global_tag_handlers = all(token in content for token in (
-            '(window.app||window.vocabApp).showModalInlineTagInput(event)',
-            '(window.app||window.vocabApp).handleModalInlineTagKeydown(event)',
             '(window.app||window.vocabApp).showInlineTagInput(event',
             '(window.app||window.vocabApp).handleInlineTagKeydown(event',
         ))
-        self.assert_true(global_tag_handlers, f"[{lang_name}] 基线差异-Tag 行内编辑事件统一使用全局安全实例", "Modal/卡片 Tag 事件仍依赖不稳定的裸 app 变量")
+        self.assert_true(global_tag_handlers, f"[{lang_name}] 基线差异-卡片外部 Tag 行内编辑事件使用全局安全实例", "卡片外部 Tag 事件仍依赖不稳定的裸 app 变量")
 
         tag_normalization_safe = (
             "String(t).replace(/^#/, '').trim()" in content
@@ -1124,6 +1135,17 @@ class VocabAppTester:
         # JP 测试点 6: 日语语音发音 (speakWord) 正确配置 utterance.lang = 'ja-JP'
         has_ja_jp_tts = "utterance.lang = 'ja-JP';" in content
         self.assert_true(has_ja_jp_tts, "[日语专属] 语音-speakWord 发音引擎语言设置为 ja-JP", "utterance.lang 未设置为 ja-JP，导致日语发音引擎失效或读错")
+
+        # JP 测试点 7: 编辑弹窗可回填并保存韩文对应释义
+        editable_kr_meaning = all(token in content for token in (
+            '<label class="form-label" for="inputKrMeaning">韩文释义</label>',
+            'id="inputKrMeaning"',
+            "const krMeaningInput = document.getElementById('inputKrMeaning');",
+            "krMeaningInput.value = word.krMeaning || '';",
+            'const krMeaning = krMeaningInput.value.trim();',
+            'krMeaning,',
+        ))
+        self.assert_true(editable_kr_meaning, "[日语专属] 编辑弹窗-韩文释义字段支持回填、修改、清空与保存", "日语编辑弹窗缺少 inputKrMeaning，或 krMeaning 未接入回填/保存流程")
 
     def test_browser_interactions(self, filepath, lang_name):
         """在真实浏览器中执行 JS 并点击核心控件，防止静态字符串断言假通过。"""
@@ -1543,6 +1565,7 @@ class VocabAppTester:
                 const wordIndex = app.words.findIndex(word => String(word.id) === String(currentId));
                 if (wordIndex < 0) return null;
                 const originalWord = JSON.parse(JSON.stringify(app.words[wordIndex]));
+                const originalTags = JSON.stringify(originalWord.tags || []);
                 const originalState = {
                   currentFilter: app.currentFilter,
                   searchQuery: app.searchQuery,
@@ -1579,6 +1602,7 @@ class VocabAppTester:
                 const structuredSaved = parsedAfterSave.length === 3 && parsedAfterSave.every((pair, index) =>
                   pair.example === `编辑原句 ${index + 1}` && pair.trans === `编辑译文 ${index + 1}`
                 );
+                const tagsPreserved = JSON.stringify(savedWord.tags || []) === originalTags;
                 const legacySaved = savedWord.example.split(String.fromCharCode(10)).join('|') === '编辑原句 1|编辑原句 2|编辑原句 3' &&
                   savedWord.exampleTrans.split(String.fromCharCode(10)).join('|') === '编辑译文 1|编辑译文 2|编辑译文 3';
                 const modalClosedAfterSave = modal?.classList.contains('active') === false;
@@ -1613,7 +1637,7 @@ class VocabAppTester:
                 app.closeDetailModal();
                 return {
                   editModalOpened, exactlyThreeRows, existingPairsLoaded, incompleteRejected,
-                  structuredSaved, legacySaved, modalClosedAfterSave, persisted,
+                  structuredSaved, tagsPreserved, legacySaved, modalClosedAfterSave, persisted,
                   listPreviewUpdated, detailShowsThreePairs, reviewShowsThreePairs
                 };
             """)
@@ -1622,6 +1646,61 @@ class VocabAppTester:
                 f"[{lang_name}] 浏览器编辑弹窗-三组例句回填、成对校验、保存持久化及各视图联动",
                 f"编辑弹窗三行双栏例句全流程失败: {example_pair_edit_lifecycle}",
             )
+
+            if lang_name == "日语":
+                jp_kr_meaning_lifecycle = driver.execute_script("""
+                    const app = window.app;
+                    const word = app.words.find(item => item && item.krMeaning && app.getParsedExamples(item).length >= 3);
+                    if (!word) return null;
+                    const wordId = word.id;
+                    const wordIndex = app.words.findIndex(item => String(item.id) === String(wordId));
+                    const originalWord = JSON.parse(JSON.stringify(word));
+                    const originalState = {
+                      currentFilter: app.currentFilter,
+                      searchQuery: app.searchQuery,
+                      currentPage: app.currentPage
+                    };
+                    const originalTags = JSON.stringify(word.tags || []);
+                    app.openWordModal(word);
+                    const meaningGroup = document.getElementById('inputMeaning')?.closest('.form-group');
+                    const krMeaningInput = document.getElementById('inputKrMeaning');
+                    const fieldImmediatelyBelowMeaning = meaningGroup?.nextElementSibling?.querySelector('#inputKrMeaning') === krMeaningInput;
+                    const existingValueLoaded = krMeaningInput?.value === word.krMeaning;
+                    if (krMeaningInput) krMeaningInput.value = '편집한 한국어 뜻';
+                    app.saveWordFromForm();
+                    const savedWord = app.words.find(item => String(item.id) === String(wordId));
+                    const saved = savedWord?.krMeaning === '편집한 한국어 뜻';
+                    const tagsPreserved = JSON.stringify(savedWord?.tags || []) === originalTags;
+                    const storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(item => String(item.id) === String(wordId));
+                    const persisted = storedWord?.krMeaning === '편집한 한국어 뜻';
+
+                    app.currentFilter = 'all';
+                    app.searchQuery = String(savedWord.word || '').toLowerCase();
+                    app.currentPage = 1;
+                    app.renderWordList();
+                    const listCard = Array.from(document.querySelectorAll('#wordList .word-card')).find(card => String(card.dataset.id) === String(wordId));
+                    const listBadgeUpdated = listCard?.querySelector('.kr-meaning-badge')?.textContent === '편집한 한국어 뜻';
+                    app.showDetailModal(wordId);
+                    const detailBadgeUpdated = document.querySelector('#detailMeaning .kr-badge')?.textContent === '편집한 한국어 뜻';
+
+                    app.words[wordIndex] = originalWord;
+                    app.currentFilter = originalState.currentFilter;
+                    app.searchQuery = originalState.searchQuery;
+                    app.currentPage = originalState.currentPage;
+                    app.saveData();
+                    app.renderWordList();
+                    app.closeWordModal();
+                    app.closeDetailModal();
+                    return {
+                      fieldImmediatelyBelowMeaning, existingValueLoaded, saved,
+                      tagsPreserved, persisted, listBadgeUpdated, detailBadgeUpdated
+                    };
+                """)
+                self.assert_true(
+                    bool(jp_kr_meaning_lifecycle and all(jp_kr_meaning_lifecycle.values())),
+                    "[日语专属] 浏览器编辑弹窗-韩文释义回填、保存、持久化及 Badge 联动",
+                    f"日语韩文释义编辑全流程失败: {jp_kr_meaning_lifecycle}",
+                )
 
             similar_manual_crud = driver.execute_script("""
                 const app = window.app;
