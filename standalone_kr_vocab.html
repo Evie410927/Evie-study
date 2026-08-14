@@ -1499,6 +1499,114 @@ body::-webkit-scrollbar,
   text-align: center;
 }
 
+/* User-authored explanation shown consistently in list, detail, review and similar-word cards. */
+.user-note-row {
+  width: 100%;
+  min-height: 24px;
+  margin: 5px 0 8px;
+  box-sizing: border-box;
+  text-align: left;
+}
+.user-note-add-btn {
+  min-width: 34px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: rgba(148, 163, 184, 0.08);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.user-note-add-btn:hover,
+.user-note-add-btn:focus-visible {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  outline: none;
+}
+.user-note-display {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  width: 100%;
+  padding: 6px 7px 6px 9px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-left: 2px solid rgba(236, 72, 153, 0.48);
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.09);
+  box-sizing: border-box;
+}
+.user-note-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.user-note-actions,
+.user-note-editor-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+.user-note-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 23px;
+  height: 23px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--text-muted);
+  background: transparent;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.user-note-icon-btn:hover,
+.user-note-icon-btn:focus-visible {
+  border-color: rgba(148, 163, 184, 0.3);
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+  outline: none;
+}
+.user-note-editor {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+}
+.user-note-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 34px;
+  max-height: 120px;
+  padding: 7px 9px;
+  border: 1px solid rgba(236, 72, 153, 0.55);
+  border-radius: 6px;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  resize: vertical;
+  box-sizing: border-box;
+  outline: none;
+}
+.user-note-input:focus {
+  box-shadow: 0 0 0 2px rgba(236, 72, 153, 0.12);
+}
+.detail-user-note-slot,
+.review-user-note-slot {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 /* 0-5 星级：空心星表示尚未达到该等级，支持点击与横向拖动。 */
 .star-rating {
   display: inline-flex;
@@ -16730,6 +16838,7 @@ body::-webkit-scrollbar,
               <div class="card-face card-face-back">
                 <div id="cardBackRating" class="review-star-slot"></div>
                 <div class="card-meaning-text" id="cardBackMeaning">adv. 本来就，偏偏，再加上</div>
+                <div id="cardBackUserNote" class="review-user-note-slot"></div>
                 <div class="card-example-block" id="cardBackExampleBlock">
                   <div class="word-example" id="cardBackExample">가뜩이나 바쁜데 일이 더 생겼다.</div>
                   <div class="word-example-trans" id="cardBackExampleTrans">本来就很忙，偏偏又多出了事。</div>
@@ -16851,6 +16960,7 @@ body::-webkit-scrollbar,
         </div>
         <div class="detail-body">
           <div id="detailMeaning" class="detail-meaning">词性与释义</div>
+          <div id="detailUserNote" class="detail-user-note-slot"></div>
           <div id="detailTags" class="detail-tags"></div>
           <div id="detailExamplesList" class="detail-examples-list"></div>
           <div id="detailSimilarBlock"></div>
@@ -20246,6 +20356,109 @@ class KrVocabApp {
     });
   }
 
+  renderUserNoteInnerHtml(word) {
+    if (!word) return '';
+    const safeId = this.escapeHtml(String(word.id));
+    const note = typeof word.userNote === 'string' ? word.userNote.trim() : '';
+    if (!note) {
+      return `<button type="button" class="user-note-add-btn" onclick="event.stopPropagation(); (window.app||window.vocabApp).startUserNoteEdit(event, '${safeId}')" aria-label="添加自定义说明" title="添加自定义说明">【+】</button>`;
+    }
+    return `
+      <div class="user-note-display">
+        <span class="user-note-text">${this.escapeHtml(note)}</span>
+        <span class="user-note-actions">
+          <button type="button" class="user-note-icon-btn user-note-edit-btn" onclick="event.stopPropagation(); (window.app||window.vocabApp).startUserNoteEdit(event, '${safeId}')" aria-label="编辑自定义说明" title="编辑自定义说明">✏️</button>
+          <button type="button" class="user-note-icon-btn user-note-delete-btn" onclick="event.stopPropagation(); (window.app||window.vocabApp).deleteUserNote(event, '${safeId}')" aria-label="删除自定义说明" title="删除自定义说明">×</button>
+        </span>
+      </div>`;
+  }
+
+  renderUserNoteHtml(word, context = 'card') {
+    if (!word || !word.id) return '';
+    const safeId = this.escapeHtml(String(word.id));
+    const safeContext = this.escapeHtml(String(context));
+    return `<div class="user-note-row" data-user-note-word-id="${safeId}" data-user-note-context="${safeContext}" onclick="event.stopPropagation()">${this.renderUserNoteInnerHtml(word)}</div>`;
+  }
+
+  syncUserNoteWidgets(wordId) {
+    const word = this.words.find(item => String(item.id) === String(wordId));
+    if (!word) return;
+    document.querySelectorAll('[data-user-note-word-id]').forEach(row => {
+      if (String(row.dataset.userNoteWordId || '') !== String(wordId)) return;
+      row.innerHTML = this.renderUserNoteInnerHtml(word);
+    });
+  }
+
+  startUserNoteEdit(event, wordId) {
+    if (event) event.stopPropagation();
+    const trigger = event && event.currentTarget ? event.currentTarget : null;
+    const row = trigger ? trigger.closest('.user-note-row') : null;
+    const word = this.words.find(item => String(item.id) === String(wordId));
+    if (!row || !word) return;
+    const safeId = this.escapeHtml(String(word.id));
+    const currentNote = typeof word.userNote === 'string' ? word.userNote : '';
+    row.innerHTML = `
+      <div class="user-note-editor">
+        <textarea class="user-note-input" maxlength="500" rows="1" aria-label="自定义说明" onkeydown="(window.app||window.vocabApp).handleUserNoteKeydown(event, '${safeId}')">${this.escapeHtml(currentNote)}</textarea>
+        <span class="user-note-editor-actions">
+          <button type="button" class="user-note-icon-btn user-note-save-btn" onclick="event.stopPropagation(); (window.app||window.vocabApp).saveUserNoteFromEditor(event, '${safeId}')" aria-label="保存自定义说明" title="保存">✓</button>
+          <button type="button" class="user-note-icon-btn user-note-cancel-btn" onclick="event.stopPropagation(); (window.app||window.vocabApp).cancelUserNoteEdit(event, '${safeId}')" aria-label="取消编辑" title="取消">×</button>
+        </span>
+      </div>`;
+    const input = row.querySelector('.user-note-input');
+    if (input) {
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    }
+  }
+
+  handleUserNoteKeydown(event, wordId) {
+    if (!event) return;
+    event.stopPropagation();
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      this.saveUserNoteFromEditor(event, wordId);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      this.cancelUserNoteEdit(event, wordId);
+    }
+  }
+
+  saveUserNoteFromEditor(event, wordId) {
+    if (event) event.stopPropagation();
+    const trigger = event && event.currentTarget ? event.currentTarget : null;
+    const row = trigger ? trigger.closest('.user-note-row') : null;
+    const input = row ? row.querySelector('.user-note-input') : null;
+    if (!input) return;
+    this.saveUserNote(wordId, input.value);
+  }
+
+  saveUserNote(wordId, value) {
+    const word = this.words.find(item => String(item.id) === String(wordId));
+    if (!word) return;
+    word.userNote = String(value || '').trim();
+    word.updatedAt = Date.now();
+    this.saveData();
+    this.syncUserNoteWidgets(wordId);
+    this.showToast(word.userNote ? '✅ 自定义说明已保存' : '自定义说明已清空');
+  }
+
+  cancelUserNoteEdit(event, wordId) {
+    if (event) event.stopPropagation();
+    this.syncUserNoteWidgets(wordId);
+  }
+
+  deleteUserNote(event, wordId) {
+    if (event) event.stopPropagation();
+    const word = this.words.find(item => String(item.id) === String(wordId));
+    if (!word) return;
+    word.userNote = '';
+    word.updatedAt = Date.now();
+    this.saveData();
+    this.syncUserNoteWidgets(wordId);
+    this.showToast('自定义说明已删除');
+  }
+
   setWordRating(wordId, value, options = {}) {
     const word = this.words.find(item => String(item.id) === String(wordId));
     if (!word) return;
@@ -20799,6 +21012,7 @@ class KrVocabApp {
             ${this.escapeHtml(w.meaning)}
             ${w.krMeaning ? `<span class="kr-badge" style="margin-left:6px; font-size:11px;">${this.escapeHtml(w.krMeaning)}</span>` : ''}
           </div>
+          ${this.renderUserNoteHtml(w, 'similar')}
           ${firstEx ? `
             <div class="similar-word-example" style="margin-top:6px; padding-top:6px; border-top:1px dashed var(--border-color); text-align:left;">
               <div class="similar-ex-text" style="font-size:12.5px; font-weight:400; color:var(--text-example); line-height:1.4;">${this.escapeHtml(firstEx.example)}</div>
@@ -20955,6 +21169,9 @@ class KrVocabApp {
     document.getElementById('detailReading').textContent = word.reading || '';
     document.getElementById('detailMeaning').textContent = word.meaning;
 
+    const detailUserNote = document.getElementById('detailUserNote');
+    if (detailUserNote) detailUserNote.innerHTML = this.renderUserNoteHtml(word, 'detail');
+
     const tagsContainer = document.getElementById('detailTags');
     tagsContainer.style.display = 'flex';
     const systemPOSList = ['动词', '形容词', '名词', '副词', '短语', '惯用句', '接续词', '连体词', '形容动词', '感叹词', '代词', '数词', '语法', '句型', '词汇', '助词', '助动词', '俗语', '成语'];
@@ -21062,6 +21279,7 @@ class KrVocabApp {
         exampleTrans,
         examples,
         tags,
+        userNote: '',
         mastered: false,
         rating: 0,
         reviewCount: 0,
@@ -21236,6 +21454,8 @@ class KrVocabApp {
           </div>
 
           <div class="word-meaning">${this.escapeHtml(w.meaning)}</div>
+
+          ${this.renderUserNoteHtml(w, 'list')}
 
           ${exampleHtml}
 
@@ -21790,6 +22010,8 @@ class KrVocabApp {
   renderCurrentCard() {
     const flashcard = document.getElementById('flashcard');
     flashcard.classList.remove('is-flipped');
+    const cardBackUserNote = document.getElementById('cardBackUserNote');
+    if (cardBackUserNote) cardBackUserNote.innerHTML = '';
 
     if (this.reviewList.length === 0) {
       const frontRating = document.getElementById('cardFrontRating');
@@ -21832,6 +22054,7 @@ class KrVocabApp {
     if (backRating) backRating.innerHTML = this.renderStarRating(word, 'review-star-rating');
 
     document.getElementById('cardBackMeaning').textContent = word.meaning;
+    if (cardBackUserNote) cardBackUserNote.innerHTML = this.renderUserNoteHtml(word, 'review');
     const parsedExamples = this.getParsedExamples(word);
     const exBlock = document.getElementById('cardBackExampleBlock');
     if (parsedExamples.length > 0) {
