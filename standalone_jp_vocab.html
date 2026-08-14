@@ -2902,6 +2902,11 @@ body::-webkit-scrollbar,
             </div>
           </div>
 
+          <div id="addWordTagsGroup" class="form-group" style="display:none;">
+            <label class="form-label">卡片标签</label>
+            <div id="modalTagsContainer" class="word-tags" style="min-height:38px; padding:8px 12px; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-md); display:flex; flex-wrap:wrap; align-items:center; gap:6px; position:relative;"></div>
+          </div>
+
           <button type="submit" class="btn-primary" style="margin-top: 10px;">保存日语单词</button>
         </form>
       </div>
@@ -6782,8 +6787,11 @@ class JpVocabApp {
     const meaningInput = document.getElementById('inputMeaning');
     const krMeaningInput = document.getElementById('inputKrMeaning');
     const userNoteInput = document.getElementById('inputUserNote');
-    if (!modal || !form || !title || !wordIdInput || !wordInput || !readingInput || !meaningInput || !krMeaningInput || !userNoteInput) return;
+    const addWordTagsGroup = document.getElementById('addWordTagsGroup');
+    if (!modal || !form || !title || !wordIdInput || !wordInput || !readingInput || !meaningInput || !krMeaningInput || !userNoteInput || !addWordTagsGroup) return;
     form.reset();
+    this.editingModalTags = [];
+    addWordTagsGroup.style.display = word ? 'none' : 'block';
 
     if (word) {
       title.textContent = '编辑日语单词';
@@ -6799,6 +6807,7 @@ class JpVocabApp {
     }
 
     this.fillExamplePairsEditor(word);
+    if (!word) this.renderModalTags();
     modal.classList.add('active');
   }
 
@@ -6806,6 +6815,92 @@ class JpVocabApp {
     this.closeTagDropdown();
     const modal = document.getElementById('wordModal');
     if (modal) modal.classList.remove('active');
+  }
+
+  renderModalTags() {
+    const container = document.getElementById('modalTagsContainer');
+    if (!container) return;
+    const tagsHtml = (this.editingModalTags || []).map(tag => {
+      const safeTag = this.escapeHtml(String(tag));
+      return `<span class="tag-badge custom-tag modal-editable-tag" onclick="event.stopPropagation(); (window.app||window.vocabApp).editModalTag(event, '${safeTag}')" title="点击编辑标签">#${safeTag}<i class="remove-tag-x" onclick="event.stopPropagation(); (window.app||window.vocabApp).removeModalTag('${safeTag}')" title="删除标签">×</i></span>`;
+    }).join('');
+    container.innerHTML = tagsHtml + `<button type="button" class="add-tag-btn" onclick="event.stopPropagation(); (window.app||window.vocabApp).showModalInlineTagInput(event)" title="添加标签">+</button>`;
+  }
+
+  openModalTagEditor(target, originalTag = '') {
+    if (!target) return;
+    const editor = document.createElement('div');
+    editor.className = 'inline-tag-editor';
+    editor.id = 'activeModalInlineTagEditor';
+    editor.onclick = event => event.stopPropagation();
+    editor.innerHTML = `<input type="text" class="inline-tag-input" placeholder="+ 标签" aria-label="输入卡片标签">${originalTag ? '' : '<span class="inline-quick-tag-chip">📌易忘</span>'}`;
+    target.replaceWith(editor);
+    const input = editor.querySelector('.inline-tag-input');
+    const quickTag = editor.querySelector('.inline-quick-tag-chip');
+    if (!input) return;
+    input.value = originalTag;
+    input.addEventListener('keydown', event => this.handleModalInlineTagKeydown(event, originalTag));
+    input.addEventListener('blur', () => this.saveModalInlineTag(input, originalTag), { once: true });
+    if (quickTag) {
+      quickTag.addEventListener('mousedown', event => event.preventDefault());
+      quickTag.addEventListener('click', event => this.addModalQuickTag(event, '易忘'));
+    }
+    setTimeout(() => {
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    }, 0);
+  }
+
+  showModalInlineTagInput(event) {
+    if (event) event.stopPropagation();
+    this.openModalTagEditor(event ? event.currentTarget : null);
+  }
+
+  editModalTag(event, tagName) {
+    if (event) event.stopPropagation();
+    this.openModalTagEditor(event ? event.currentTarget : null, tagName);
+  }
+
+  handleModalInlineTagKeydown(event, originalTag = '') {
+    if (!event) return;
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.saveModalInlineTag(event.target, originalTag);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      event.target.dataset.committed = 'true';
+      this.renderModalTags();
+    }
+  }
+
+  saveModalInlineTag(input, originalTag = '') {
+    if (!input || input.dataset.committed === 'true') return;
+    input.dataset.committed = 'true';
+    const nextTag = String(input.value || '').replace(/^#/, '').trim();
+    const previousTag = String(originalTag || '').replace(/^#/, '').trim();
+    let tags = [...(this.editingModalTags || [])];
+    if (previousTag) tags = tags.filter(tag => tag !== previousTag);
+    if (nextTag && nextTag !== '\u6613\u6df7' && !tags.includes(nextTag)) tags.push(nextTag);
+    this.editingModalTags = tags;
+    this.renderModalTags();
+  }
+
+  addModalQuickTag(event, tagName) {
+    if (event) event.stopPropagation();
+    const cleanTag = String(tagName || '').replace(/^#/, '').trim();
+    if (!Array.isArray(this.editingModalTags)) this.editingModalTags = [];
+    if (cleanTag && cleanTag !== '\u6613\u6df7' && !(this.editingModalTags || []).includes(cleanTag)) {
+      this.editingModalTags.push(cleanTag);
+    }
+    this.renderModalTags();
+  }
+
+  removeModalTag(tagName) {
+    const cleanTag = String(tagName || '').replace(/^#/, '').trim();
+    this.editingModalTags = (this.editingModalTags || []).filter(tag => tag !== cleanTag);
+    this.renderModalTags();
   }
 
   getParsedExamples(w) {
@@ -7130,11 +7225,8 @@ class JpVocabApp {
     const systemPOSList = ['动词', '形容词', '名词', '副词', '短语', '惯用句', '接续词', '连体词', '形容动词', '感叹词', '代词', '数词', '语法', '句型', '词汇', '助词', '助动词', '俗语', '成语'];
     const tagsHtml = (word.tags || []).map(t => {
       const isSystem = systemPOSList.includes(t.trim());
-      if (isSystem) {
-        return `<span class="tag-badge pos-tag" onclick="event.stopPropagation(); (window.app||window.vocabApp).filterByTag('${this.escapeHtml(t)}'); (window.app||window.vocabApp).closeDetailModal();" style="cursor:pointer;" title="点击按标签筛选">#${this.escapeHtml(t)}</span>`;
-      } else {
-        return `<span class="tag-badge custom-tag" onclick="event.stopPropagation(); (window.app||window.vocabApp).filterByTag('${this.escapeHtml(t)}'); (window.app||window.vocabApp).closeDetailModal();" style="cursor:pointer;" title="点击按标签筛选">#${this.escapeHtml(t)}<i class="remove-tag-x" onclick="event.stopPropagation(); (window.app||window.vocabApp).removeCustomTag('${word.id}', '${this.escapeHtml(t)}');" title="删除自定义标签">×</i></span>`;
-      }
+      const tagClass = isSystem ? 'pos-tag' : 'custom-tag';
+      return `<span class="tag-badge ${tagClass}" onclick="event.stopPropagation(); (window.app||window.vocabApp).filterByTag('${this.escapeHtml(t)}'); (window.app||window.vocabApp).closeDetailModal();" style="cursor:pointer;" title="点击按标签筛选">#${this.escapeHtml(t)}<i class="remove-tag-x" onclick="event.stopPropagation(); (window.app||window.vocabApp).removeCustomTag('${word.id}', '${this.escapeHtml(t)}');" title="删除标签">×</i></span>`;
     }).join('');
     tagsContainer.innerHTML = tagsHtml + `<button class="add-tag-btn" onclick="(window.app||window.vocabApp).showInlineTagInput(event, '${word.id}')" title="添加自定义标签">+</button>`;
 
@@ -7217,7 +7309,7 @@ class JpVocabApp {
     }
 
     const existingWord = id ? this.words.find(w => w.id === id) : null;
-    const tags = existingWord && Array.isArray(existingWord.tags) ? [...existingWord.tags] : ['名词'];
+    const tags = existingWord && Array.isArray(existingWord.tags) ? [...existingWord.tags] : [...(this.editingModalTags || [])];
     const examples = examplePairs.map(pair => ({ example: pair.example, trans: pair.trans }));
     const example = examples.map(pair => pair.example).join('\n');
     const exampleTrans = examples.map(pair => pair.trans).join('\n');
@@ -7760,11 +7852,8 @@ class JpVocabApp {
         ${tags.map(t => {
           const clean = String(t).replace(/^#/, '').trim();
           const isSystem = systemPOSList.includes(clean);
-          if (isSystem) {
-            return `<span class="tag-badge pos-tag" onclick="event.stopPropagation(); (window.app||window.vocabApp).filterByTag('${this.escapeHtml(clean)}')" style="cursor:pointer;" title="点击按标签筛选">#${this.escapeHtml(clean)}</span>`;
-          } else {
-            return `<span class="tag-badge custom-tag" onclick="event.stopPropagation(); (window.app||window.vocabApp).filterByTag('${this.escapeHtml(clean)}')" style="cursor:pointer;" title="点击按标签筛选">#${this.escapeHtml(clean)}<i class="remove-tag-x" onclick="event.stopPropagation(); (window.app||window.vocabApp).removeCustomTag('${word.id}', '${this.escapeHtml(clean)}')" title="删除自定义标签">×</i></span>`;
-          }
+          const tagClass = isSystem ? 'pos-tag' : 'custom-tag';
+          return `<span class="tag-badge ${tagClass}" onclick="event.stopPropagation(); (window.app||window.vocabApp).filterByTag('${this.escapeHtml(clean)}')" style="cursor:pointer;" title="点击按标签筛选">#${this.escapeHtml(clean)}<i class="remove-tag-x" onclick="event.stopPropagation(); (window.app||window.vocabApp).removeCustomTag('${word.id}', '${this.escapeHtml(clean)}')" title="删除标签">×</i></span>`;
         }).join('')}
         <button class="add-tag-btn" onclick="event.stopPropagation(); (window.app||window.vocabApp).showInlineTagInput(event, '${word.id}')" title="添加自定义标签">+</button>
       </div>
@@ -7872,8 +7961,9 @@ class JpVocabApp {
   removeCustomTag(wordId, tagName) {
     const word = this.words.find(w => w.id === wordId);
     if (!word || !word.tags) return;
-
-    word.tags = word.tags.filter(t => t !== tagName);
+    const cleanTag = String(tagName || '').replace(/^#/, '').trim();
+    word.tags = word.tags.filter(tag => String(tag || '').replace(/^#/, '').trim() !== cleanTag);
+    word.updatedAt = Date.now();
     this.saveData();
     this.renderWordList();
     const detailModal = document.getElementById('detailModal');

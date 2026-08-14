@@ -484,21 +484,23 @@ class VocabAppTester:
         inline_tag_methods = 'showInlineTagInput(' in content and 'handleInlineTagKeydown(' in content and 'saveInlineTag(' in content and 'addQuickTag(' in content
         self.assert_true(inline_tag_methods, f"[{lang_name}] 交互-行内打字加标签 API 方法集 (showInlineTagInput/saveInlineTag/addQuickTag) 健全", "类中缺少 showInlineTagInput / handleInlineTagKeydown / saveInlineTag / addQuickTag 方法")
 
-        modal_tag_editor_removed = all(token not in content for token in (
+        add_only_modal_tag_editor = all(token in content for token in (
+            'id="addWordTagsGroup"',
             'id="modalTagsContainer"',
             '>卡片标签</label>',
-            'editingModalTags',
+            'this.editingModalTags = [];',
+            "addWordTagsGroup.style.display = word ? 'none' : 'block';",
             'renderModalTags(',
             'showModalInlineTagInput(',
+            'editModalTag(',
             'handleModalInlineTagKeydown(',
             'saveModalInlineTag(',
             'addModalQuickTag(',
             'removeModalTag(',
-        )) and all(token in content for token in (
             'const existingWord = id ? this.words.find(w => w.id === id) : null;',
-            "const tags = existingWord && Array.isArray(existingWord.tags) ? [...existingWord.tags] : ['名词'];",
-        ))
-        self.assert_true(modal_tag_editor_removed, f"[{lang_name}] 编辑弹窗-移除卡片标签字段且保存时保留原 Tag", "编辑弹窗仍残留标签 UI/方法，或保存卡片时没有保留现有 Tag")
+            'const tags = existingWord && Array.isArray(existingWord.tags) ? [...existingWord.tags] : [...(this.editingModalTags || [])];',
+        )) and "const tags = existingWord && Array.isArray(existingWord.tags) ? [...existingWord.tags] : ['名词'];" not in content
+        self.assert_true(add_only_modal_tag_editor, f"[{lang_name}] 新增弹窗-空白 Tag 编辑器支持增改删且编辑旧词时隐藏", "新增弹窗缺少零默认 Tag 编辑器、增改删方法，或编辑旧词时没有隐藏标签字段/保留原 Tag")
 
         word_list_isolated_scroll = 'flex-shrink: 0;' in content and '#wordList::-webkit-scrollbar' in content
         self.assert_true(word_list_isolated_scroll, f"[{lang_name}] 布局-#wordList 独立滚动与搜索/Tag控件置顶固定不动", "缺少 #wordList 独立滚动或 flex-shrink: 0 防压缩设置")
@@ -542,10 +544,17 @@ class VocabAppTester:
         self.assert_true(has_card_footer_actions, f"[{lang_name}] 结构-卡片底部 Tag 栏与操作按钮栏 (朗读/掌握/编辑/删除) 100% 完整保留", "单词卡片 HTML 结构中缺少 word-footer、word-tags 或 card-actions 操作按钮栏")
 
         # ---------------------------------------------------------------------
-        # 测试点 24: 自定义标签删除按钮 (.remove-tag-x) 阻止冒泡与 removeCustomTag 方法防护
+        # 测试点 24: 所有标签（含系统词性）均可删除并阻止冒泡
         # ---------------------------------------------------------------------
-        remove_tag_protection = 'remove-tag-x' in content and 'removeCustomTag' in content and 'event.stopPropagation()' in content
-        self.assert_true(remove_tag_protection, f"[{lang_name}] 交互-自定义标签删除按钮 (.remove-tag-x) 阻止冒泡与 removeCustomTag 防护", "卡片 Tag 缺少 remove-tag-x 节点或未绑定 event.stopPropagation() 防止冒泡触发出弹窗")
+        remove_tag_protection = all(token in content for token in (
+            "const tagClass = isSystem ? 'pos-tag' : 'custom-tag';",
+            'title="删除标签">×</i>',
+            'removeCustomTag(wordId, tagName)',
+            "const cleanTag = String(tagName || '').replace(/^#/, '').trim();",
+            "word.tags = word.tags.filter(tag => String(tag || '').replace(/^#/, '').trim() !== cleanTag);",
+            'word.updatedAt = Date.now();',
+        ))
+        self.assert_true(remove_tag_protection, f"[{lang_name}] 交互-系统词性与自定义 Tag 均显示 × 并可删除持久化", "系统词性 Tag 仍不可删除，或删除逻辑缺少归一化、更新时间与冒泡防护")
 
         # ---------------------------------------------------------------------
         # 测试点 25: 卡片点击 showDetailModal 触发事件与 card-actions stopPropagation 事件隔离
@@ -1531,6 +1540,36 @@ class VocabAppTester:
                 f"[{lang_name}] 浏览器新增弹窗-例句区三行双栏、默认空白且原句/译文等宽成对",
                 f"新增弹窗例句双栏结构异常: {blank_example_pair_editor}",
             )
+            manual_add_tag_editor = driver.execute_script("""
+                const app = window.app;
+                const group = document.getElementById('addWordTagsGroup');
+                const container = document.getElementById('modalTagsContainer');
+                const groupVisible = group && getComputedStyle(group).display !== 'none';
+                const startsEmpty = !!container && container.querySelectorAll('.tag-badge').length === 0 && app.editingModalTags.length === 0;
+                container?.querySelector('.add-tag-btn')?.click();
+                let input = container?.querySelector('.inline-tag-input');
+                if (input) {
+                  input.value = '手动词性';
+                  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+                }
+                const added = app.editingModalTags.length === 1 && app.editingModalTags[0] === '手动词性';
+                container?.querySelector('.modal-editable-tag')?.click();
+                input = container?.querySelector('.inline-tag-input');
+                const editPrefilled = input?.value === '手动词性';
+                if (input) {
+                  input.value = '自定义新词Tag';
+                  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+                }
+                const edited = app.editingModalTags.length === 1 && app.editingModalTags[0] === '自定义新词Tag';
+                container?.querySelector('.remove-tag-x')?.click();
+                const deleted = app.editingModalTags.length === 0 && container?.querySelectorAll('.tag-badge').length === 0;
+                return { groupVisible, startsEmpty, added, editPrefilled, edited, deleted };
+            """)
+            self.assert_true(
+                bool(manual_add_tag_editor and all(manual_add_tag_editor.values())),
+                f"[{lang_name}] 浏览器新增弹窗-Tag 默认空白并支持输入、改名与删除",
+                f"新增弹窗手动 Tag 编辑全流程失败: {manual_add_tag_editor}",
+            )
             driver.execute_script("document.getElementById('wordModal')?.classList.remove('active')")
 
             first_card = driver.find_element(By.CSS_SELECTOR, '.word-card')
@@ -1578,6 +1617,7 @@ class VocabAppTester:
                 const modal = document.getElementById('wordModal');
                 const rows = Array.from(document.querySelectorAll('#examplePairsEditor .example-pair-row'));
                 const editModalOpened = modal?.classList.contains('active') === true;
+                const addTagEditorHidden = getComputedStyle(document.getElementById('addWordTagsGroup')).display === 'none';
                 const exactlyThreeRows = rows.length === 3;
                 const existingPairsLoaded = expectedPairs.length === 3 && rows.every((row, index) =>
                   row.querySelector('.example-source-input')?.value === expectedPairs[index].example &&
@@ -1636,7 +1676,7 @@ class VocabAppTester:
                 app.renderWordList();
                 app.closeDetailModal();
                 return {
-                  editModalOpened, exactlyThreeRows, existingPairsLoaded, incompleteRejected,
+                  editModalOpened, addTagEditorHidden, exactlyThreeRows, existingPairsLoaded, incompleteRejected,
                   structuredSaved, tagsPreserved, legacySaved, modalClosedAfterSave, persisted,
                   listPreviewUpdated, detailShowsThreePairs, reviewShowsThreePairs
                 };
@@ -1701,6 +1741,59 @@ class VocabAppTester:
                     "[日语专属] 浏览器编辑弹窗-韩文释义回填、保存、持久化及 Badge 联动",
                     f"日语韩文释义编辑全流程失败: {jp_kr_meaning_lifecycle}",
                 )
+
+            all_tags_deletable = driver.execute_script("""
+                const app = window.app;
+                const systemTags = new Set(['动词', '形容词', '名词', '副词', '短语', '惯用句', '接续词', '连体词', '形容动词', '感叹词', '代词', '数词', '语法', '句型', '词汇', '助词', '助动词', '俗语', '成语']);
+                const word = app.words.find(item => Array.isArray(item.tags) && item.tags.some(tag => systemTags.has(String(tag).replace(/^#/, '').trim())));
+                if (!word) return null;
+                const wordId = word.id;
+                const wordIndex = app.words.findIndex(item => String(item.id) === String(wordId));
+                const tagName = String(word.tags.find(tag => systemTags.has(String(tag).replace(/^#/, '').trim()))).replace(/^#/, '').trim();
+                const originalWord = JSON.parse(JSON.stringify(word));
+                const originalState = {
+                  currentFilter: app.currentFilter,
+                  searchQuery: app.searchQuery,
+                  currentPage: app.currentPage,
+                  reviewList: app.reviewList,
+                  currentReviewIndex: app.currentReviewIndex
+                };
+                app.currentFilter = 'all';
+                app.searchQuery = String(word.word || '').toLowerCase();
+                app.currentPage = 1;
+                app.renderWordList();
+                const listCard = Array.from(document.querySelectorAll('#wordList .word-card')).find(card => String(card.dataset.id) === String(wordId));
+                const findTag = root => Array.from(root?.querySelectorAll('.tag-badge') || []).find(tag => tag.textContent.replace('×', '').trim() === `#${tagName}`);
+                const listTag = findTag(listCard);
+                const listSystemTagDeletable = !!listTag?.querySelector('.remove-tag-x');
+                app.showDetailModal(wordId);
+                const detailSystemTagDeletable = !!findTag(document.getElementById('detailTags'))?.querySelector('.remove-tag-x');
+                app.reviewList = [word];
+                app.currentReviewIndex = 0;
+                app.renderCurrentCard();
+                const reviewSystemTagDeletable = !!findTag(document.getElementById('cardBackTags'))?.querySelector('.remove-tag-x');
+                listTag?.querySelector('.remove-tag-x')?.click();
+                const updatedWord = app.words.find(item => String(item.id) === String(wordId));
+                const removed = !updatedWord.tags.some(tag => String(tag).replace(/^#/, '').trim() === tagName);
+                const storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(item => String(item.id) === String(wordId));
+                const persisted = !!storedWord && !storedWord.tags.some(tag => String(tag).replace(/^#/, '').trim() === tagName);
+
+                app.words[wordIndex] = originalWord;
+                app.currentFilter = originalState.currentFilter;
+                app.searchQuery = originalState.searchQuery;
+                app.currentPage = originalState.currentPage;
+                app.reviewList = originalState.reviewList;
+                app.currentReviewIndex = originalState.currentReviewIndex;
+                app.saveData();
+                app.renderWordList();
+                app.closeDetailModal();
+                return { listSystemTagDeletable, detailSystemTagDeletable, reviewSystemTagDeletable, removed, persisted };
+            """)
+            self.assert_true(
+                bool(all_tags_deletable and all(all_tags_deletable.values())),
+                f"[{lang_name}] 浏览器 Tag-系统词性在列表、详情、复习均可删除并持久化",
+                f"系统词性 Tag 删除全流程失败: {all_tags_deletable}",
+            )
 
             similar_manual_crud = driver.execute_script("""
                 const app = window.app;
