@@ -597,13 +597,14 @@ class VocabAppTester:
         ))
         self.assert_true(similar_word_persistence, f"[{lang_name}] 相近表达-固定三条自动快照、删除不补位与人工不限量持久化", "缺少自动推荐快照或人工/隐藏关系字段，删除后可能继续从候选池补位")
 
-        fixed_auto_snapshot = all(token in content for token in (
-            'newWord.autoSimilarWordIds = this.calculateAutomaticSimilarWords(newWord, 3)',
+        empty_similar_for_new_word = all(token in content for token in (
+            'newWord.autoSimilarWordIds = [];',
             'if (!Array.isArray(targetWord.autoSimilarWordIds))',
             'targetWord.autoSimilarWordIds',
             'return automaticWords.concat(manualWords);',
+            '暂无相近表达，可点击右上角＋添加',
         )) and 'const automaticLimit = Math.max(0, limit - manualWords.length)' not in content
-        self.assert_true(fixed_auto_snapshot, f"[{lang_name}] 相近表达-新词仅初始化三张自动卡且删除后绝不动态补位", "仍存在按 limit 动态补足三张卡的旧逻辑，删除一张后会冒出新候选")
+        self.assert_true(empty_similar_for_new_word, f"[{lang_name}] 相近表达-新词相近表达面板留空为空卡，仅支持用户手动添加持久化", "新词仍会自动生成三条推荐快照，或缺少空卡提示/手动添加入口")
 
         bidirectional_manual_similarity = all(token in content for token in (
             'similarWord.manualSimilarWordIds = Array.isArray(similarWord.manualSimilarWordIds)',

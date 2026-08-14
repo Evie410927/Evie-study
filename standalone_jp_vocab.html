@@ -7194,7 +7194,9 @@ class JpVocabApp {
         reviewCount: 0,
         createdAt: Date.now()
       };
-      newWord.autoSimilarWordIds = this.calculateAutomaticSimilarWords(newWord, 3).map(word => String(word.id));
+      // 新词相近表达留空（永不自动生成推荐快照）：相近表达面板默认显示空卡，
+      // 完全由用户通过＋手动搜索添加并持久化。existing 词条保持既有快照不变。
+      newWord.autoSimilarWordIds = [];
       this.words.unshift(newWord);
       this.showToast('🎉 新日语单词已添加');
     }
