@@ -16927,11 +16927,11 @@ body::-webkit-scrollbar,
       </button>
     </nav>
 
-    <div id="wordModal" class="modal-overlay" onclick="if(event.target.id === 'wordModal' && window.app) window.app.closeWordModal()">
+    <div id="wordModal" class="modal-overlay">
       <div class="modal-sheet">
         <div class="modal-header">
           <h3 id="modalTitle" class="modal-title">添加韩语单词</h3>
-          <button id="closeModalBtn" class="icon-btn" onclick="if(window.app) window.app.closeWordModal()">✕</button>
+          <button id="closeModalBtn" type="button" class="icon-btn" aria-label="关闭单词编辑窗口">✕</button>
         </div>
         <form id="wordForm">
           <input type="hidden" id="wordId">
@@ -16997,7 +16997,7 @@ body::-webkit-scrollbar,
             </div>
           </div>
 
-          <button type="submit" class="btn-primary" style="margin-top: 10px;">保存韩语单词</button>
+          <button id="saveWordBtn" type="button" class="btn-primary" style="margin-top: 10px;">保存韩语单词</button>
         </form>
       </div>
     </div>
@@ -20623,12 +20623,18 @@ class KrVocabApp {
 
       document.getElementById('wordForm')?.addEventListener('submit', (e) => {
         e.preventDefault();
-        this.saveWordFromForm();
+      });
+
+      document.getElementById('wordForm')?.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' || e.target?.tagName === 'TEXTAREA') return;
+        e.preventDefault();
+        e.stopPropagation();
       });
 
       document.getElementById('closeModalBtn')?.addEventListener('click', () => this.closeWordModal());
-      document.getElementById('wordModal')?.addEventListener('click', (e) => {
-        if (e.target.id === 'wordModal') this.closeWordModal();
+      document.getElementById('saveWordBtn')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.saveWordFromForm();
       });
 
       document.getElementById('closeDetailModalBtn')?.addEventListener('click', () => this.closeDetailModal());

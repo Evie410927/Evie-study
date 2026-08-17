@@ -542,6 +542,22 @@ class VocabAppTester:
         ))
         self.assert_true(add_modal_similar_picker, f"[{lang_name}] 新增弹窗-相近词面板支持库内搜索、增删与双向持久关联", "新增弹窗缺少相近词搜索面板、草稿选择方法、空自动快照或保存后的反向关联")
 
+        protected_word_modal_draft = all(token in content for token in (
+            '<div id="wordModal" class="modal-overlay">',
+            'id="closeModalBtn" type="button"',
+            'id="saveWordBtn" type="button"',
+            "document.getElementById('wordForm')?.addEventListener('submit', (e) => {",
+            "document.getElementById('wordForm')?.addEventListener('keydown', (e) => {",
+            "if (e.key !== 'Enter' || e.target?.tagName === 'TEXTAREA') return;",
+            "document.getElementById('saveWordBtn')?.addEventListener('click', (e) => {",
+            'this.saveWordFromForm();',
+        )) and all(token not in content for token in (
+            "event.target.id === 'wordModal' && window.app) window.app.closeWordModal()",
+            "if (e.target.id === 'wordModal') this.closeWordModal();",
+            '<button type="submit" class="btn-primary"',
+        ))
+        self.assert_true(protected_word_modal_draft, f"[{lang_name}] 新增/编辑弹窗-仅右上角×或显式点击保存成功后关闭", "弹窗仍可能被遮罩点击、Enter 表单提交或其他非显式操作关闭并丢失草稿")
+
         word_list_isolated_scroll = 'flex-shrink: 0;' in content and '#wordList::-webkit-scrollbar' in content
         self.assert_true(word_list_isolated_scroll, f"[{lang_name}] 布局-#wordList 独立滚动与搜索/Tag控件置顶固定不动", "缺少 #wordList 独立滚动或 flex-shrink: 0 防压缩设置")
 
@@ -1240,6 +1256,7 @@ class VocabAppTester:
             from selenium import webdriver
             from selenium.webdriver.chrome.options import Options
             from selenium.webdriver.common.by import By
+            from selenium.webdriver.common.keys import Keys
             from selenium.webdriver.support.ui import WebDriverWait
             from selenium.webdriver.support import expected_conditions as EC
 
@@ -1613,6 +1630,74 @@ class VocabAppTester:
                 f"[{lang_name}] 浏览器新增弹窗-例句区三行双栏、默认空白且原句/译文等宽成对",
                 f"新增弹窗例句双栏结构异常: {blank_example_pair_editor}",
             )
+            protected_modal_draft = driver.execute_script("""
+                const app = window.app;
+                const modal = document.getElementById('wordModal');
+                const draftWord = `弹窗防误关草稿_${Date.now()}`;
+                const wordInput = document.getElementById('inputWord');
+                const meaningInput = document.getElementById('inputMeaning');
+                if (!app || !modal || !wordInput || !meaningInput) return null;
+                wordInput.value = draftWord;
+                meaningInput.value = 'n. 防误关测试释义';
+                document.querySelectorAll('#examplePairsEditor .example-pair-row').forEach((row, index) => {
+                  row.querySelector('.example-source-input').value = `防误关原句 ${index + 1}`;
+                  row.querySelector('.example-translation-input').value = `防误关译文 ${index + 1}`;
+                });
+                modal.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                return {
+                  draftWord,
+                  backdropIgnored: modal.classList.contains('active') && wordInput.value === draftWord,
+                };
+            """)
+            draft_word_input = driver.find_element(By.ID, 'inputWord')
+            draft_word_input.send_keys(Keys.ENTER)
+            time.sleep(0.1)
+            enter_state = driver.execute_script("""
+                const modal = document.getElementById('wordModal');
+                const draftWord = arguments[0];
+                return {
+                  stayedOpen: modal?.classList.contains('active') === true,
+                  draftPreserved: document.getElementById('inputWord')?.value === draftWord,
+                  notSaved: !window.app.words.some(word => word.word === draftWord),
+                };
+            """, protected_modal_draft.get('draftWord') if protected_modal_draft else '')
+            draft_word_input.send_keys(Keys.ESCAPE)
+            driver.execute_script("document.getElementById('wordForm')?.requestSubmit();")
+            submit_escape_state = driver.execute_script("""
+                const modal = document.getElementById('wordModal');
+                const draftWord = arguments[0];
+                return {
+                  stayedOpen: modal?.classList.contains('active') === true,
+                  draftPreserved: document.getElementById('inputWord')?.value === draftWord,
+                  notSaved: !window.app.words.some(word => word.word === draftWord),
+                };
+            """, protected_modal_draft.get('draftWord') if protected_modal_draft else '')
+            driver.find_element(By.ID, 'closeModalBtn').click()
+            close_and_reopen_state = driver.execute_script("""
+                const modal = document.getElementById('wordModal');
+                const closedByX = modal?.classList.contains('active') === false;
+                document.getElementById('quickAddBtn')?.click();
+                return {
+                  closedByX,
+                  reopenedBlank: modal?.classList.contains('active') === true
+                    && document.getElementById('inputWord')?.value === '',
+                };
+            """)
+            protected_modal_ok = bool(
+                protected_modal_draft
+                and protected_modal_draft.get('backdropIgnored')
+                and enter_state
+                and all(enter_state.values())
+                and submit_escape_state
+                and all(submit_escape_state.values())
+                and close_and_reopen_state
+                and all(close_and_reopen_state.values())
+            )
+            self.assert_true(
+                protected_modal_ok,
+                f"[{lang_name}] 浏览器新增弹窗-遮罩/Enter/Esc/非点击提交均不关闭且×可显式关闭",
+                f"新增弹窗草稿防误关失败: backdrop={protected_modal_draft}, enter={enter_state}, submit_escape={submit_escape_state}, close={close_and_reopen_state}",
+            )
             manual_add_tag_editor = driver.execute_script("""
                 const app = window.app;
                 const group = document.getElementById('addWordTagsGroup');
@@ -1703,7 +1788,7 @@ class VocabAppTester:
                   row.querySelector('.example-source-input').value = `新增测试原句 ${index + 1}`;
                   row.querySelector('.example-translation-input').value = `新增测试译文 ${index + 1}`;
                 });
-                app.saveWordFromForm();
+                document.getElementById('saveWordBtn')?.click();
                 const newWord = app.words.find(word => word.word === testWord);
                 const savedRating = newWord?.rating === 4;
                 const savedManualRelation = Array.isArray(newWord?.manualSimilarWordIds)
