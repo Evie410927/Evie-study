@@ -17026,7 +17026,7 @@ body::-webkit-scrollbar,
         </div>
         <div class="detail-footer">
           <button id="detailSpeakBtn" class="btn-secondary" style="flex: 1;">🔊 发音</button>
-          <button id="detailEditBtn" class="btn-primary" style="flex: 1;" onclick="if(window.app) { const id = window.app.currentDetailWordId; window.app.closeDetailModal(); window.app.editWord(id); }">✏️ 编辑卡片</button>
+          <button id="detailEditBtn" type="button" class="btn-primary" style="flex: 1;">✏️ 编辑卡片</button>
         </div>
       </div>
     </div>
@@ -20646,9 +20646,7 @@ class KrVocabApp {
         if (word) this.speakWord(word.word);
       });
       document.getElementById('detailEditBtn')?.addEventListener('click', () => {
-        const wordId = this.currentDetailWordId;
-        this.closeDetailModal();
-        this.editWord(wordId);
+        this.openDetailWordEditor();
       });
 
       document.getElementById('cardSpeakFrontBtn')?.addEventListener('click', (e) => {
@@ -20738,7 +20736,8 @@ class KrVocabApp {
     }
   }
 
-  openWordModal(word = null) {
+  openWordModal(word = null, preserveDetailReturn = false) {
+    if (!preserveDetailReturn) this.wordModalReturnContext = null;
     const modal = document.getElementById('wordModal');
     const form = document.getElementById('wordForm');
     const title = document.getElementById('modalTitle');
@@ -20789,6 +20788,42 @@ class KrVocabApp {
     this.closeTagDropdown();
     const modal = document.getElementById('wordModal');
     if (modal) modal.classList.remove('active');
+    this.restoreDetailAfterWordModal();
+  }
+
+  openDetailWordEditor() {
+    const detailModal = document.getElementById('detailModal');
+    const wordId = this.currentDetailWordId;
+    if (!detailModal || !wordId) return;
+    const detailBody = detailModal.querySelector('.detail-body');
+    this.wordModalReturnContext = {
+      wordId,
+      scrollTop: detailBody ? detailBody.scrollTop : 0,
+      history: Array.isArray(this.detailModalHistory) ? [...this.detailModalHistory] : []
+    };
+    detailModal.classList.remove('active');
+    this.editWord(wordId, true);
+  }
+
+  restoreDetailAfterWordModal() {
+    const returnContext = this.wordModalReturnContext;
+    this.wordModalReturnContext = null;
+    if (!returnContext) return;
+    const word = this.words.find(item => item && item.id === returnContext.wordId);
+    if (!word) return;
+    this.detailModalHistory = Array.isArray(returnContext.history) ? [...returnContext.history] : [];
+    this.currentDetailWordId = returnContext.wordId;
+    this.showDetailModal(returnContext.wordId, true);
+    const detailModal = document.getElementById('detailModal');
+    const detailBody = detailModal ? detailModal.querySelector('.detail-body') : null;
+    const savedScrollTop = Math.max(0, Number(returnContext.scrollTop || 0));
+    if (detailBody) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (detailBody.isConnected) detailBody.scrollTop = savedScrollTop;
+        });
+      });
+    }
   }
 
   renderModalTags() {
@@ -22062,9 +22097,9 @@ class KrVocabApp {
     `;
   }
 
-  editWord(id) {
+  editWord(id, preserveDetailReturn = false) {
     const word = this.words.find(w => w.id === id);
-    if (word) this.openWordModal(word);
+    if (word) this.openWordModal(word, preserveDetailReturn);
   }
 
   updateStats() {

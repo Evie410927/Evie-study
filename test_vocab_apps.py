@@ -558,6 +558,21 @@ class VocabAppTester:
         ))
         self.assert_true(protected_word_modal_draft, f"[{lang_name}] 新增/编辑弹窗-仅右上角×或显式点击保存成功后关闭", "弹窗仍可能被遮罩点击、Enter 表单提交或其他非显式操作关闭并丢失草稿")
 
+        detail_editor_returns_to_detail = all(token in content for token in (
+            'id="detailEditBtn" type="button"',
+            'this.openDetailWordEditor();',
+            'openDetailWordEditor() {',
+            'this.wordModalReturnContext = {',
+            "detailModal.classList.remove('active');",
+            'this.editWord(wordId, true);',
+            'this.restoreDetailAfterWordModal();',
+            'restoreDetailAfterWordModal() {',
+            'this.showDetailModal(returnContext.wordId, true);',
+            'detailBody.scrollTop = savedScrollTop;',
+            'editWord(id, preserveDetailReturn = false)',
+        )) and 'window.app.closeDetailModal(); window.app.editWord(id);' not in content
+        self.assert_true(detail_editor_returns_to_detail, f"[{lang_name}] 详情→编辑-保存或×关闭编辑层后恢复原详情、历史与滚动位置", "详情编辑仍直接销毁详情弹窗，或编辑层关闭后未恢复原卡片上下文")
+
         word_list_isolated_scroll = 'flex-shrink: 0;' in content and '#wordList::-webkit-scrollbar' in content
         self.assert_true(word_list_isolated_scroll, f"[{lang_name}] 布局-#wordList 独立滚动与搜索/Tag控件置顶固定不动", "缺少 #wordList 独立滚动或 flex-shrink: 0 防压缩设置")
 
@@ -1962,10 +1977,14 @@ class VocabAppTester:
                   currentReviewIndex: app.currentReviewIndex
                 };
                 const expectedPairs = app.getParsedExamples(app.words[wordIndex]).slice(0, 3);
+                const detailModal = document.getElementById('detailModal');
+                const detailHistoryBefore = JSON.stringify(app.detailModalHistory || []);
                 document.getElementById('detailEditBtn')?.click();
                 const modal = document.getElementById('wordModal');
                 const rows = Array.from(document.querySelectorAll('#examplePairsEditor .example-pair-row'));
                 const editModalOpened = modal?.classList.contains('active') === true;
+                const detailHiddenWhileEditing = detailModal?.classList.contains('active') === false;
+                const returnContextCaptured = String(app.wordModalReturnContext?.wordId) === String(currentId);
                 const addOnlyControlsHidden = ['addWordTagsGroup', 'addWordRatingGroup', 'addWordSimilarGroup'].every(id => {
                   const element = document.getElementById(id);
                   return !!element && getComputedStyle(element).display === 'none';
@@ -1976,11 +1995,23 @@ class VocabAppTester:
                   row.querySelector('.example-translation-input')?.value === expectedPairs[index].trans
                 );
 
+                document.getElementById('closeModalBtn')?.click();
+                const cancelReturnedToDetail = modal?.classList.contains('active') === false
+                  && detailModal?.classList.contains('active') === true
+                  && String(app.currentDetailWordId) === String(currentId)
+                  && JSON.stringify(app.detailModalHistory || []) === detailHistoryBefore;
+                document.getElementById('detailEditBtn')?.click();
+                const reopenedFromDetail = modal?.classList.contains('active') === true
+                  && detailModal?.classList.contains('active') === false
+                  && String(app.wordModalReturnContext?.wordId) === String(currentId);
+
                 const beforeIncompleteSave = JSON.stringify(app.words[wordIndex].examples);
                 const missingTranslation = rows[1]?.querySelector('.example-translation-input');
                 if (missingTranslation) missingTranslation.value = '';
-                app.saveWordFromForm();
-                const incompleteRejected = JSON.stringify(app.words[wordIndex].examples) === beforeIncompleteSave && modal?.classList.contains('active') === true;
+                document.getElementById('saveWordBtn')?.click();
+                const incompleteRejected = JSON.stringify(app.words[wordIndex].examples) === beforeIncompleteSave
+                  && modal?.classList.contains('active') === true
+                  && detailModal?.classList.contains('active') === false;
 
                 rows.forEach((row, index) => {
                   const source = row.querySelector('.example-source-input');
@@ -1988,7 +2019,7 @@ class VocabAppTester:
                   if (source) source.value = `编辑原句 ${index + 1}`;
                   if (translation) translation.value = `编辑译文 ${index + 1}`;
                 });
-                app.saveWordFromForm();
+                document.getElementById('saveWordBtn')?.click();
                 const savedWord = app.words[wordIndex];
                 const parsedAfterSave = app.getParsedExamples(savedWord);
                 const structuredSaved = parsedAfterSave.length === 3 && parsedAfterSave.every((pair, index) =>
@@ -1998,6 +2029,10 @@ class VocabAppTester:
                 const legacySaved = savedWord.example.split(String.fromCharCode(10)).join('|') === '编辑原句 1|编辑原句 2|编辑原句 3' &&
                   savedWord.exampleTrans.split(String.fromCharCode(10)).join('|') === '编辑译文 1|编辑译文 2|编辑译文 3';
                 const modalClosedAfterSave = modal?.classList.contains('active') === false;
+                const saveReturnedToDetail = detailModal?.classList.contains('active') === true
+                  && String(app.currentDetailWordId) === String(savedWord.id)
+                  && document.getElementById('detailWord')?.textContent === savedWord.word
+                  && JSON.stringify(app.detailModalHistory || []) === detailHistoryBefore;
                 const storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(savedWord.id));
                 const persisted = storedWord?.examples?.length === 3 && storedWord.example === savedWord.example && storedWord.exampleTrans === savedWord.exampleTrans;
 
@@ -2028,9 +2063,10 @@ class VocabAppTester:
                 app.renderWordList();
                 app.closeDetailModal();
                 return {
-                  editModalOpened, addOnlyControlsHidden, exactlyThreeRows, existingPairsLoaded, incompleteRejected,
+                  editModalOpened, detailHiddenWhileEditing, returnContextCaptured, cancelReturnedToDetail,
+                  reopenedFromDetail, addOnlyControlsHidden, exactlyThreeRows, existingPairsLoaded, incompleteRejected,
                   structuredSaved, tagsPreserved, legacySaved, modalClosedAfterSave, persisted,
-                  listPreviewUpdated, detailShowsThreePairs, reviewShowsThreePairs
+                  saveReturnedToDetail, listPreviewUpdated, detailShowsThreePairs, reviewShowsThreePairs
                 };
             """)
             self.assert_true(
