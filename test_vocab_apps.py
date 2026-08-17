@@ -697,6 +697,16 @@ class VocabAppTester:
         ))
         self.assert_true(similar_word_already_added_disabled, f"[{lang_name}] 相近表达-搜索结果中的已添加词灰化禁用并显示状态", "已存在于当前 Panel 的词仍可在搜索结果中重复点击，或缺少‘已添加’状态提示")
 
+        similar_word_continuous_multi_select = all(token in content for token in (
+            "addSimilarWord('${targetWord.id}', '${word.id}', this)",
+            'restoreSimilarWordPickerState(hostId, targetWordId, searchValue)',
+            "triggerElement.closest('#detailSimilarBlock, #cardBackSimilarBlock')",
+            "picker.classList.add('active')",
+            'this.searchSimilarWordOptions(input, targetWordId);',
+            'if (pickerState) this.restoreSimilarWordPickerState(',
+        ))
+        self.assert_true(similar_word_continuous_multi_select, f"[{lang_name}] 相近表达-详情与复习弹窗搜索下拉支持连续多选且保留查询和焦点", "选择首个相近词后未恢复原搜索下拉、查询内容及连续选择上下文")
+
         # ---------------------------------------------------------------------
         # 测试点 31A: 相近表达卡片状态按钮位于星级左侧并可同步切换
         # ---------------------------------------------------------------------
@@ -2093,7 +2103,39 @@ class VocabAppTester:
                 const afterRepeatedReadIds = app.getSimilarWords(source, 3).map(word => String(word.id));
                 const deleteLeavesGap = beforeDeleteCount === 3 && afterDeleteIds.length === 2;
                 const noAutomaticRefill = JSON.stringify(afterDeleteIds) === JSON.stringify(afterRepeatedReadIds) && !afterDeleteIds.includes(String(initial.id));
-                addTargets.forEach(word => app.addSimilarWord(source.id, word.id));
+                const freshPanel = document.querySelector('#detailSimilarBlock .similar-words-container');
+                const freshAddButton = freshPanel?.querySelector('.similar-panel-add-btn');
+                freshAddButton?.click();
+                const firstInput = freshPanel?.querySelector('.similar-word-search-input');
+                if (firstInput) {
+                  firstInput.value = addTargets[0].word;
+                  firstInput.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+                const firstResultButton = Array.from(freshPanel?.querySelectorAll('.similar-word-search-result') || []).find(button => button.querySelector('strong')?.textContent === addTargets[0].word);
+                firstResultButton?.click();
+                const panelAfterFirst = document.querySelector('#detailSimilarBlock .similar-words-container');
+                const pickerAfterFirst = panelAfterFirst?.querySelector('.similar-word-picker');
+                const inputAfterFirst = panelAfterFirst?.querySelector('.similar-word-search-input');
+                const firstSelectionStayedOpen = !!pickerAfterFirst
+                  && pickerAfterFirst.classList.contains('active')
+                  && inputAfterFirst?.value === addTargets[0].word
+                  && !!panelAfterFirst.querySelector('.similar-word-search-result.is-added[disabled]');
+                if (inputAfterFirst) {
+                  inputAfterFirst.value = addTargets[1].word;
+                  inputAfterFirst.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+                const secondResultButton = Array.from(panelAfterFirst?.querySelectorAll('.similar-word-search-result') || []).find(button => button.querySelector('strong')?.textContent === addTargets[1].word);
+                secondResultButton?.click();
+                const panelAfterSecond = document.querySelector('#detailSimilarBlock .similar-words-container');
+                const pickerAfterSecond = panelAfterSecond?.querySelector('.similar-word-picker');
+                const inputAfterSecond = panelAfterSecond?.querySelector('.similar-word-search-input');
+                const secondSelectionStayedOpen = !!pickerAfterSecond
+                  && pickerAfterSecond.classList.contains('active')
+                  && inputAfterSecond?.value === addTargets[1].word
+                  && (source.manualSimilarWordIds || []).map(String).includes(String(addTargets[0].id))
+                  && (source.manualSimilarWordIds || []).map(String).includes(String(addTargets[1].id));
+                const continuousMultiSelect = firstSelectionStayedOpen && secondSelectionStayedOpen;
+                addTargets.slice(2).forEach(word => app.addSimilarWord(source.id, word.id));
                 const afterUnlimitedAdd = app.getSimilarWords(source, 3);
                 const addedPersisted = addTargets.every(word => (source.manualSimilarWordIds || []).map(String).includes(String(word.id)));
                 const addedVisible = addTargets.every(word => afterUnlimitedAdd.some(item => item.id === word.id));
@@ -2114,6 +2156,7 @@ class VocabAppTester:
                 app.refreshSimilarWordPanels(source.id);
                 return {
                   pickerOpened: !!picker && picker.classList.contains('active'),
+                  continuousMultiSelect,
                   hasLibraryResult,
                   existingResultDisabled,
                   existingResultLabeled,

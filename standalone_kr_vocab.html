@@ -21180,7 +21180,7 @@ class KrVocabApp {
     results.innerHTML = matches.length ? matches.map(word => {
       const isAdded = addedIds.has(String(word.id));
       return `
-      <button type="button" class="similar-word-search-result${isAdded ? ' is-added' : ''}" ${isAdded ? 'disabled aria-disabled="true"' : `onclick="event.stopPropagation(); (window.app||window.vocabApp).addSimilarWord('${targetWord.id}', '${word.id}')"`}>
+      <button type="button" class="similar-word-search-result${isAdded ? ' is-added' : ''}" ${isAdded ? 'disabled aria-disabled="true"' : `onclick="event.stopPropagation(); (window.app||window.vocabApp).addSimilarWord('${targetWord.id}', '${word.id}', this)"`}>
         <div class="similar-word-search-result-row">
           <span><strong>${this.escapeHtml(word.word)}</strong>${word.reading ? ` <span style="color:var(--accent-secondary);">${this.escapeHtml(word.reading)}</span>` : ''}</span>
           ${isAdded ? '<span class="similar-word-added-badge">已添加</span>' : ''}
@@ -21191,10 +21191,33 @@ class KrVocabApp {
     }).join('') : '<div class="similar-word-search-hint">当前词库中没有匹配的单词</div>';
   }
 
-  addSimilarWord(targetWordId, similarWordId) {
+  restoreSimilarWordPickerState(hostId, targetWordId, searchValue) {
+    const host = hostId ? document.getElementById(hostId) : null;
+    const picker = host ? host.querySelector('.similar-word-picker') : null;
+    const input = picker ? picker.querySelector('.similar-word-search-input') : null;
+    if (!picker || !input) return;
+    picker.classList.add('active');
+    input.value = String(searchValue || '');
+    this.searchSimilarWordOptions(input, targetWordId);
+    setTimeout(() => {
+      if (!document.contains(input)) return;
+      input.focus();
+      const caretPosition = input.value.length;
+      if (typeof input.setSelectionRange === 'function') input.setSelectionRange(caretPosition, caretPosition);
+    }, 0);
+  }
+
+  addSimilarWord(targetWordId, similarWordId, triggerElement = null) {
     const targetWord = this.words.find(word => String(word.id) === String(targetWordId));
     const similarWord = this.words.find(word => String(word.id) === String(similarWordId));
     if (!targetWord || !similarWord || targetWord.id === similarWord.id) return;
+    const sourceHost = triggerElement && typeof triggerElement.closest === 'function'
+      ? triggerElement.closest('#detailSimilarBlock, #cardBackSimilarBlock')
+      : null;
+    const sourceInput = sourceHost ? sourceHost.querySelector('.similar-word-search-input') : null;
+    const pickerState = sourceHost && sourceHost.id
+      ? { hostId: sourceHost.id, searchValue: sourceInput ? sourceInput.value : '' }
+      : null;
     targetWord.manualSimilarWordIds = Array.isArray(targetWord.manualSimilarWordIds) ? targetWord.manualSimilarWordIds.map(String) : [];
     targetWord.hiddenSimilarWordIds = Array.isArray(targetWord.hiddenSimilarWordIds) ? targetWord.hiddenSimilarWordIds.map(String) : [];
     if (!targetWord.manualSimilarWordIds.includes(String(similarWord.id))) targetWord.manualSimilarWordIds.push(String(similarWord.id));
@@ -21210,6 +21233,7 @@ class KrVocabApp {
     this.saveData();
     this.refreshSimilarWordPanels(targetWord.id);
     this.refreshSimilarWordPanels(similarWord.id);
+    if (pickerState) this.restoreSimilarWordPickerState(pickerState.hostId, targetWord.id, pickerState.searchValue);
     this.showToast(`✅ 已添加相近表达：${similarWord.word}`);
   }
 
