@@ -20397,6 +20397,8 @@ class KrVocabApp {
 
   normalizeBracketedReading(value) {
     let reading = String(value || '').trim();
+    const pitchAccentNumberMarks = new Set(Array.from('⓪①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳'));
+    reading = Array.from(reading).filter(character => !pitchAccentNumberMarks.has(character)).join('').trim();
     while (reading.startsWith('[')) reading = reading.slice(1).trimStart();
     while (reading.endsWith(']')) reading = reading.slice(0, -1).trimEnd();
     return reading ? `[${reading}]` : '';
@@ -64228,6 +64230,8 @@ document.addEventListener('DOMContentLoaded', () => {
           words.forEach(function(word) {
             if (!word) return;
             var reading = String(word.reading || '').trim();
+            var pitchAccentNumberMarks = new Set(Array.from('⓪①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳'));
+            reading = Array.from(reading).filter(function(character) { return !pitchAccentNumberMarks.has(character); }).join('').trim();
             while (reading.startsWith('[')) reading = reading.slice(1).trimStart();
             while (reading.endsWith(']')) reading = reading.slice(0, -1).trimEnd();
             word.reading = reading ? '[' + reading + ']' : '';

@@ -1121,6 +1121,8 @@ class VocabAppTester:
 
         reading_auto_brackets = all(token in content for token in [
             'normalizeBracketedReading(value)',
+            "const pitchAccentNumberMarks = new Set(Array.from('⓪①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳'));",
+            "reading = Array.from(reading).filter(character => !pitchAccentNumberMarks.has(character)).join('').trim();",
             "while (reading.startsWith('[')) reading = reading.slice(1).trimStart();",
             "while (reading.endsWith(']')) reading = reading.slice(0, -1).trimEnd();",
             "return reading ? `[${reading}]` : '';",
@@ -1131,13 +1133,14 @@ class VocabAppTester:
             'w.reading = this.normalizeBracketedReading(w.reading);',
             'function normalizeFallbackReadings(words)',
             'normalizeFallbackReadings(fallbackWords);',
+            "reading = Array.from(reading).filter(function(character) { return !pitchAccentNumberMarks.has(character); }).join('').trim();",
             "word.reading = reading ? '[' + reading + ']' : '';",
             '系统自动添加 [ ]',
         ]) and 'const reading = readingInput.value.trim();' not in content
         self.assert_true(
             reading_auto_brackets,
-            f"[{lang_name}] 表单-读音正文失焦或保存时自动补全唯一一层方括号",
-            "读音输入缺少自动补全/去重逻辑，或保存仍直接使用未规范化的原始输入",
+            f"[{lang_name}] 表单-读音自动补全唯一方括号并移除日语圈号音调编号",
+            "读音输入缺少方括号自动补全、圈号音调清理或旧缓存/备用数据迁移逻辑",
         )
 
         # ---------------------------------------------------------------------
@@ -1883,6 +1886,8 @@ class VocabAppTester:
                 readingInput.dispatchEvent(new Event('blur', { bubbles: true }));
                 const readingAutoBracketed = readingInput.value === '[test-reading]';
                 const duplicateBracketsRemoved = app.normalizeBracketedReading('[[test-reading]]') === '[test-reading]';
+                const pitchNumbersRemoved = ['[test-reading①]', '[test-reading]②', '⓪test-reading⑳']
+                  .every(value => app.normalizeBracketedReading(value) === '[test-reading]');
                 document.getElementById('inputMeaning').value = 'n. 新增弹窗测试释义';
                 const krMeaningInput = document.getElementById('inputKrMeaning');
                 if (krMeaningInput) krMeaningInput.value = '추가 창 테스트 뜻';
@@ -1923,14 +1928,14 @@ class VocabAppTester:
                 return {
                   groupsVisible, startsEmpty, ratingSet, masteredSet, searchFound, selected,
                   selectedRendered, removed, readded, savedRating, savedManualRelation,
-                  savedMastered, readingAutoBracketed, duplicateBracketsRemoved, savedReading,
+                  savedMastered, readingAutoBracketed, duplicateBracketsRemoved, pitchNumbersRemoved, savedReading,
                   automaticSnapshotEmpty, reverseRelation, mutualRecommendation, persisted, modalClosed
                 };
             """)
             self.assert_true(
                 bool(manual_add_rating_similar and all(manual_add_rating_similar.values())),
-                f"[{lang_name}] 浏览器新增弹窗-星级、学习状态、读音自动加括号与相近词编辑保存全流程",
-                f"新增弹窗星级、学习状态、读音自动加括号或相近词交互失败: {manual_add_rating_similar}",
+                f"[{lang_name}] 浏览器新增弹窗-星级、学习状态、读音加括号去音调编号与相近词保存全流程",
+                f"新增弹窗星级、学习状态、读音规范化或相近词交互失败: {manual_add_rating_similar}",
             )
 
             status_rating_persistence = driver.execute_script("""
