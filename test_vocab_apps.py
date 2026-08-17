@@ -753,6 +753,19 @@ class VocabAppTester:
         status_before_rating = content.find('class="similar-word-status-btn ${w.mastered') < content.find("this.renderStarRating(w, 'similar-word-rating')")
         self.assert_true(similar_word_status_control and status_before_rating, f"[{lang_name}] 相近表达-卡片星级左侧显示可切换的学习中/已掌握状态", "相近词卡片缺少状态按钮、未复用星级控件、状态未同步，或状态按钮没有位于星级左侧")
 
+        detail_header_status_control = all(token in content for token in (
+            'id="detailMasteredBtn" type="button"',
+            'class="similar-word-status-btn detail-mastered-status-btn status-learning"',
+            'id="detailRating" class="detail-star-slot"',
+            "document.getElementById('detailMasteredBtn')?.addEventListener('click', (e) => {",
+            'if (wordId) this.toggleMastered(wordId);',
+            "const detailMasteredBtn = document.getElementById('detailMasteredBtn');",
+            'detailMasteredBtn.dataset.masteredWordId = String(word.id);',
+            'this.syncMasteredWidgets(word.id);',
+        ))
+        detail_status_before_rating = content.find('id="detailMasteredBtn"') < content.find('id="detailRating"')
+        self.assert_true(detail_header_status_control and detail_status_before_rating, f"[{lang_name}] 详情弹窗-顶部星级左侧显示可直接切换的学习中/已掌握 Label", "详情标题栏缺少状态 Label、未绑定切换同步，或状态按钮没有位于星级左侧")
+
         # ---------------------------------------------------------------------
         # 测试点 31B: 用户自定义说明仅在卡片编辑弹窗维护并按内容条件展示
         # ---------------------------------------------------------------------
@@ -1960,6 +1973,37 @@ class VocabAppTester:
                 detail_modal_active,
                 f"[{lang_name}] 浏览器真实点击-单词卡片打开详情弹窗",
                 "点击第一张 .word-card 后 #detailModal 未进入 active 状态",
+            )
+
+            detail_header_status_toggle = driver.execute_script("""
+                const app = window.app;
+                const wordId = app.currentDetailWordId;
+                const word = app.words.find(item => String(item.id) === String(wordId));
+                const button = document.getElementById('detailMasteredBtn');
+                const rating = document.getElementById('detailRating');
+                if (!word || !button || !rating) return null;
+                const originalMastered = Boolean(word.mastered);
+                const initialSynced = String(button.dataset.masteredWordId) === String(word.id)
+                  && button.getAttribute('aria-pressed') === (originalMastered ? 'true' : 'false')
+                  && button.textContent.trim() === (originalMastered ? '✅ 已掌握' : '🔄 学习中');
+                const positionedBeforeRating = button.nextElementSibling === rating;
+                button.click();
+                const toggledMastered = !originalMastered;
+                const toggledInMemory = Boolean(word.mastered) === toggledMastered;
+                const toggledInHeader = button.getAttribute('aria-pressed') === (toggledMastered ? 'true' : 'false')
+                  && button.textContent.trim() === (toggledMastered ? '✅ 已掌握' : '🔄 学习中')
+                  && button.classList.contains(toggledMastered ? 'status-mastered' : 'status-learning');
+                const storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(item => String(item.id) === String(word.id));
+                const persisted = Boolean(storedWord?.mastered) === toggledMastered;
+                button.click();
+                const restored = Boolean(word.mastered) === originalMastered
+                  && button.getAttribute('aria-pressed') === (originalMastered ? 'true' : 'false');
+                return { initialSynced, positionedBeforeRating, toggledInMemory, toggledInHeader, persisted, restored };
+            """)
+            self.assert_true(
+                bool(detail_header_status_toggle and all(detail_header_status_toggle.values())),
+                f"[{lang_name}] 浏览器详情弹窗-星级左侧状态 Label 可点击切换并持久化同步",
+                f"详情标题栏状态切换失败: {detail_header_status_toggle}",
             )
 
             example_pair_edit_lifecycle = driver.execute_script("""

@@ -1199,6 +1199,9 @@ body::-webkit-scrollbar,
   color: var(--text-primary);
   outline: none;
 }
+.detail-mastered-status-btn {
+  flex: 0 0 auto;
+}
 .similar-word-rating {
   min-height: 26px;
   padding: 0 2px;
@@ -17013,6 +17016,7 @@ body::-webkit-scrollbar,
             </div>
           </div>
           <div class="detail-header-actions">
+            <button id="detailMasteredBtn" type="button" class="similar-word-status-btn detail-mastered-status-btn status-learning" data-mastered-word-id="" aria-pressed="false" title="点击切换为已掌握">🔄 学习中</button>
             <div id="detailRating" class="detail-star-slot"></div>
             <button id="closeDetailModalBtn" class="icon-btn" onclick="if(window.app) window.app.closeDetailModal()">✕</button>
           </div>
@@ -20645,6 +20649,11 @@ class KrVocabApp {
         const word = this.words.find(w => w.id === this.currentDetailWordId);
         if (word) this.speakWord(word.word);
       });
+      document.getElementById('detailMasteredBtn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const wordId = this.currentDetailWordId;
+        if (wordId) this.toggleMastered(wordId);
+      });
       document.getElementById('detailEditBtn')?.addEventListener('click', () => {
         this.openDetailWordEditor();
       });
@@ -21325,6 +21334,11 @@ class KrVocabApp {
 
     const detailRating = document.getElementById('detailRating');
     if (detailRating) detailRating.innerHTML = this.renderStarRating(word);
+    const detailMasteredBtn = document.getElementById('detailMasteredBtn');
+    if (detailMasteredBtn) {
+      detailMasteredBtn.dataset.masteredWordId = String(word.id);
+      this.syncMasteredWidgets(word.id);
+    }
 
     const backBtn = document.getElementById('detailBackBtn');
     if (backBtn) {
