@@ -1518,6 +1518,15 @@ body::-webkit-scrollbar,
 .modal-draft-star-rating {
   width: fit-content;
 }
+.modal-draft-mastered-shell {
+  min-height: 40px;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+}
 .modal-draft-similar-panel {
   width: 100%;
   padding: 10px;
@@ -16988,6 +16997,13 @@ body::-webkit-scrollbar,
             <div id="modalDraftRating" class="modal-draft-rating-shell"></div>
           </div>
 
+          <div id="addWordMasteredGroup" class="form-group" style="display:none;">
+            <label class="form-label">学习状态</label>
+            <div class="modal-draft-mastered-shell">
+              <button id="modalDraftMasteredBtn" type="button" class="similar-word-status-btn status-learning" aria-pressed="false" title="点击切换为已掌握">🔄 学习中</button>
+            </div>
+          </div>
+
           <div id="addWordSimilarGroup" class="form-group" style="display:none;">
             <label class="form-label">相近词汇</label>
             <div class="modal-draft-similar-panel">
@@ -20640,6 +20656,10 @@ class KrVocabApp {
         e.preventDefault();
         this.saveWordFromForm();
       });
+      document.getElementById('modalDraftMasteredBtn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggleModalDraftMastered();
+      });
 
       document.getElementById('closeDetailModalBtn')?.addEventListener('click', () => this.closeDetailModal());
       document.getElementById('detailModal')?.addEventListener('click', (e) => {
@@ -20757,14 +20777,17 @@ class KrVocabApp {
     const userNoteInput = document.getElementById('inputUserNote');
     const addWordTagsGroup = document.getElementById('addWordTagsGroup');
     const addWordRatingGroup = document.getElementById('addWordRatingGroup');
+    const addWordMasteredGroup = document.getElementById('addWordMasteredGroup');
     const addWordSimilarGroup = document.getElementById('addWordSimilarGroup');
-    if (!modal || !form || !title || !wordIdInput || !wordInput || !readingInput || !meaningInput || !userNoteInput || !addWordTagsGroup || !addWordRatingGroup || !addWordSimilarGroup) return;
+    if (!modal || !form || !title || !wordIdInput || !wordInput || !readingInput || !meaningInput || !userNoteInput || !addWordTagsGroup || !addWordRatingGroup || !addWordMasteredGroup || !addWordSimilarGroup) return;
     form.reset();
     this.editingModalTags = [];
     this.editingModalRating = 0;
+    this.editingModalMastered = false;
     this.editingModalSimilarWordIds = [];
     addWordTagsGroup.style.display = word ? 'none' : 'block';
     addWordRatingGroup.style.display = word ? 'none' : 'block';
+    addWordMasteredGroup.style.display = word ? 'none' : 'block';
     addWordSimilarGroup.style.display = word ? 'none' : 'block';
 
     if (word) {
@@ -20783,6 +20806,7 @@ class KrVocabApp {
     if (!word) {
       this.renderModalTags();
       this.renderModalDraftRating();
+      this.renderModalDraftMastered();
       this.renderModalSelectedSimilarWords();
       const modalSimilarSearchInput = document.getElementById('modalSimilarSearchInput');
       if (modalSimilarSearchInput) {
@@ -20957,6 +20981,22 @@ class KrVocabApp {
     event.preventDefault();
     event.stopPropagation();
     this.setModalDraftRating(next, true);
+  }
+
+  renderModalDraftMastered() {
+    const button = document.getElementById('modalDraftMasteredBtn');
+    if (!button) return;
+    const mastered = Boolean(this.editingModalMastered);
+    button.classList.toggle('status-mastered', mastered);
+    button.classList.toggle('status-learning', !mastered);
+    button.textContent = mastered ? '✅ 已掌握' : '🔄 学习中';
+    button.setAttribute('aria-pressed', mastered ? 'true' : 'false');
+    button.setAttribute('title', mastered ? '点击切换为学习中' : '点击切换为已掌握');
+  }
+
+  toggleModalDraftMastered() {
+    this.editingModalMastered = !Boolean(this.editingModalMastered);
+    this.renderModalDraftMastered();
   }
 
   renderModalSelectedSimilarWords() {
@@ -21445,6 +21485,7 @@ class KrVocabApp {
     const existingWord = id ? this.words.find(w => w.id === id) : null;
     const tags = existingWord && Array.isArray(existingWord.tags) ? [...existingWord.tags] : [...(this.editingModalTags || [])];
     const draftRating = existingWord ? this.normalizeRating(existingWord.rating) : this.normalizeRating(this.editingModalRating);
+    const draftMastered = existingWord ? Boolean(existingWord.mastered) : Boolean(this.editingModalMastered);
     const draftSimilarWordIds = existingWord ? [] : [...new Set((this.editingModalSimilarWordIds || []).map(String))].filter(similarId => this.words.some(word => String(word.id) === similarId));
     const examples = examplePairs.map(pair => ({ example: pair.example, trans: pair.trans }));
     const example = examples.map(pair => pair.example).join('\n');
@@ -21478,7 +21519,7 @@ class KrVocabApp {
         examples,
         tags,
         userNote,
-        mastered: false,
+        mastered: draftMastered,
         rating: draftRating,
         manualSimilarWordIds: [...draftSimilarWordIds],
         reviewCount: 0,

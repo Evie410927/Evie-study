@@ -525,6 +525,19 @@ class VocabAppTester:
         ))
         self.assert_true(add_modal_rating_editor, f"[{lang_name}] 新增弹窗-可点击与键盘编辑星级并随新词保存", "新增弹窗缺少草稿星级控件、交互方法或保存字段")
 
+        add_modal_mastered_editor = all(token in content for token in (
+            'id="addWordMasteredGroup"',
+            'id="modalDraftMasteredBtn"',
+            '>学习状态</label>',
+            'this.editingModalMastered = false;',
+            "addWordMasteredGroup.style.display = word ? 'none' : 'block';",
+            'renderModalDraftMastered()',
+            'toggleModalDraftMastered()',
+            'const draftMastered = existingWord ? Boolean(existingWord.mastered) : Boolean(this.editingModalMastered);',
+            'mastered: draftMastered,',
+        )) and 'mastered: false,' not in content[content.find('const newWord = {'):content.find('const newWord = {') + 1000]
+        self.assert_true(add_modal_mastered_editor, f"[{lang_name}] 新增弹窗-学习中/已掌握 Label 可直接切换并随新词保存", "新增弹窗缺少学习状态草稿控件、切换方法或仍将新词状态硬编码为学习中")
+
         add_modal_similar_picker = all(token in content for token in (
             'id="addWordSimilarGroup"',
             'id="modalSimilarSearchInput"',
@@ -1759,13 +1772,15 @@ class VocabAppTester:
             manual_add_rating_similar = driver.execute_script("""
                 const app = window.app;
                 const ratingGroup = document.getElementById('addWordRatingGroup');
+                const masteredGroup = document.getElementById('addWordMasteredGroup');
+                const masteredButton = document.getElementById('modalDraftMasteredBtn');
                 const similarGroup = document.getElementById('addWordSimilarGroup');
                 const ratingWidget = document.querySelector('#modalDraftRating .modal-draft-star-rating');
                 const searchInput = document.getElementById('modalSimilarSearchInput');
                 const results = document.getElementById('modalSimilarSearchResults');
                 const selectedList = document.getElementById('modalSelectedSimilarWords');
                 const target = app.words[0];
-                if (!ratingGroup || !similarGroup || !ratingWidget || !searchInput || !results || !selectedList || !target) return null;
+                if (!ratingGroup || !masteredGroup || !masteredButton || !similarGroup || !ratingWidget || !searchInput || !results || !selectedList || !target) return null;
                 const originalTarget = JSON.parse(JSON.stringify(target));
                 const originalState = {
                   currentFilter: app.currentFilter,
@@ -1773,10 +1788,15 @@ class VocabAppTester:
                   currentPage: app.currentPage,
                   ratingSort: app.ratingSort
                 };
-                const groupsVisible = getComputedStyle(ratingGroup).display !== 'none' && getComputedStyle(similarGroup).display !== 'none';
+                const groupsVisible = getComputedStyle(ratingGroup).display !== 'none'
+                  && getComputedStyle(masteredGroup).display !== 'none'
+                  && getComputedStyle(similarGroup).display !== 'none';
                 const startsEmpty = app.editingModalRating === 0
+                  && app.editingModalMastered === false
                   && app.editingModalSimilarWordIds.length === 0
-                  && ratingWidget.querySelectorAll('.rating-star.filled').length === 0;
+                  && ratingWidget.querySelectorAll('.rating-star.filled').length === 0
+                  && masteredButton.textContent.trim() === '🔄 学习中'
+                  && masteredButton.getAttribute('aria-pressed') === 'false';
 
                 const ratingRect = ratingWidget.getBoundingClientRect();
                 ratingWidget.dispatchEvent(new MouseEvent('click', {
@@ -1787,6 +1807,11 @@ class VocabAppTester:
                 const ratingSet = app.editingModalRating === 4
                   && document.querySelectorAll('#modalDraftRating .rating-star.filled').length === 4
                   && document.querySelector('#modalDraftRating .modal-draft-star-rating')?.getAttribute('aria-valuenow') === '4';
+                masteredButton.click();
+                const masteredSet = app.editingModalMastered === true
+                  && masteredButton.textContent.trim() === '✅ 已掌握'
+                  && masteredButton.getAttribute('aria-pressed') === 'true'
+                  && masteredButton.classList.contains('status-mastered');
 
                 const findTargetResult = () => Array.from(results.querySelectorAll('.similar-word-search-result')).find(button =>
                   button.querySelector('strong')?.textContent === target.word
@@ -1819,6 +1844,7 @@ class VocabAppTester:
                 document.getElementById('saveWordBtn')?.click();
                 const newWord = app.words.find(word => word.word === testWord);
                 const savedRating = newWord?.rating === 4;
+                const savedMastered = newWord?.mastered === true;
                 const savedManualRelation = Array.isArray(newWord?.manualSimilarWordIds)
                   && newWord.manualSimilarWordIds.map(String).includes(String(target.id));
                 const automaticSnapshotEmpty = Array.isArray(newWord?.autoSimilarWordIds) && newWord.autoSimilarWordIds.length === 0;
@@ -1829,6 +1855,7 @@ class VocabAppTester:
                   && app.getSimilarWords(target, 3).some(word => String(word.id) === String(newWord.id));
                 const storedNewWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(newWord?.id));
                 const persisted = storedNewWord?.rating === 4
+                  && storedNewWord?.mastered === true
                   && storedNewWord.manualSimilarWordIds?.map(String).includes(String(target.id));
                 const modalClosed = document.getElementById('wordModal')?.classList.contains('active') === false;
 
@@ -1843,15 +1870,15 @@ class VocabAppTester:
                 app.renderWordList();
                 app.closeWordModal();
                 return {
-                  groupsVisible, startsEmpty, ratingSet, searchFound, selected,
+                  groupsVisible, startsEmpty, ratingSet, masteredSet, searchFound, selected,
                   selectedRendered, removed, readded, savedRating, savedManualRelation,
-                  automaticSnapshotEmpty, reverseRelation, mutualRecommendation, persisted, modalClosed
+                  savedMastered, automaticSnapshotEmpty, reverseRelation, mutualRecommendation, persisted, modalClosed
                 };
             """)
             self.assert_true(
                 bool(manual_add_rating_similar and all(manual_add_rating_similar.values())),
-                f"[{lang_name}] 浏览器新增弹窗-星级编辑与相近词搜索增删、保存及双向持久化全流程",
-                f"新增弹窗星级或相近词交互失败: {manual_add_rating_similar}",
+                f"[{lang_name}] 浏览器新增弹窗-星级、学习状态与相近词编辑保存全流程",
+                f"新增弹窗星级、学习状态或相近词交互失败: {manual_add_rating_similar}",
             )
 
             status_rating_persistence = driver.execute_script("""
@@ -2029,7 +2056,7 @@ class VocabAppTester:
                 const editModalOpened = modal?.classList.contains('active') === true;
                 const detailHiddenWhileEditing = detailModal?.classList.contains('active') === false;
                 const returnContextCaptured = String(app.wordModalReturnContext?.wordId) === String(currentId);
-                const addOnlyControlsHidden = ['addWordTagsGroup', 'addWordRatingGroup', 'addWordSimilarGroup'].every(id => {
+                const addOnlyControlsHidden = ['addWordTagsGroup', 'addWordRatingGroup', 'addWordMasteredGroup', 'addWordSimilarGroup'].every(id => {
                   const element = document.getElementById(id);
                   return !!element && getComputedStyle(element).display === 'none';
                 });
