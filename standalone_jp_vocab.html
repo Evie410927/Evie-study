@@ -6474,6 +6474,7 @@ class JpVocabApp {
         w.tags = Array.isArray(w.tags) ? w.tags.filter(tag => tag !== '\u6613\u6df7') : [];
         w.rating = this.normalizeRating(w.rating);
         w.reading = this.normalizeBracketedReading(w.reading);
+        w.autoSimilarWordIds = [];
         const parsed = this.getParsedExamples(w);
         if (parsed && parsed.length > 0) {
           w.examples = parsed;
@@ -7265,72 +7266,18 @@ class JpVocabApp {
   }
 
   
-  calculateAutomaticSimilarWords(targetWord, limit = 3) {
-    if (!targetWord || !this.words || this.words.length <= 1) return [];
-
-    const targetMeaningClean = targetWord.meaning.replace(/^(v|n|adj|adv|短语|惯用句|句型|语法|短語|慣用句)\.\s*/i, '');
-    const keywords = targetMeaningClean.split(/[,，；;\s/]/).map(k => k.trim()).filter(k => k.length >= 1);
-    const targetTags = new Set((targetWord.tags || []).map(t => t.toLowerCase()));
-
-    const scoredWords = [];
-
-    this.words.forEach(w => {
-      if (w.id === targetWord.id || w.word === targetWord.word) return;
-
-      let score = 0;
-      const wMeaningClean = w.meaning.replace(/^(v|n|adj|adv|短语|惯用句|句型|语法|短語|慣用句)\.\s*/i, '');
-
-      keywords.forEach(kw => {
-        if (kw && wMeaningClean.includes(kw)) {
-          score += 5;
-        }
-      });
-
-      if (w.tags && w.tags.length > 0) {
-        w.tags.forEach(t => {
-          if (targetTags.has(t.toLowerCase())) {
-            score += 2;
-          }
-        });
-      }
-
-      const targetRelated = Array.isArray(targetWord.relatedWords) ? targetWord.relatedWords : [];
-      if (targetRelated.indexOf(w.word) !== -1) {
-        score += 50;
-      }
-      const wordRelated = Array.isArray(w.relatedWords) ? w.relatedWords : [];
-      if (wordRelated.indexOf(targetWord.word) !== -1) {
-        score += 50;
-      }
-
-      scoredWords.push({ word: w, score });
-    });
-
-    scoredWords.sort((a, b) => b.score - a.score);
-    return scoredWords.slice(0, limit).map(item => item.word);
-  }
-
   getSimilarWords(targetWord, limit = 3) {
     if (!targetWord || !this.words || this.words.length <= 1) return [];
-
-    // The automatic recommendations are a one-time snapshot. Deleting one must
-    // leave the slot empty instead of pulling another candidate from the pool.
-    if (!Array.isArray(targetWord.autoSimilarWordIds)) {
-      targetWord.autoSimilarWordIds = this.calculateAutomaticSimilarWords(targetWord, 3).map(word => String(word.id));
-    }
     const hiddenIds = new Set(Array.isArray(targetWord.hiddenSimilarWordIds) ? targetWord.hiddenSimilarWordIds.map(String) : []);
-    const automaticWords = targetWord.autoSimilarWordIds
-      .map(id => this.words.find(word => String(word.id) === String(id)))
-      .filter(word => word && word.id !== targetWord.id && !hiddenIds.has(String(word.id)));
-    const automaticIdSet = new Set(automaticWords.map(word => String(word.id)));
+    const seenIds = new Set();
     const manualIds = Array.isArray(targetWord.manualSimilarWordIds) ? targetWord.manualSimilarWordIds.map(String) : [];
-    const manualWords = manualIds
+    return manualIds
       .map(id => this.words.find(word => String(word.id) === id))
-      .filter(word => word && word.id !== targetWord.id && !hiddenIds.has(String(word.id)) && !automaticIdSet.has(String(word.id)));
-
-    // Manual additions are deliberately unlimited and are appended after the
-    // remaining automatic snapshot; `limit` is retained for API compatibility.
-    return automaticWords.concat(manualWords);
+      .filter(word => {
+        if (!word || word.id === targetWord.id || hiddenIds.has(String(word.id)) || seenIds.has(String(word.id))) return false;
+        seenIds.add(String(word.id));
+        return true;
+      });
   }
 
   renderSimilarBlockHtml(similarWords, targetWord) {

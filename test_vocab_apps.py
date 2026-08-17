@@ -677,10 +677,10 @@ class VocabAppTester:
         self.assert_true(safe_storage_wrapper, f"[{lang_name}] 安全-SafeStorageWrapper 存储沙盒降级与防崩溃护盾", "缺少 SafeStorageWrapper 降级存储包装器，可能在极苛沙盒下导致 localStorage 报错卡死")
 
         # ---------------------------------------------------------------------
-        # 测试点 31: 相近表达推荐算法与面板交互防护 (getSimilarWords & renderSimilarBlockHtml)
+        # 测试点 31: 相近表达纯手动关系与面板交互防护 (getSimilarWords & renderSimilarBlockHtml)
         # ---------------------------------------------------------------------
-        similar_words_algo = 'getSimilarWords(' in content and 'renderSimilarBlockHtml(' in content and 'similar-word-chip' in content
-        self.assert_true(similar_words_algo, f"[{lang_name}] 算法-getSimilarWords 相近表达推荐算法与面板交互防护", "缺少 getSimilarWords 或 renderSimilarBlockHtml 方法")
+        similar_words_manual_view = 'getSimilarWords(' in content and 'renderSimilarBlockHtml(' in content and 'similar-word-chip' in content
+        self.assert_true(similar_words_manual_view, f"[{lang_name}] 相近表达-getSimilarWords 手动关系读取与面板交互防护", "缺少 getSimilarWords 或 renderSimilarBlockHtml 方法")
 
         similar_word_manual_controls = all(token in content for token in (
             'class="similar-panel-add-btn"',
@@ -694,23 +694,24 @@ class VocabAppTester:
         self.assert_true(similar_word_manual_controls, f"[{lang_name}] 相近表达-标题＋库内搜索添加与卡片右上角×删除控件完整", "相近表达 Panel 缺少＋搜索添加、×删除或双视图刷新 API")
 
         similar_word_persistence = all(token in content for token in (
-            'autoSimilarWordIds',
             'manualSimilarWordIds',
             'hiddenSimilarWordIds',
             'this.saveData()',
-            'calculateAutomaticSimilarWords(',
-            'return automaticWords.concat(manualWords)',
+            'const seenIds = new Set();',
+            'return manualIds',
         ))
-        self.assert_true(similar_word_persistence, f"[{lang_name}] 相近表达-固定三条自动快照、删除不补位与人工不限量持久化", "缺少自动推荐快照或人工/隐藏关系字段，删除后可能继续从候选池补位")
+        self.assert_true(similar_word_persistence, f"[{lang_name}] 相近表达-仅按人工关系不限量读取、去重并持久化", "相近表达未严格读取 manualSimilarWordIds，或缺少人工关系持久化")
 
-        empty_similar_for_new_word = all(token in content for token in (
+        automatic_similarity_disabled = all(token in content for token in (
             'newWord.autoSimilarWordIds = [];',
-            'if (!Array.isArray(targetWord.autoSimilarWordIds))',
-            'targetWord.autoSimilarWordIds',
-            'return automaticWords.concat(manualWords);',
+            'w.autoSimilarWordIds = [];',
             '暂无相近表达，可点击右上角＋添加',
-        )) and 'const automaticLimit = Math.max(0, limit - manualWords.length)' not in content
-        self.assert_true(empty_similar_for_new_word, f"[{lang_name}] 相近表达-新词相近表达面板留空为空卡，仅支持用户手动添加持久化", "新词仍会自动生成三条推荐快照，或缺少空卡提示/手动添加入口")
+        )) and all(token not in content for token in (
+            'calculateAutomaticSimilarWords(',
+            'automaticWords.concat(',
+            'targetWord.autoSimilarWordIds = this.',
+        ))
+        self.assert_true(automatic_similarity_disabled, f"[{lang_name}] 相近表达-彻底禁用自动计算与旧快照，仅允许人工添加编辑", "仍存在自动相近词算法、自动快照展示路径，或旧缓存快照未在装载时清空")
 
         bidirectional_manual_similarity = all(token in content for token in (
             'similarWord.manualSimilarWordIds = Array.isArray(similarWord.manualSimilarWordIds)',
@@ -2313,7 +2314,7 @@ class VocabAppTester:
                 const originalAuto = source.autoSimilarWordIds;
                 const originalManual = source.manualSimilarWordIds;
                 const originalHidden = source.hiddenSimilarWordIds;
-                const reverseOriginalState = addTargets => addTargets.map(word => ({
+                const reverseOriginalState = words => words.map(word => ({
                   word,
                   manual: word.manualSimilarWordIds,
                   hidden: word.hiddenSimilarWordIds
@@ -2323,7 +2324,9 @@ class VocabAppTester:
                 source.hiddenSimilarWordIds = [];
                 const initial = candidates[0];
                 const addTargets = candidates.slice(3, 7);
-                const reverseOriginal = reverseOriginalState(addTargets);
+                const reverseOriginal = reverseOriginalState([initial].concat(addTargets));
+                const automaticSnapshotIgnored = app.getSimilarWords(source, 3).length === 0;
+                app.addSimilarWord(source.id, initial.id);
                 app.showDetailModal(source.id);
                 const panel = document.querySelector('#detailSimilarBlock .similar-words-container');
                 const addButton = panel && panel.querySelector('.similar-panel-add-btn');
@@ -2344,7 +2347,7 @@ class VocabAppTester:
                 app.removeSimilarWord(source.id, initial.id);
                 const afterDeleteIds = app.getSimilarWords(source, 3).map(word => String(word.id));
                 const afterRepeatedReadIds = app.getSimilarWords(source, 3).map(word => String(word.id));
-                const deleteLeavesGap = beforeDeleteCount === 3 && afterDeleteIds.length === 2;
+                const deleteLeavesGap = beforeDeleteCount === 1 && afterDeleteIds.length === 0;
                 const noAutomaticRefill = JSON.stringify(afterDeleteIds) === JSON.stringify(afterRepeatedReadIds) && !afterDeleteIds.includes(String(initial.id));
                 const freshPanel = document.querySelector('#detailSimilarBlock .similar-words-container');
                 const freshAddButton = freshPanel?.querySelector('.similar-panel-add-btn');
@@ -2382,7 +2385,7 @@ class VocabAppTester:
                 const afterUnlimitedAdd = app.getSimilarWords(source, 3);
                 const addedPersisted = addTargets.every(word => (source.manualSimilarWordIds || []).map(String).includes(String(word.id)));
                 const addedVisible = addTargets.every(word => afterUnlimitedAdd.some(item => item.id === word.id));
-                const manualUnlimited = afterUnlimitedAdd.length === 6;
+                const manualUnlimited = afterUnlimitedAdd.length === 4;
                 const reversePersisted = addTargets.every(word => (word.manualSimilarWordIds || []).map(String).includes(String(source.id)));
                 const reverseVisible = addTargets.every(word => app.getSimilarWords(word, 3).some(item => item.id === source.id));
                 const hiddenPersisted = (source.hiddenSimilarWordIds || []).map(String).includes(String(initial.id));
@@ -2399,6 +2402,7 @@ class VocabAppTester:
                 app.refreshSimilarWordPanels(source.id);
                 return {
                   pickerOpened: !!picker && picker.classList.contains('active'),
+                  automaticSnapshotIgnored,
                   continuousMultiSelect,
                   hasLibraryResult,
                   existingResultDisabled,
@@ -2416,15 +2420,20 @@ class VocabAppTester:
             """)
             self.assert_true(
                 bool(similar_manual_crud and all(similar_manual_crud.values())),
-                f"[{lang_name}] 浏览器相近表达-删除留空不补位、＋库内搜索及人工添加不限量全流程",
+                f"[{lang_name}] 浏览器相近表达-自动快照失效、删除留空、＋库内搜索及人工添加不限量全流程",
                 f"相近表达手动增删真实交互失败: {similar_manual_crud}",
             )
 
             similar_status_toggle = driver.execute_script("""
                 const app = window.app;
-                const source = app.words.find(word => app.getSimilarWords(word, 1).length > 0);
-                const target = source && app.getSimilarWords(source, 1)[0];
+                const source = app.words[0];
+                const target = app.words.find(word => source && word.id !== source.id);
                 if (!source || !target) return null;
+                const originalSourceManual = source.manualSimilarWordIds;
+                const originalSourceHidden = source.hiddenSimilarWordIds;
+                const originalTargetManual = target.manualSimilarWordIds;
+                const originalTargetHidden = target.hiddenSimilarWordIds;
+                app.addSimilarWord(source.id, target.id);
                 const initialMastered = Boolean(target.mastered);
                 app.showDetailModal(source.id);
                 const chip = Array.from(document.querySelectorAll('#detailSimilarBlock .similar-word-chip')).find(node =>
@@ -2445,6 +2454,11 @@ class VocabAppTester:
                 const persisted = storedTarget && Boolean(storedTarget.mastered) === Boolean(target.mastered);
                 statusButton.click();
                 const restored = Boolean(target.mastered) === initialMastered;
+                if (originalSourceManual === undefined) delete source.manualSimilarWordIds; else source.manualSimilarWordIds = originalSourceManual;
+                if (originalSourceHidden === undefined) delete source.hiddenSimilarWordIds; else source.hiddenSimilarWordIds = originalSourceHidden;
+                if (originalTargetManual === undefined) delete target.manualSimilarWordIds; else target.manualSimilarWordIds = originalTargetManual;
+                if (originalTargetHidden === undefined) delete target.hiddenSimilarWordIds; else target.hiddenSimilarWordIds = originalTargetHidden;
+                app.saveData();
                 return {statusBeforeRating, toggled, textUpdated, ariaUpdated, clickStayedOnSource, persisted, restored};
             """)
             self.assert_true(
@@ -2455,8 +2469,8 @@ class VocabAppTester:
 
             user_note_lifecycle = driver.execute_script("""
                 const app = window.app;
-                const source = app.words.find(word => app.getSimilarWords(word, 1).length > 0);
-                const target = source && app.getSimilarWords(source, 1)[0];
+                const source = app.words[0];
+                const target = app.words.find(word => source && word.id !== source.id);
                 if (!source || !target) return null;
                 const sourceId = source.id;
                 const targetId = target.id;
@@ -2470,6 +2484,7 @@ class VocabAppTester:
                   reviewList: app.reviewList,
                   currentReviewIndex: app.currentReviewIndex
                 };
+                app.addSimilarWord(source.id, target.id);
                 const verticalGap = (upper, lower) => {
                   if (!upper || !lower) return Infinity;
                   return Math.max(0, lower.getBoundingClientRect().top - upper.getBoundingClientRect().bottom);
