@@ -992,6 +992,7 @@ class VocabAppTester:
         count_all_m = re.search(r'id="count-all"[^>]*>(\d+)</span>', content)
         count_learning_m = re.search(r'id="count-learning"[^>]*>(\d+)</span>', content)
         samples_m = re.search(r'const samples = (\[.*?\]);', content, re.DOTALL)
+        fallback_m = re.search(r'var fallbackWords = (\[.*?\]);', content, re.DOTALL)
         
         dom_static_counts_ok = False
         counts_error_msg = ""
@@ -1077,23 +1078,66 @@ class VocabAppTester:
         # 发音字段同时禁止残留日语音调圈号 (①-⑳ / ⓪)，用户明确要求去掉这种“奇怪的数字”
         import re as _re_circled
         circled_pat = _re_circled.compile(r'[①-⑳⓪]')
-        if samples_m:
+        reading_sources = [('samples', samples_m), ('fallbackWords', fallback_m)]
+        for source_name, source_match in reading_sources:
+            if not source_match:
+                reading_valid = False
+                invalid_reading_id = f"未解析到 {source_name} 数据源"
+                break
             try:
                 import json
-                samples_data = json.loads(samples_m.group(1), strict=False)
-                for item in samples_data:
+                source_data = json.loads(source_match.group(1), strict=False)
+                for item in source_data:
                     r_text = item.get('reading', '')
-                    if not r_text or '[' not in r_text or ']' not in r_text:
+                    if source_name == 'fallbackWords':
+                        r_text = str(r_text or '').strip()
+                        while r_text.startswith('['):
+                            r_text = r_text[1:].lstrip()
+                        while r_text.endswith(']'):
+                            r_text = r_text[:-1].rstrip()
+                        r_text = f'[{r_text}]' if r_text else ''
+                    if (
+                        not r_text
+                        or not r_text.startswith('[')
+                        or not r_text.endswith(']')
+                        or r_text.startswith('[[')
+                        or r_text.endswith(']]')
+                    ):
                         reading_valid = False
-                        invalid_reading_id = f"ID={item.get('id')} Word={item.get('word')} Reading={r_text}"
+                        invalid_reading_id = f"Source={source_name} ID={item.get('id')} Word={item.get('word')} Reading={r_text}"
                         break
                     if circled_pat.search(r_text):
                         reading_valid = False
-                        invalid_reading_id = f"ID={item.get('id')} Word={item.get('word')} Reading={r_text} (含音调圈号)"
+                        invalid_reading_id = f"Source={source_name} ID={item.get('id')} Word={item.get('word')} Reading={r_text} (含音调圈号)"
                         break
-            except Exception:
-                pass
+                if not reading_valid:
+                    break
+            except Exception as err:
+                reading_valid = False
+                invalid_reading_id = f"解析 {source_name} 失败: {err}"
+                break
         self.assert_true(reading_valid, f"[{lang_name}] 数据集-全量卡片 reading 字段正位且格式规范 [...] (不含音调圈号)", f"发现 reading 缺失/缺少 [...] 括号/含圈号: {invalid_reading_id}")
+
+        reading_auto_brackets = all(token in content for token in [
+            'normalizeBracketedReading(value)',
+            "while (reading.startsWith('[')) reading = reading.slice(1).trimStart();",
+            "while (reading.endsWith(']')) reading = reading.slice(0, -1).trimEnd();",
+            "return reading ? `[${reading}]` : '';",
+            'formatReadingInput(input)',
+            "document.getElementById('inputReading')?.addEventListener('blur'",
+            'const reading = this.normalizeBracketedReading(readingInput.value);',
+            'readingInput.value = reading;',
+            'w.reading = this.normalizeBracketedReading(w.reading);',
+            'function normalizeFallbackReadings(words)',
+            'normalizeFallbackReadings(fallbackWords);',
+            "word.reading = reading ? '[' + reading + ']' : '';",
+            '系统自动添加 [ ]',
+        ]) and 'const reading = readingInput.value.trim();' not in content
+        self.assert_true(
+            reading_auto_brackets,
+            f"[{lang_name}] 表单-读音正文失焦或保存时自动补全唯一一层方括号",
+            "读音输入缺少自动补全/去重逻辑，或保存仍直接使用未规范化的原始输入",
+        )
 
         # ---------------------------------------------------------------------
         # 测试点 45: 自定义标签行内打字编辑器 (showInlineTagInput 不使用 window.prompt)
@@ -1833,7 +1877,11 @@ class VocabAppTester:
 
                 const testWord = `新增弹窗星级相近词测试_${Date.now()}`;
                 document.getElementById('inputWord').value = testWord;
-                document.getElementById('inputReading').value = '[test-reading]';
+                const readingInput = document.getElementById('inputReading');
+                readingInput.value = 'test-reading';
+                readingInput.dispatchEvent(new Event('blur', { bubbles: true }));
+                const readingAutoBracketed = readingInput.value === '[test-reading]';
+                const duplicateBracketsRemoved = app.normalizeBracketedReading('[[test-reading]]') === '[test-reading]';
                 document.getElementById('inputMeaning').value = 'n. 新增弹窗测试释义';
                 const krMeaningInput = document.getElementById('inputKrMeaning');
                 if (krMeaningInput) krMeaningInput.value = '추가 창 테스트 뜻';
@@ -1845,6 +1893,7 @@ class VocabAppTester:
                 const newWord = app.words.find(word => word.word === testWord);
                 const savedRating = newWord?.rating === 4;
                 const savedMastered = newWord?.mastered === true;
+                const savedReading = newWord?.reading === '[test-reading]';
                 const savedManualRelation = Array.isArray(newWord?.manualSimilarWordIds)
                   && newWord.manualSimilarWordIds.map(String).includes(String(target.id));
                 const automaticSnapshotEmpty = Array.isArray(newWord?.autoSimilarWordIds) && newWord.autoSimilarWordIds.length === 0;
@@ -1856,6 +1905,7 @@ class VocabAppTester:
                 const storedNewWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(newWord?.id));
                 const persisted = storedNewWord?.rating === 4
                   && storedNewWord?.mastered === true
+                  && storedNewWord?.reading === '[test-reading]'
                   && storedNewWord.manualSimilarWordIds?.map(String).includes(String(target.id));
                 const modalClosed = document.getElementById('wordModal')?.classList.contains('active') === false;
 
@@ -1872,13 +1922,14 @@ class VocabAppTester:
                 return {
                   groupsVisible, startsEmpty, ratingSet, masteredSet, searchFound, selected,
                   selectedRendered, removed, readded, savedRating, savedManualRelation,
-                  savedMastered, automaticSnapshotEmpty, reverseRelation, mutualRecommendation, persisted, modalClosed
+                  savedMastered, readingAutoBracketed, duplicateBracketsRemoved, savedReading,
+                  automaticSnapshotEmpty, reverseRelation, mutualRecommendation, persisted, modalClosed
                 };
             """)
             self.assert_true(
                 bool(manual_add_rating_similar and all(manual_add_rating_similar.values())),
-                f"[{lang_name}] 浏览器新增弹窗-星级、学习状态与相近词编辑保存全流程",
-                f"新增弹窗星级、学习状态或相近词交互失败: {manual_add_rating_similar}",
+                f"[{lang_name}] 浏览器新增弹窗-星级、学习状态、读音自动加括号与相近词编辑保存全流程",
+                f"新增弹窗星级、学习状态、读音自动加括号或相近词交互失败: {manual_add_rating_similar}",
             )
 
             status_rating_persistence = driver.execute_script("""

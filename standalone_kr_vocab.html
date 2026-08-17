@@ -16955,7 +16955,7 @@ body::-webkit-scrollbar,
 
           <div class="form-group">
             <label class="form-label" for="inputReading">发音 / 罗马音标注</label>
-            <input type="text" id="inputReading" class="form-input" placeholder="如：[haeng-bok-ha-da]">
+            <input type="text" id="inputReading" class="form-input" placeholder="如：haeng-bok-ha-da（系统自动添加 [ ]）">
           </div>
 
           <div class="form-group">
@@ -20331,6 +20331,7 @@ class KrVocabApp {
         if (!w) return;
         w.tags = Array.isArray(w.tags) ? w.tags.filter(tag => tag !== '\u6613\u6df7') : [];
         w.rating = this.normalizeRating(w.rating);
+        w.reading = this.normalizeBracketedReading(w.reading);
         const parsed = this.getParsedExamples(w);
         if (parsed && parsed.length > 0) {
           w.examples = parsed;
@@ -20391,6 +20392,18 @@ class KrVocabApp {
     const rating = Number(value);
     if (!Number.isFinite(rating)) return 0;
     return Math.max(0, Math.min(5, Math.round(rating)));
+  }
+
+  normalizeBracketedReading(value) {
+    let reading = String(value || '').trim();
+    while (reading.startsWith('[')) reading = reading.slice(1).trimStart();
+    while (reading.endsWith(']')) reading = reading.slice(0, -1).trimEnd();
+    return reading ? `[${reading}]` : '';
+  }
+
+  formatReadingInput(input) {
+    if (!input) return;
+    input.value = this.normalizeBracketedReading(input.value);
   }
 
   renderStarRating(word, extraClass = '') {
@@ -20651,6 +20664,10 @@ class KrVocabApp {
         e.stopPropagation();
       });
 
+      document.getElementById('inputReading')?.addEventListener('blur', (e) => {
+        this.formatReadingInput(e.target);
+      });
+
       document.getElementById('closeModalBtn')?.addEventListener('click', () => this.closeWordModal());
       document.getElementById('saveWordBtn')?.addEventListener('click', (e) => {
         e.preventDefault();
@@ -20794,7 +20811,7 @@ class KrVocabApp {
       title.textContent = '编辑韩语单词';
       wordIdInput.value = word.id;
       wordInput.value = word.word || '';
-      readingInput.value = word.reading || '';
+      readingInput.value = this.normalizeBracketedReading(word.reading);
       meaningInput.value = word.meaning || '';
       userNoteInput.value = typeof word.userNote === 'string' ? word.userNote : '';
     } else {
@@ -21467,7 +21484,8 @@ class KrVocabApp {
     if (!wordIdInput || !wordInput || !readingInput || !meaningInput || !userNoteInput) return;
     const id = wordIdInput.value;
     const wordText = wordInput.value.trim();
-    const reading = readingInput.value.trim();
+    const reading = this.normalizeBracketedReading(readingInput.value);
+    readingInput.value = reading;
     const meaning = meaningInput.value.trim();
     const userNote = userNoteInput.value.trim();
     const examplePairs = this.collectExamplePairsFromEditor();
@@ -64258,6 +64276,17 @@ document.addEventListener('DOMContentLoaded', () => {
     ]
   }
 ];
+        function normalizeFallbackReadings(words) {
+          if (!Array.isArray(words)) return;
+          words.forEach(function(word) {
+            if (!word) return;
+            var reading = String(word.reading || '').trim();
+            while (reading.startsWith('[')) reading = reading.slice(1).trimStart();
+            while (reading.endsWith(']')) reading = reading.slice(0, -1).trimEnd();
+            word.reading = reading ? '[' + reading + ']' : '';
+          });
+        }
+        normalizeFallbackReadings(fallbackWords);
         applyKrContentRepairs(fallbackWords);
         
         // Immediate DOM render if app failed or is loading
