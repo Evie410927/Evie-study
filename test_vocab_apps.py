@@ -105,10 +105,12 @@ class VocabAppTester:
         self.assert_true(tombstone_sync, f"[{lang_name}] 云同步-删除 Tombstone 跨设备传播并防止复活", "删除记录未携带时间戳，或云端删除不能覆盖旧的本地卡片")
 
         conflict_merge = all(token in content for token in (
-            "cloudUpdatedAt > localUpdatedAt", "localDeletedAt >= cloudUpdatedAt",
-            "mergeCloudRows", "syncWithSupabase",
-        ))
-        self.assert_true(conflict_merge, f"[{lang_name}] 云同步-双设备 Last-Write-Wins 冲突合并", "缺少本地/云端更新时间比较，可能整库覆盖丢数据")
+            "const cloudWinsByTime = cloudUpdatedAt > localUpdatedAt",
+            "const localWinsByTime = localWord && cloudDiffers && localUpdatedAt >= cloudUpdatedAt",
+            "pending[id] = { changedAt: Math.max(localUpdatedAt, 1), source: 'user' }",
+            "localDeletedAt >= cloudUpdatedAt", "mergeCloudRows", "syncWithSupabase",
+        )) and "(!locallyPending && cloudDiffers)" not in content
+        self.assert_true(conflict_merge, f"[{lang_name}] 云同步-严格 Last-Write-Wins 且旧云端禁止覆盖较新本地编辑", "冲突合并仍可能因待上传标记缺失而用旧云端副本覆盖较新本地编辑")
 
         legacy_pending_protected = all(token in content for token in (
             "return { changedAt, source: changedAt > 0 ? 'user' : 'none' }",
@@ -564,6 +566,9 @@ class VocabAppTester:
             "if (e.key !== 'Enter' || e.target?.tagName === 'TEXTAREA') return;",
             "document.getElementById('saveWordBtn')?.addEventListener('click', (e) => {",
             'this.saveWordFromForm();',
+            'const persisted = this.saveData();',
+            'if (!persisted) return;',
+            'this.showToast(saveSuccessMessage);',
         )) and all(token not in content for token in (
             "event.target.id === 'wordModal' && window.app) window.app.closeWordModal()",
             "if (e.target.id === 'wordModal') this.closeWordModal();",
@@ -692,8 +697,21 @@ class VocabAppTester:
         # ---------------------------------------------------------------------
         # 测试点 30: 存储沙盒与全局防崩溃护盾防护 (SafeStorageWrapper)
         # ---------------------------------------------------------------------
-        safe_storage_wrapper = 'class SafeStorageWrapper' in content and 'SafeStorage' in content
-        self.assert_true(safe_storage_wrapper, f"[{lang_name}] 安全-SafeStorageWrapper 存储沙盒降级与防崩溃护盾", "缺少 SafeStorageWrapper 降级存储包装器，可能在极苛沙盒下导致 localStorage 报错卡死")
+        safe_storage_wrapper = all(token in content for token in (
+            'class SafeStorageWrapper', 'SafeStorage',
+            'localStorage.getItem(key) !== serialized',
+            'flushMemoryStore()', 'hasVolatileValue(key)',
+            'const durable = !SafeStorage.hasVolatileValue(this.STORAGE_KEY)',
+            "if (!durable)", "return false;",
+        ))
+        self.assert_true(safe_storage_wrapper, f"[{lang_name}] 安全-SafeStorageWrapper 写入回读验证、临时数据重试与保存失败显式返回", "浏览器持久存储失败仍可能被静默降级为内存数据并误报保存成功")
+
+        persistence_gated_feedback = (
+            content.count('const persisted = this.saveData();') >= 7
+            and content.count('if (!persisted) return;') >= 7
+            and 'this.refreshSimilarWordPanels(targetWord.id);\n    if (!persisted) return;' in content
+        )
+        self.assert_true(persistence_gated_feedback, f"[{lang_name}] 持久化-编辑、相近表达、状态、删除、导入和清空仅在落盘成功后提示完成", "部分编辑入口仍可能在持久化失败后显示成功或继续完成后续动作")
 
         # ---------------------------------------------------------------------
         # 测试点 31: 相近表达纯手动关系与面板交互防护 (getSimilarWords & renderSimilarBlockHtml)
@@ -1049,6 +1067,14 @@ class VocabAppTester:
             and 'markPendingCloudChanges(changedIds, reconciliationTime' in content
         )
         self.assert_true(cached_data_upgrade, f"[{lang_name}] 数据升级-非空浏览器缓存自动补入新版内置词条且不复活已删除词", "loadData 未无条件合并内置 samples，或 loadSampleData 未尊重删除记录/按变化保存")
+
+        user_edit_upgrade_guard = all(token in content for token in (
+            'userEditedAt: userEditTime',
+            'const hasProtectedUserEdit = Number(old.userEditedAt || 0) > 0',
+            "pendingMeta.source === 'user'",
+            '!hasProtectedUserEdit',
+        ))
+        self.assert_true(user_edit_upgrade_guard, f"[{lang_name}] 数据升级-用户手动编辑标记永久阻止内置样本覆盖", "编辑词条未写入 userEditedAt，或内置数据升级仍可能覆盖用户修改的释义、读音与例句")
 
         corrected_example_migration = all(token in content for token in (
             'hasNewerContent' if lang_name == '韩语' else 'Number(item.contentRevision || 0) > Number(old.contentRevision || 0)',
@@ -1550,14 +1576,14 @@ class VocabAppTester:
                   const deletedGone = !app.words.some(w => w.id === prefix + '_sync_delete');
                   const allFields = edited && edited.meaning === '云端释义' && edited.example === '云端例句' && edited.tags.includes('云端Tag') && edited.mastered === true;
                   const localWins = newer && newer.meaning === '保留本地' && newer.mastered === false;
-                  const mobileEditPulled = staleFuture && staleFuture.meaning === '手机新释义' && staleFuture.mastered === true;
+                  const unmarkedNewerLocalPreserved = staleFuture && staleFuture.meaning === '浏览器旧释义' && staleFuture.mastered === false;
                   const uploadRows = app.buildCloudRows('00000000-0000-0000-0000-000000000000', cloudRows);
-                  const unchangedBrowserRowsNotUploaded = !uploadRows.some(row => row.word_id === prefix + '_sync_stale_future');
+                  const recoveredPendingQueued = uploadRows.some(row => row.word_id === prefix + '_sync_stale_future' && row.payload.meaning === '浏览器旧释义');
                   const before = Number(edited.updatedAt || 0);
                   edited.tags.push('本地新增Tag');
                   app.markLocallyChangedWords();
                   const localEditTracked = Number(edited.updatedAt || 0) > before;
-                  return {changed, allFields, localWins, mobileEditPulled, unchangedBrowserRowsNotUploaded, deletedGone, localEditTracked};
+                  return {changed, allFields, localWins, unmarkedNewerLocalPreserved, recoveredPendingQueued, deletedGone, localEditTracked};
                 } finally {
                   app.words = originalWords;
                   app.saveDeletedRecords(originalDeleted);
@@ -1578,14 +1604,14 @@ class VocabAppTester:
                 "冲突合并没有保留更新时间更晚的本地编辑",
             )
             self.assert_true(
-                bool(merge_result and merge_result.get('mobileEditPulled')),
-                f"[{lang_name}] 浏览器双设备模拟-手机新编辑覆盖浏览器未来时间戳旧缓存",
-                "未在浏览器编辑的旧卡片仍凭本地时间戳阻止手机云端内容下拉",
+                bool(merge_result and merge_result.get('unmarkedNewerLocalPreserved')),
+                f"[{lang_name}] 浏览器双设备模拟-待上传标记缺失时仍按时间保留较新本地版本",
+                "待上传标记缺失时，较旧云端副本仍覆盖了较新的本地编辑",
             )
             self.assert_true(
-                bool(merge_result and merge_result.get('unchangedBrowserRowsNotUploaded')),
-                f"[{lang_name}] 浏览器双设备模拟-仅上传待同步词条而非整库回写",
-                "浏览器点击云朵仍会把未编辑旧卡片重新上传并覆盖手机数据",
+                bool(merge_result and merge_result.get('recoveredPendingQueued')),
+                f"[{lang_name}] 浏览器双设备模拟-自动补回缺失的待上传标记并上传较新本地版本",
+                "本地版本胜出后没有重新加入待上传队列，下一次同步仍可能继续冲突",
             )
             self.assert_true(
                 bool(merge_result and merge_result.get('deletedGone')),
@@ -2179,6 +2205,24 @@ class VocabAppTester:
                   if (source) source.value = `编辑原句 ${index + 1}`;
                   if (translation) translation.value = `编辑译文 ${index + 1}`;
                 });
+                const storagePrototype = Object.getPrototypeOf(localStorage);
+                const originalSetItem = storagePrototype.setItem;
+                let failedSaveKeptDraft = false;
+                let failedSaveReported = false;
+                try {
+                  storagePrototype.setItem = function(key, value) {
+                    if (key === app.STORAGE_KEY || key === app.PENDING_CLOUD_KEY) {
+                      throw new DOMException('模拟持久存储失败', 'QuotaExceededError');
+                    }
+                    return originalSetItem.call(this, key, value);
+                  };
+                  document.getElementById('saveWordBtn')?.click();
+                  failedSaveKeptDraft = modal?.classList.contains('active') === true
+                    && rows.every((row, index) => row.querySelector('.example-source-input')?.value === `编辑原句 ${index + 1}`);
+                  failedSaveReported = document.getElementById('toast')?.textContent.includes('保存失败') === true;
+                } finally {
+                  storagePrototype.setItem = originalSetItem;
+                }
                 document.getElementById('saveWordBtn')?.click();
                 const savedWord = app.words[wordIndex];
                 const parsedAfterSave = app.getParsedExamples(savedWord);
@@ -2195,6 +2239,7 @@ class VocabAppTester:
                   && JSON.stringify(app.detailModalHistory || []) === detailHistoryBefore;
                 const storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(savedWord.id));
                 const persisted = storedWord?.examples?.length === 3 && storedWord.example === savedWord.example && storedWord.exampleTrans === savedWord.exampleTrans;
+                const userEditProtected = Number(savedWord.userEditedAt || 0) > 0;
 
                 app.currentFilter = 'all';
                 app.searchQuery = String(savedWord.word || '').toLowerCase();
@@ -2225,7 +2270,8 @@ class VocabAppTester:
                 return {
                   editModalOpened, detailHiddenWhileEditing, returnContextCaptured, cancelReturnedToDetail,
                   reopenedFromDetail, addOnlyControlsHidden, exactlyThreeRows, existingPairsLoaded, incompleteRejected,
-                  structuredSaved, tagsPreserved, legacySaved, modalClosedAfterSave, persisted,
+                  failedSaveKeptDraft, failedSaveReported, structuredSaved, tagsPreserved, legacySaved,
+                  userEditProtected, modalClosedAfterSave, persisted,
                   saveReturnedToDetail, listPreviewUpdated, detailShowsThreePairs, reviewShowsThreePairs
                 };
             """)

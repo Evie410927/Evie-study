@@ -3065,26 +3065,54 @@ body::-webkit-scrollbar,
   class SafeStorageWrapper {
     constructor() {
       this.memoryStore = {};
+      this.lastError = null;
     }
     getItem(key) {
+      if (Object.prototype.hasOwnProperty.call(this.memoryStore, key)) {
+        return this.memoryStore[key];
+      }
       try {
         return localStorage.getItem(key);
       } catch (e) {
-        return this.memoryStore[key] || null;
+        this.lastError = e;
+        return null;
       }
     }
     setItem(key, value) {
+      const serialized = String(value);
       try {
-        localStorage.setItem(key, value);
+        localStorage.setItem(key, serialized);
+        if (localStorage.getItem(key) !== serialized) {
+          throw new Error(`Persistent storage verification failed for ${key}`);
+        }
+        delete this.memoryStore[key];
+        this.lastError = null;
+        return true;
       } catch (e) {
-        this.memoryStore[key] = String(value);
+        this.memoryStore[key] = serialized;
+        this.lastError = e;
+        return false;
       }
+    }
+    flushMemoryStore() {
+      let allPersisted = true;
+      Object.keys(this.memoryStore).forEach(key => {
+        if (!this.setItem(key, this.memoryStore[key])) allPersisted = false;
+      });
+      return allPersisted;
+    }
+    hasVolatileValue(key) {
+      return Object.prototype.hasOwnProperty.call(this.memoryStore, key);
     }
     removeItem(key) {
       try {
         localStorage.removeItem(key);
+        delete this.memoryStore[key];
+        return true;
       } catch (e) {
         delete this.memoryStore[key];
+        this.lastError = e;
+        return false;
       }
     }
     keys() {
@@ -6086,7 +6114,12 @@ function createSupabaseSyncMethods(language) {
 
     persistSyncedData() {
       SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words || []));
+      SafeStorage.flushMemoryStore();
+      const durable = !SafeStorage.hasVolatileValue(this.STORAGE_KEY)
+        && !SafeStorage.hasVolatileValue(this.PENDING_CLOUD_KEY);
+      if (!durable) return false;
       this.refreshWordFingerprints();
+      return true;
     },
 
     cloudHeaders(accessToken, extra = {}) {
@@ -6137,7 +6170,12 @@ function createSupabaseSyncMethods(language) {
         const localContentRevision = Number(localWord && localWord.contentRevision || 0);
         const cloudContentRevision = Number(cloudPayload && cloudPayload.contentRevision || 0);
         const systemUpdateCanYield = locallyPending && pendingMeta.source === 'system' && cloudDiffers && cloudContentRevision >= localContentRevision;
-        if (!localWord || cloudUpdatedAt > localUpdatedAt || (!locallyPending && cloudDiffers) || systemUpdateCanYield) {
+        const cloudWinsByTime = cloudUpdatedAt > localUpdatedAt;
+        const localWinsByTime = localWord && cloudDiffers && localUpdatedAt >= cloudUpdatedAt && !systemUpdateCanYield;
+        if (localWinsByTime && !locallyPending) {
+          pending[id] = { changedAt: Math.max(localUpdatedAt, 1), source: 'user' };
+        }
+        if (!localWord || cloudWinsByTime || systemUpdateCanYield) {
           const payload = row.payload && typeof row.payload === 'object' ? { ...row.payload } : null;
           if (payload) {
             payload.tags = Array.isArray(payload.tags) ? payload.tags.filter(tag => tag !== '\u6613\u6df7') : [];
@@ -6152,7 +6190,9 @@ function createSupabaseSyncMethods(language) {
       this.words = Array.from(localMap.values());
       this.saveDeletedRecords(deleted);
       this.savePendingCloudChanges(pending);
-      this.persistSyncedData();
+      if (!this.persistSyncedData()) {
+        throw new Error('云端数据已载入，但浏览器未能持久保存，请保留当前页面并重试');
+      }
       return changedCount;
     },
 
@@ -6526,9 +6566,18 @@ class JpVocabApp {
     try {
       if (this.markLocallyChangedWords) this.markLocallyChangedWords();
       SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
+      SafeStorage.flushMemoryStore();
+      const durable = !SafeStorage.hasVolatileValue(this.STORAGE_KEY)
+        && !SafeStorage.hasVolatileValue(this.PENDING_CLOUD_KEY);
       this.updateStats();
+      if (!durable) {
+        this.showToast('⚠️ 保存失败：浏览器未能持久保存，请保留当前窗口并重试');
+        return false;
+      }
+      return true;
     } catch (e) {
-      this.showToast('⚠️ 保存失败');
+      this.showToast('⚠️ 保存失败：浏览器存储异常，请保留当前窗口并重试');
+      return false;
     }
   }
 
@@ -7422,10 +7471,11 @@ class JpVocabApp {
     similarWord.hiddenSimilarWordIds = Array.isArray(similarWord.hiddenSimilarWordIds) ? similarWord.hiddenSimilarWordIds.map(String) : [];
     if (!similarWord.manualSimilarWordIds.includes(String(targetWord.id))) similarWord.manualSimilarWordIds.push(String(targetWord.id));
     similarWord.hiddenSimilarWordIds = similarWord.hiddenSimilarWordIds.filter(id => id !== String(targetWord.id));
-    this.saveData();
+    const persisted = this.saveData();
     this.refreshSimilarWordPanels(targetWord.id);
     this.refreshSimilarWordPanels(similarWord.id);
     if (pickerState) this.restoreSimilarWordPickerState(pickerState.hostId, targetWord.id, pickerState.searchValue);
+    if (!persisted) return;
     this.showToast(`✅ 已添加相近表达：${similarWord.word}`);
   }
 
@@ -7436,8 +7486,9 @@ class JpVocabApp {
     targetWord.manualSimilarWordIds = (Array.isArray(targetWord.manualSimilarWordIds) ? targetWord.manualSimilarWordIds : []).map(String).filter(id => id !== String(similarWord.id));
     targetWord.hiddenSimilarWordIds = Array.isArray(targetWord.hiddenSimilarWordIds) ? targetWord.hiddenSimilarWordIds.map(String) : [];
     if (!targetWord.hiddenSimilarWordIds.includes(String(similarWord.id))) targetWord.hiddenSimilarWordIds.push(String(similarWord.id));
-    this.saveData();
+    const persisted = this.saveData();
     this.refreshSimilarWordPanels(targetWord.id);
+    if (!persisted) return;
     this.showToast(`已从当前面板移除：${similarWord.word}`);
   }
 
@@ -7596,24 +7647,29 @@ class JpVocabApp {
     const example = examples.map(pair => pair.example).join('\n');
     const exampleTrans = examples.map(pair => pair.trans).join('\n');
 
+    const userEditTime = Date.now();
+    let saveSuccessMessage = '';
     if (id) {
       const index = this.words.findIndex(w => w.id === id);
-      if (index !== -1) {
-        this.words[index] = {
-          ...this.words[index],
-          word: wordText,
-          reading,
-          meaning,
-          krMeaning,
-          example,
-          exampleTrans,
-          examples,
-          tags,
-          userNote,
-          updatedAt: Date.now()
-        };
-        this.showToast('✅ 修改保存成功');
+      if (index === -1) {
+        this.showToast('⚠️ 未找到要编辑的词条，请关闭后重新打开');
+        return;
       }
+      this.words[index] = {
+        ...this.words[index],
+        word: wordText,
+        reading,
+        meaning,
+        krMeaning,
+        example,
+        exampleTrans,
+        examples,
+        tags,
+        userNote,
+        userEditedAt: userEditTime,
+        updatedAt: userEditTime
+      };
+      saveSuccessMessage = '✅ 修改保存成功';
     } else {
       const newWord = {
         id: 'jp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
@@ -7630,7 +7686,9 @@ class JpVocabApp {
         rating: draftRating,
         manualSimilarWordIds: [...draftSimilarWordIds],
         reviewCount: 0,
-        createdAt: Date.now()
+        createdAt: userEditTime,
+        userEditedAt: userEditTime,
+        updatedAt: userEditTime
       };
       // 新词相近表达留空（永不自动生成推荐快照）：相近表达面板默认显示空卡，
       // 完全由用户通过＋手动搜索添加并持久化。existing 词条保持既有快照不变。
@@ -7645,11 +7703,13 @@ class JpVocabApp {
         similarWord.hiddenSimilarWordIds = similarWord.hiddenSimilarWordIds.filter(hiddenId => hiddenId !== String(newWord.id));
         similarWord.updatedAt = Date.now();
       });
-      this.showToast('🎉 新日语单词已添加');
+      saveSuccessMessage = '🎉 新日语单词已添加';
     }
 
-    this.saveData();
+    const persisted = this.saveData();
+    if (!persisted) return;
     this.renderWordList();
+    this.showToast(saveSuccessMessage);
     this.closeWordModal();
   }
 
@@ -7659,10 +7719,11 @@ class JpVocabApp {
       word.mastered = !word.mastered;
       word.updatedAt = Math.max(Date.now(), Number(word.updatedAt || 0) + 1);
       if (this.markPendingCloudChanges) this.markPendingCloudChanges([String(word.id)], word.updatedAt);
-      this.saveData();
+      const persisted = this.saveData();
       this.renderWordList();
       this.syncMasteredWidgets(id);
       this.updateStats();
+      if (!persisted) return;
       this.showToast(word.mastered ? '🌟 已标记为掌握' : '📖 标记为学习中');
     }
   }
@@ -7674,8 +7735,9 @@ class JpVocabApp {
         this.recordDeletedWord(target);
       }
       this.words = this.words.filter(w => w.id !== id);
-      this.saveData();
+      const persisted = this.saveData();
       this.renderWordList();
+      if (!persisted) return;
       this.showToast('🗑️ 已删除');
     }
   }
@@ -8591,7 +8653,7 @@ class JpVocabApp {
       }
     }
 
-    this.saveData();
+    if (!this.saveData()) return;
     this.currentReviewIndex++;
 
     const flashcard = document.getElementById('flashcard');
@@ -8695,8 +8757,9 @@ class JpVocabApp {
               }
             }
           });
-          this.saveData();
+          const persisted = this.saveData();
           this.renderWordList();
+          if (!persisted) return;
           this.showToast(`✅ 成功导入 ${count} 个日语单词！`);
         } else {
           this.showToast('⚠️ JSON 格式错误');
@@ -22196,6 +22259,7 @@ class JpVocabApp {
     const deletedRecords = this.getDeletedRecords ? this.getDeletedRecords() : {};
     const deletedIds = new Set(Object.keys(deletedRecords || {}));
     const deletedWords = new Set(Object.values(deletedRecords || {}).map(item => item && item.word).filter(Boolean));
+    const pendingCloudChanges = this.getPendingCloudChanges ? this.getPendingCloudChanges() : {};
     let count = 0;
     let changed = false;
     const changedIds = [];
@@ -22219,7 +22283,9 @@ class JpVocabApp {
         changedIds.push(String(item.id));
       } else {
         const old = this.words[idx];
-        if (Number(item.contentRevision || 0) > Number(old.contentRevision || 0)) {
+        const pendingMeta = this.getPendingCloudMeta(pendingCloudChanges[String(old.id)]);
+        const hasProtectedUserEdit = Number(old.userEditedAt || 0) > 0 || pendingMeta.source === 'user';
+        if (!hasProtectedUserEdit && Number(item.contentRevision || 0) > Number(old.contentRevision || 0)) {
           this.words[idx] = { ...old, id: item.id, example: item.example, exampleTrans: item.exampleTrans, examples: Array.isArray(item.examples) ? item.examples.map(example => ({ ...example })) : [], meaning: item.meaning, reading: item.reading, krMeaning: item.krMeaning, contentRevision: Number(item.contentRevision || 0), updatedAt: reconciliationTime };
           changed = true;
           changedIds.push(String(item.id));
@@ -22242,8 +22308,9 @@ class JpVocabApp {
   clearAllData() {
     if (confirm('确定要清空本地保存的所有日语单词吗？')) {
       this.words = [];
-      this.saveData();
+      const persisted = this.saveData();
       this.renderWordList();
+      if (!persisted) return;
       this.showToast('🗑️ 本地日语数据已清空');
     }
   }
