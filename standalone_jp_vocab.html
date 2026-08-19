@@ -2335,7 +2335,7 @@ body::-webkit-scrollbar,
       <section id="tab-list" class="tab-view active">
         <div class="search-box">
           <span class="search-icon">🔍</span>
-          <input type="text" id="searchInput" class="search-input" placeholder="搜索日语单词、假名或释义..." oninput="if(window.app) window.app.onSearchInput(this.value)">
+          <input type="text" id="searchInput" class="search-input" placeholder="搜索日语单词、假名、中文或韩文释义..." oninput="if(window.app) window.app.onSearchInput(this.value)">
           <span id="searchClearBtn" class="search-clear-btn" style="display:none;" title="一键清空搜索" onclick="if(window.app) window.app.clearSearch()">✕</span>
         </div>
         <div id="activeTagsBar" class="active-tags-bar"></div>
@@ -7773,14 +7773,15 @@ class JpVocabApp {
         if (!matchesAnyTag) return false;
       }
 
-      // Keyword search query (仅匹配单词/表达、假名/发音及释义，隔离例句与标签)
+      // Keyword search query (仅匹配单词/表达、假名/发音、中文释义及韩文释义，隔离例句与标签)
       if (this.searchQuery) {
         const q = this.searchQuery;
         const matchWord = w.word && w.word.toLowerCase().includes(q);
         const matchReading = w.reading && w.reading.toLowerCase().includes(q);
         const matchMeaning = w.meaning && w.meaning.toLowerCase().includes(q);
+        const matchKrMeaning = w.krMeaning && w.krMeaning.toLowerCase().includes(q);
 
-        return matchWord || matchReading || matchMeaning;
+        return matchWord || matchReading || matchMeaning || matchKrMeaning;
       }
       return true;
     });

@@ -1391,6 +1391,25 @@ class VocabAppTester:
         ))
         self.assert_true(editable_kr_meaning, "[日语专属] 编辑弹窗-韩文释义字段支持回填、修改、清空与保存", "日语编辑弹窗缺少 inputKrMeaning，或 krMeaning 未接入回填/保存流程")
 
+        # JP 测试点 8: 主搜索框支持按韩文释义 krMeaning 精确过滤
+        search_method_match = re.search(
+            r'getSearchFilteredWords\(\)\s*\{(.*?)\n\s*\}\s*\n\s*/\*',
+            content,
+            re.DOTALL,
+        )
+        search_method = search_method_match.group(1) if search_method_match else ''
+        searches_kr_meaning = all(token in search_method for token in (
+            'const matchKrMeaning = w.krMeaning',
+            'w.krMeaning.toLowerCase().includes(q)',
+            'matchMeaning || matchKrMeaning',
+        ))
+        search_hint_mentions_korean = 'placeholder="搜索日语单词、假名、中文或韩文释义..."' in content
+        self.assert_true(
+            searches_kr_meaning and search_hint_mentions_korean,
+            "[日语专属] 主搜索-支持按 krMeaning 韩文释义筛选日语卡片",
+            "JP getSearchFilteredWords 未将 krMeaning 纳入匹配，或搜索提示未说明支持韩文释义",
+        )
+
     def test_browser_interactions(self, filepath, lang_name):
         """在真实浏览器中执行 JS 并点击核心控件，防止静态字符串断言假通过。"""
         print("\n  --------------------------------------------------")
@@ -2294,6 +2313,47 @@ class VocabAppTester:
             )
 
             if lang_name == "日语":
+                jp_kr_meaning_search = driver.execute_script("""
+                    const app = window.app;
+                    const searchInput = document.getElementById('searchInput');
+                    const target = app.words.find(item => item && String(item.krMeaning || '').trim());
+                    if (!searchInput || !target) return null;
+                    const originalState = {
+                      currentFilter: app.currentFilter,
+                      subFilter: app.subFilter,
+                      searchQuery: app.searchQuery,
+                      selectedTags: Array.from(app.selectedTags || []),
+                      currentPage: app.currentPage,
+                      inputValue: searchInput.value
+                    };
+                    const query = String(target.krMeaning).trim();
+                    app.currentFilter = 'all';
+                    app.subFilter = 'all';
+                    app.selectedTags = new Set();
+                    searchInput.value = query;
+                    searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    const filtered = app.getSearchFilteredWords();
+                    const dataMatched = filtered.some(item => String(item.id) === String(target.id));
+                    const queryStateSynced = app.searchQuery === query.toLowerCase();
+                    const renderedCard = Array.from(document.querySelectorAll('#wordList .word-card'))
+                      .find(card => String(card.dataset.id) === String(target.id));
+                    const cardRendered = !!renderedCard;
+
+                    app.currentFilter = originalState.currentFilter;
+                    app.subFilter = originalState.subFilter;
+                    app.searchQuery = originalState.searchQuery;
+                    app.selectedTags = new Set(originalState.selectedTags);
+                    app.currentPage = originalState.currentPage;
+                    searchInput.value = originalState.inputValue;
+                    app.renderWordList();
+                    return { queryStateSynced, dataMatched, cardRendered };
+                """)
+                self.assert_true(
+                    bool(jp_kr_meaning_search and all(jp_kr_meaning_search.values())),
+                    "[日语专属] 浏览器主搜索-输入韩文释义可筛出对应日语卡片",
+                    f"日语按韩文释义搜索失败: {jp_kr_meaning_search}",
+                )
+
                 jp_kr_meaning_lifecycle = driver.execute_script("""
                     const app = window.app;
                     const word = app.words.find(item => item && item.krMeaning && app.getParsedExamples(item).length >= 3);
