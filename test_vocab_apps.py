@@ -640,6 +640,25 @@ class VocabAppTester:
         ))
         self.assert_true(remove_tag_protection, f"[{lang_name}] 交互-系统词性与自定义 Tag 均显示 × 并可删除持久化", "系统词性 Tag 仍不可删除，或删除逻辑缺少归一化、更新时间与冒泡防护")
 
+        custom_tag_css_m = re.search(r'\.tag-badge\.custom-tag\s*\{([^}]*)\}', content, re.DOTALL)
+        active_tag_css_m = re.search(r'\.active-tag-chip\s*\{([^}]*)\}', content, re.DOTALL)
+        quick_tag_css_m = re.search(r'\.inline-quick-tag-chip\s*\{([^}]*)\}', content, re.DOTALL)
+        selected_tag_css_m = re.search(r'\.tag-dropdown-item\.selected\s*\{([^}]*)\}', content, re.DOTALL)
+        neutral_tag_blocks = [
+            custom_tag_css_m.group(1) if custom_tag_css_m else '',
+            active_tag_css_m.group(1) if active_tag_css_m else '',
+            quick_tag_css_m.group(1) if quick_tag_css_m else '',
+        ]
+        all_tags_neutral_gray = (
+            all('rgba(255, 255, 255, 0.06)' in block and 'var(--text-secondary)' in block for block in neutral_tag_blocks)
+            and selected_tag_css_m is not None
+            and 'rgba(255, 255, 255, 0.12)' in selected_tag_css_m.group(1)
+            and '#a5b4fc' not in (custom_tag_css_m.group(1) if custom_tag_css_m else '')
+            and 'var(--accent-gradient)' not in (active_tag_css_m.group(1) if active_tag_css_m else '')
+            and 'var(--accent-primary' not in (quick_tag_css_m.group(1) if quick_tag_css_m else '')
+        )
+        self.assert_true(all_tags_neutral_gray, f"[{lang_name}] 样式-系统、自定义、已选与快捷 Tag 全部统一为中性灰色", "Tag 仍保留蓝紫、粉色、渐变等特殊配色，或未采用与词性 Tag 一致的灰色")
+
         # ---------------------------------------------------------------------
         # 测试点 25: 卡片点击 showDetailModal 触发事件与 card-actions stopPropagation 事件隔离
         # ---------------------------------------------------------------------
@@ -1800,6 +1819,19 @@ class VocabAppTester:
                   input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
                 }
                 const added = app.editingModalTags.length === 1 && app.editingModalTags[0] === '手动词性';
+                const customBadge = container?.querySelector('.tag-badge.custom-tag');
+                const referenceBadge = document.createElement('span');
+                referenceBadge.className = 'tag-badge pos-tag';
+                referenceBadge.textContent = '#动词';
+                container?.appendChild(referenceBadge);
+                const customStyle = customBadge ? getComputedStyle(customBadge) : null;
+                const referenceStyle = getComputedStyle(referenceBadge);
+                const uniformGray = !!customStyle
+                  && customStyle.backgroundColor === referenceStyle.backgroundColor
+                  && customStyle.color === referenceStyle.color
+                  && customStyle.borderTopWidth === referenceStyle.borderTopWidth
+                  && customStyle.boxShadow === referenceStyle.boxShadow;
+                referenceBadge.remove();
                 container?.querySelector('.modal-editable-tag')?.click();
                 input = container?.querySelector('.inline-tag-input');
                 const editPrefilled = input?.value === '手动词性';
@@ -1810,12 +1842,12 @@ class VocabAppTester:
                 const edited = app.editingModalTags.length === 1 && app.editingModalTags[0] === '自定义新词Tag';
                 container?.querySelector('.remove-tag-x')?.click();
                 const deleted = app.editingModalTags.length === 0 && container?.querySelectorAll('.tag-badge').length === 0;
-                return { groupVisible, startsEmpty, added, editPrefilled, edited, deleted };
+                return { groupVisible, startsEmpty, added, uniformGray, editPrefilled, edited, deleted };
             """)
             self.assert_true(
                 bool(manual_add_tag_editor and all(manual_add_tag_editor.values())),
-                f"[{lang_name}] 浏览器新增弹窗-Tag 默认空白并支持输入、改名与删除",
-                f"新增弹窗手动 Tag 编辑全流程失败: {manual_add_tag_editor}",
+                f"[{lang_name}] 浏览器新增弹窗-Tag 灰色统一并支持输入、改名与删除",
+                f"新增弹窗 Tag 灰色统一或手动编辑全流程失败: {manual_add_tag_editor}",
             )
             manual_add_rating_similar = driver.execute_script("""
                 const app = window.app;
