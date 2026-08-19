@@ -17010,7 +17010,7 @@ body::-webkit-scrollbar,
             <div class="modal-draft-similar-panel">
               <div class="similar-panel-heading"><span>🔗 搜索并添加</span></div>
               <div class="similar-word-picker active">
-                <input id="modalSimilarSearchInput" type="search" class="similar-word-search-input" placeholder="搜索当前词库中的韩语表达" autocomplete="off" onkeydown="if(event.key === 'Enter') event.preventDefault();" oninput="if(window.app) window.app.searchModalSimilarWordOptions(this)">
+                <input id="modalSimilarSearchInput" type="search" class="similar-word-search-input" placeholder="搜索当前词库中的韩语表达" autocomplete="off" onkeydown="if(event.key === 'Enter') event.preventDefault(); if(window.app) window.app.protectSimilarSearchBackspace(event, null, true);" onkeyup="if(window.app) window.app.protectSimilarSearchBackspace(event, null, true);" oninput="if(window.app) window.app.searchModalSimilarWordOptions(this)">
                 <div id="modalSimilarSearchResults" class="similar-word-search-results"><div class="similar-word-search-hint">输入单词、读音或释义进行搜索</div></div>
               </div>
               <div id="modalSelectedSimilarWords" class="modal-draft-selected-list"></div>
@@ -21241,7 +21241,7 @@ class KrVocabApp {
           <button type="button" class="similar-panel-add-btn" onclick="event.stopPropagation(); (window.app||window.vocabApp).toggleSimilarWordPicker(event, '${targetWord.id}')" aria-label="添加相近表达" title="从当前词库添加相近表达">+</button>
         </div>
         <div class="similar-word-picker" onclick="event.stopPropagation();">
-          <input type="search" class="similar-word-search-input" placeholder="搜索当前词库中的韩语表达" autocomplete="off" oninput="(window.app||window.vocabApp).searchSimilarWordOptions(this, '${targetWord.id}')">
+          <input type="search" class="similar-word-search-input" placeholder="搜索当前词库中的韩语表达" autocomplete="off" onkeydown="(window.app||window.vocabApp).protectSimilarSearchBackspace(event, '${targetWord.id}')" onkeyup="(window.app||window.vocabApp).protectSimilarSearchBackspace(event, '${targetWord.id}')" oninput="(window.app||window.vocabApp).searchSimilarWordOptions(this, '${targetWord.id}')">
           <div class="similar-word-search-results"><div class="similar-word-search-hint">输入单词、读音或释义进行搜索</div></div>
         </div>
         <div style="display:flex; flex-direction:column; gap:8px; width:100%; box-sizing:border-box;">
@@ -21266,6 +21266,26 @@ class KrVocabApp {
         setTimeout(() => input.focus(), 0);
       }
     }
+  }
+
+  protectSimilarSearchBackspace(event, targetWordId = null, modalDraft = false) {
+    if (!event || event.key !== 'Backspace') return;
+    event.stopPropagation();
+    const input = event.currentTarget || event.target;
+    if (!input || event.type !== 'keydown') return;
+    const value = String(input.value || '');
+    const allTextSelected = value.length > 0
+      && Number(input.selectionStart) === 0
+      && Number(input.selectionEnd) === value.length;
+    if (!allTextSelected) return;
+    event.preventDefault();
+    input.value = '';
+    if (modalDraft) {
+      this.searchModalSimilarWordOptions(input);
+    } else {
+      this.searchSimilarWordOptions(input, targetWordId);
+    }
+    input.focus();
   }
 
   searchSimilarWordOptions(input, targetWordId) {

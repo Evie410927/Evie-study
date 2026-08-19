@@ -789,6 +789,18 @@ class VocabAppTester:
         ))
         self.assert_true(similar_word_continuous_multi_select, f"[{lang_name}] 相近表达-详情与复习弹窗搜索下拉支持连续多选且保留查询和焦点", "选择首个相近词后未恢复原搜索下拉、查询内容及连续选择上下文")
 
+        similar_search_backspace_guard = all(token in content for token in (
+            'protectSimilarSearchBackspace(event, targetWordId = null, modalDraft = false)',
+            "if (!event || event.key !== 'Backspace') return;",
+            'event.stopPropagation();',
+            "const allTextSelected = value.length > 0",
+            'event.preventDefault();',
+            "input.value = '';",
+            'onkeydown="(window.app||window.vocabApp).protectSimilarSearchBackspace(event,',
+            'onkeyup="(window.app||window.vocabApp).protectSimilarSearchBackspace(event,',
+        ))
+        self.assert_true(similar_search_backspace_guard, f"[{lang_name}] 相近表达-搜索框全选后 Backspace 仅清空文字并阻断弹窗关闭事件", "相近表达搜索框未拦截 Backspace 冒泡/默认导航，或全选删除后不能保持弹窗")
+
         # ---------------------------------------------------------------------
         # 测试点 31A: 相近表达卡片状态按钮位于星级左侧并可同步切换
         # ---------------------------------------------------------------------
@@ -2505,6 +2517,65 @@ class VocabAppTester:
                 bool(similar_manual_crud and all(similar_manual_crud.values())),
                 f"[{lang_name}] 浏览器相近表达-自动快照失效、删除留空、＋库内搜索及人工添加不限量全流程",
                 f"相近表达手动增删真实交互失败: {similar_manual_crud}",
+            )
+
+            backspace_search_guard = None
+            try:
+                backspace_setup = driver.execute_script("""
+                    const app = window.app;
+                    const source = app.words[0];
+                    const candidate = app.words.find(word => source && word.id !== source.id);
+                    if (!source || !candidate) return null;
+                    app.showDetailModal(source.id);
+                    const addButton = document.querySelector('#detailSimilarBlock .similar-panel-add-btn');
+                    addButton?.click();
+                    const input = document.querySelector('#detailSimilarBlock .similar-word-search-input');
+                    if (!input) return null;
+                    input.value = String(candidate.word || '搜索测试');
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.focus();
+                    input.select();
+                    window.__similarBackspaceBubbleHit = false;
+                    window.__similarBackspaceBubbleProbe = event => {
+                      if (event.key !== 'Backspace') return;
+                      window.__similarBackspaceBubbleHit = true;
+                      app.closeDetailModal();
+                    };
+                    document.addEventListener('keydown', window.__similarBackspaceBubbleProbe);
+                    return {
+                      modalOpen: document.getElementById('detailModal')?.classList.contains('active') === true,
+                      pickerOpen: input.closest('.similar-word-picker')?.classList.contains('active') === true,
+                      allSelected: input.selectionStart === 0 && input.selectionEnd === input.value.length && input.value.length > 0
+                    };
+                """)
+                if backspace_setup and all(backspace_setup.values()):
+                    detail_search_input = driver.find_element(By.CSS_SELECTOR, '#detailSimilarBlock .similar-word-search-input')
+                    detail_search_input.send_keys(Keys.BACKSPACE)
+                    backspace_search_guard = driver.execute_script("""
+                        const input = document.querySelector('#detailSimilarBlock .similar-word-search-input');
+                        const detailModal = document.getElementById('detailModal');
+                        return {
+                          textCleared: input?.value === '',
+                          modalStayedOpen: detailModal?.classList.contains('active') === true,
+                          pickerStayedOpen: input?.closest('.similar-word-picker')?.classList.contains('active') === true,
+                          focusStayedInSearch: document.activeElement === input,
+                          bubbleBlocked: window.__similarBackspaceBubbleHit === false,
+                          emptyHintShown: !!input?.parentElement?.querySelector('.similar-word-search-hint')
+                        };
+                    """)
+            finally:
+                driver.execute_script("""
+                    if (window.__similarBackspaceBubbleProbe) {
+                      document.removeEventListener('keydown', window.__similarBackspaceBubbleProbe);
+                    }
+                    delete window.__similarBackspaceBubbleProbe;
+                    delete window.__similarBackspaceBubbleHit;
+                    window.app?.closeDetailModal();
+                """)
+            self.assert_true(
+                bool(backspace_search_guard and all(backspace_search_guard.values())),
+                f"[{lang_name}] 浏览器相近表达搜索-鼠标全选文字后 Backspace 只清空且弹窗/下拉/焦点保持",
+                f"相近表达搜索 Backspace 防误关闭失败: {backspace_search_guard}",
             )
 
             similar_status_toggle = driver.execute_script("""
