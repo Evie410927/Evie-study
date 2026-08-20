@@ -627,10 +627,27 @@ class VocabAppTester:
         self.assert_true(empty_navigation_hidden, f"[{lang_name}] 空结果-隐藏分页栏与置顶/置底按钮并支持恢复", "空结果分支仍渲染分页，或没有统一隐藏三个列表导航控件")
 
         # ---------------------------------------------------------------------
-        # 测试点 23: 卡片底部 Tag 栏与操作按钮栏 (朗读/掌握/编辑/删除) 100% 完整保留防护测试
+        # 测试点 23: 卡片底部仅保留 Tag 栏与朗读/编辑/删除，掌握状态统一由右上角 Label 切换
         # ---------------------------------------------------------------------
-        has_card_footer_actions = 'class="word-footer"' in content and 'class="word-tags"' in content and 'add-tag-btn' in content and 'class="card-actions"' in content and 'speakWord' in content and 'toggleMastered' in content and 'editWord' in content and 'deleteWord' in content
-        self.assert_true(has_card_footer_actions, f"[{lang_name}] 结构-卡片底部 Tag 栏与操作按钮栏 (朗读/掌握/编辑/删除) 100% 完整保留", "单词卡片 HTML 结构中缺少 word-footer、word-tags 或 card-actions 操作按钮栏")
+        render_list_match = re.search(
+            r'renderWordList\(\)\s*\{(.*?)\n\s*updateListNavigationVisibility\(hasItems\)',
+            content,
+            re.DOTALL,
+        )
+        render_list_source = render_list_match.group(1) if render_list_match else ''
+        has_card_footer_actions = all(token in render_list_source for token in (
+            'class="word-footer"', 'this.renderWordTagsHtml(w)', 'class="card-actions"',
+            'speakWord', 'editWord', 'deleteWord',
+        ))
+        bottom_status_removed = not bool(re.search(
+            r'class="action-btn[^\"]*"[^>]*toggleMastered',
+            render_list_source,
+        ))
+        self.assert_true(
+            has_card_footer_actions and bottom_status_removed,
+            f"[{lang_name}] 结构-列表底部仅保留 Tag、朗读、编辑、删除且无重复状态按钮",
+            "单词卡片底栏缺少必要操作，或仍保留喇叭旁的学习中/已掌握按钮",
+        )
 
         # ---------------------------------------------------------------------
         # 测试点 24: 所有标签（含系统词性）均可删除并阻止冒泡
@@ -1329,8 +1346,20 @@ class VocabAppTester:
         )
         self.assert_true(fallback_click_syntax_safe, f"[{lang_name}] 基线差异-兜底卡片 onclick 不含引号逃逸错误", "兜底卡片点击仍存在拼接引号错误")
 
-        learning_status_visual = "w.mastered ? '✅ 已掌握' : '🔄 学习中'" in content
-        self.assert_true(learning_status_visual, f"[{lang_name}] 目标图样式-卡片状态按钮按当前状态显示学习中/已掌握", "运行时状态文案与参考图不一致")
+        list_header_status_control = all(token in render_list_source for token in (
+            'word-card-status-btn',
+            'data-mastered-word-id=',
+            'aria-pressed=',
+            "toggleMastered('${w.id}')",
+            "w.mastered ? '✅ 已掌握' : '🔄 学习中'",
+            "this.renderStarRating(w, 'word-card-rating')",
+        ))
+        list_status_before_rating = render_list_source.find('word-card-status-btn') < render_list_source.find("this.renderStarRating(w, 'word-card-rating')")
+        self.assert_true(
+            list_header_status_control and list_status_before_rating,
+            f"[{lang_name}] 列表卡片-右上角星级左侧 Label 为唯一学习状态切换入口",
+            "列表右上角缺少常显可切换状态 Label、未位于星级左侧，或底部状态按钮未移除",
+        )
 
         # ---------------------------------------------------------------------
         # 触发语言专属特有检测点
@@ -2050,7 +2079,10 @@ class VocabAppTester:
                 app.currentPage = 1;
                 app.renderWordList();
                 const initialCard = Array.from(document.querySelectorAll('#wordList .word-card')).find(card => String(card.dataset.id) === targetId);
-                const statusButton = initialCard?.querySelector('.card-actions button[onclick*="toggleMastered"]');
+                const bottomStatusRemoved = !initialCard?.querySelector('.card-actions button[onclick*="toggleMastered"]');
+                const statusButton = initialCard?.querySelector('.word-card-status-btn');
+                const statusBeforeRating = !!statusButton && !!initialCard?.querySelector('.word-card-rating')
+                  && Boolean(statusButton.compareDocumentPosition(initialCard.querySelector('.word-card-rating')) & Node.DOCUMENT_POSITION_FOLLOWING);
                 const beforeUpdatedAt = Number(target.updatedAt || 0);
                 statusButton?.click();
 
@@ -2075,7 +2107,7 @@ class VocabAppTester:
                 app.currentPage = 1;
                 app.renderWordList();
                 const masteredCard = Array.from(document.querySelectorAll('#wordList .word-card')).find(card => String(card.dataset.id) === targetId);
-                const masteredLabelUpdated = masteredCard?.querySelector('.card-actions button[onclick*="toggleMastered"]')?.textContent.includes('已掌握');
+                const masteredLabelUpdated = masteredCard?.querySelector('.word-card-status-btn')?.textContent.includes('已掌握');
                 const ratingWidget = masteredCard?.querySelector('.word-card-rating');
                 const initialRating = app.normalizeRating(masteredWord?.rating);
                 const nextRating = initialRating === 5 ? 4 : initialRating + 1;
@@ -2111,15 +2143,15 @@ class VocabAppTester:
                 app.ratingSort = originalState.ratingSort;
                 app.renderWordList();
                 return {
-                  statusMemoryUpdated, statusTimestampUpdated, hiddenFromLearning, statusStored,
+                  bottomStatusRemoved, statusBeforeRating, statusMemoryUpdated, statusTimestampUpdated, hiddenFromLearning, statusStored,
                   statusStatsUpdated, statusQueuedForCloud, masteredLabelUpdated, ratingMemoryUpdated,
                   ratingTimestampUpdated, ratingStored, ratingUiUpdated, ratingQueuedForCloud
                 };
             """)
             self.assert_true(
                 bool(status_rating_persistence and all(status_rating_persistence.values())),
-                f"[{lang_name}] 浏览器列表快捷操作-学习状态与星级即时更新内存、统计、本地存储及云同步队列",
-                f"学习状态或星级仍存在提示成功但数据未完整更新: {status_rating_persistence}",
+                f"[{lang_name}] 浏览器列表右上角状态 Label-唯一切换入口及持久化同步完整",
+                f"右上角状态 Label、底部去重或持久化同步失败: {status_rating_persistence}",
             )
 
             first_card = driver.find_element(By.CSS_SELECTOR, '.word-card')
