@@ -61,12 +61,14 @@ class VocabAppTester:
 
         init_body = re.search(r'\n\s*init\(\)\s*\{(.*?)\n\s*\}\n\s*\n\s*loadData\(', content, re.S)
         save_data_body = re.search(r'\n\s*saveData\(\)\s*\{(.*?)\n\s*\}\n\s*\n\s*loadTheme\(', content, re.S)
-        manual_cloud_only = (
+        edit_auto_upload = (
             'title="手动云端同步"' in content
             and bool(init_body) and 'fetchFromCloud(' not in init_body.group(1)
-            and bool(save_data_body) and 'syncToCloud(' not in save_data_body.group(1)
+            and bool(save_data_body) and 'this.scheduleCloudSync()' in save_data_body.group(1)
+            and 'scheduleCloudSync(delay = 350)' in content
+            and 'this.syncWithSupabase(false)' in content
         )
-        self.assert_true(manual_cloud_only, f"[{lang_name}] 云同步-仅点击云朵时上传与下拉", "页面启动或本地编辑保存后仍会自动连接云端同步")
+        self.assert_true(edit_auto_upload, f"[{lang_name}] 云同步-登录后编辑自动上传且启动时不抢先覆盖", "本地编辑保存后未安排静默上传，或页面启动时错误地直接拉取云端")
 
         # Supabase 双端同步回归矩阵：覆盖账号隔离、全字段编辑、删除与冲突合并。
         supabase_configured = (
@@ -93,10 +95,16 @@ class VocabAppTester:
         self.assert_true(per_word_sync, f"[{lang_name}] 云同步-逐词条全量 payload Upsert", "云端同步没有按 word_id 保存完整卡片字段或缺少 Upsert 防重复")
 
         edit_tracking = all(token in content for token in (
-            "wordFingerprint", "markLocallyChangedWords", "word.updatedAt = now",
+            "wordFingerprint", "markLocallyChangedWords", "word.updatedAt = Math.max(now",
             "if (this.markLocallyChangedWords) this.markLocallyChangedWords()",
         ))
         self.assert_true(edit_tracking, f"[{lang_name}] 云同步-释义/例句/Tag/掌握状态等所有编辑统一更新时间追踪", "saveData 未通过全卡片指纹捕获所有字段修改")
+
+        field_level_merge = all(token in content for token in (
+            "fieldUpdatedAt", "mergeWordFields(localWord, cloudPayload",
+            "const fieldMergedWord =", "differsFromCloud", "differsFromLocal",
+        ))
+        self.assert_true(field_level_merge, f"[{lang_name}] 云同步-释义例句与星级状态按字段合并", "同步仍按整张卡片覆盖，手机改星级时可能反向覆盖电脑端新释义或例句")
 
         tombstone_sync = all(token in content for token in (
             "getDeletedRecords", "saveDeletedRecords", "recordDeletedWord",
@@ -1607,6 +1615,27 @@ class VocabAppTester:
             )
             driver.execute_script("window.app.closeCloudAuthModal()")
 
+            auto_sync_result = driver.execute_async_script("""
+                const done = arguments[0];
+                const app = window.app;
+                const originalGetSession = app.getCloudSession;
+                const originalSync = app.syncWithSupabase;
+                let calls = 0;
+                app.getCloudSession = () => ({access_token:'auto-sync-test-token'});
+                app.syncWithSupabase = async () => { calls += 1; return true; };
+                const scheduled = app.scheduleCloudSync(0);
+                setTimeout(() => {
+                  app.getCloudSession = originalGetSession;
+                  app.syncWithSupabase = originalSync;
+                  done({scheduled, calls});
+                }, 80);
+            """)
+            self.assert_true(
+                bool(auto_sync_result and auto_sync_result.get('scheduled') and auto_sync_result.get('calls') == 1),
+                f"[{lang_name}] 浏览器本地编辑-登录状态下自动安排一次静默云上传",
+                "本地保存后的自动同步调度器没有真正调用双向同步引擎",
+            )
+
             merge_result = driver.execute_script("""
                 const app = window.app;
                 const originalWords = app.words;
@@ -1618,6 +1647,7 @@ class VocabAppTester:
                     {id: prefix + '_sync_edit', word:'编辑测试', meaning:'旧释义', example:'旧例句', tags:['旧Tag'], mastered:false, updatedAt:100},
                     {id: prefix + '_sync_newer', word:'本地较新', meaning:'保留本地', tags:[], mastered:false, updatedAt:300},
                     {id: prefix + '_sync_stale_future', word:'浏览器旧缓存', meaning:'浏览器旧释义', tags:[], mastered:false, updatedAt:9999},
+                    {id: prefix + '_sync_field_merge', word:'字段合并', meaning:'手机旧释义', example:'手机旧例句', rating:5, mastered:false, tags:[], createdAt:50, updatedAt:500},
                     {id: prefix + '_sync_delete', word:'删除测试', meaning:'待删除', tags:[], mastered:false, updatedAt:100}
                   ];
                   app.saveDeletedRecords({});
@@ -1627,23 +1657,27 @@ class VocabAppTester:
                     {word_id:prefix + '_sync_edit', updated_at:200, deleted_at:null, payload:{id:prefix + '_sync_edit', word:'编辑测试', meaning:'云端释义', example:'云端例句', tags:['云端Tag'], mastered:true}},
                     {word_id:prefix + '_sync_newer', updated_at:200, deleted_at:null, payload:{id:prefix + '_sync_newer', word:'本地较新', meaning:'错误覆盖', tags:['云端Tag'], mastered:true}},
                     {word_id:prefix + '_sync_stale_future', updated_at:250, deleted_at:null, payload:{id:prefix + '_sync_stale_future', word:'手机新编辑', meaning:'手机新释义', tags:['手机Tag'], mastered:true}},
+                    {word_id:prefix + '_sync_field_merge', updated_at:400, deleted_at:null, payload:{id:prefix + '_sync_field_merge', word:'字段合并', meaning:'电脑新释义', example:'电脑新例句', rating:0, mastered:true, tags:[], createdAt:50, userEditedAt:400}},
                     {word_id:prefix + '_sync_delete', updated_at:400, deleted_at:400, payload:{id:prefix + '_sync_delete', word:'删除测试'}}
                   ];
                   const changed = app.mergeCloudRows(cloudRows);
                   const edited = app.words.find(w => w.id === prefix + '_sync_edit');
                   const newer = app.words.find(w => w.id === prefix + '_sync_newer');
                   const staleFuture = app.words.find(w => w.id === prefix + '_sync_stale_future');
+                  const fieldMerged = app.words.find(w => w.id === prefix + '_sync_field_merge');
                   const deletedGone = !app.words.some(w => w.id === prefix + '_sync_delete');
                   const allFields = edited && edited.meaning === '云端释义' && edited.example === '云端例句' && edited.tags.includes('云端Tag') && edited.mastered === true;
                   const localWins = newer && newer.meaning === '保留本地' && newer.mastered === false;
                   const unmarkedNewerLocalPreserved = staleFuture && staleFuture.meaning === '浏览器旧释义' && staleFuture.mastered === false;
                   const uploadRows = app.buildCloudRows('00000000-0000-0000-0000-000000000000', cloudRows);
                   const recoveredPendingQueued = uploadRows.some(row => row.word_id === prefix + '_sync_stale_future' && row.payload.meaning === '浏览器旧释义');
+                  const fieldMergePreserved = fieldMerged && fieldMerged.meaning === '电脑新释义' && fieldMerged.example === '电脑新例句' && fieldMerged.rating === 5;
+                  const fieldMergeQueued = uploadRows.some(row => row.word_id === prefix + '_sync_field_merge' && row.payload.meaning === '电脑新释义' && row.payload.rating === 5);
                   const before = Number(edited.updatedAt || 0);
                   edited.tags.push('本地新增Tag');
                   app.markLocallyChangedWords();
                   const localEditTracked = Number(edited.updatedAt || 0) > before;
-                  return {changed, allFields, localWins, unmarkedNewerLocalPreserved, recoveredPendingQueued, deletedGone, localEditTracked};
+                  return {changed, allFields, localWins, unmarkedNewerLocalPreserved, recoveredPendingQueued, fieldMergePreserved, fieldMergeQueued, deletedGone, localEditTracked};
                 } finally {
                   app.words = originalWords;
                   app.saveDeletedRecords(originalDeleted);
@@ -1672,6 +1706,11 @@ class VocabAppTester:
                 bool(merge_result and merge_result.get('recoveredPendingQueued')),
                 f"[{lang_name}] 浏览器双设备模拟-自动补回缺失的待上传标记并上传较新本地版本",
                 "本地版本胜出后没有重新加入待上传队列，下一次同步仍可能继续冲突",
+            )
+            self.assert_true(
+                bool(merge_result and merge_result.get('fieldMergePreserved') and merge_result.get('fieldMergeQueued')),
+                f"[{lang_name}] 浏览器双设备模拟-电脑新释义与手机新星级按字段合并",
+                "手机只改星级后仍覆盖了电脑端的新释义/例句，或合并结果没有重新上传",
             )
             self.assert_true(
                 bool(merge_result and merge_result.get('deletedGone')),

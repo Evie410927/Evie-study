@@ -6069,27 +6069,95 @@ function createSupabaseSyncMethods(language) {
       if (!word) return '';
       const copy = { ...word };
       delete copy.updatedAt;
+      delete copy.fieldUpdatedAt;
       return JSON.stringify(copy);
     },
 
     refreshWordFingerprints() {
       this._wordFingerprints = new Map();
-      (this.words || []).forEach(word => { if (word && word.id) this._wordFingerprints.set(String(word.id), this.wordFingerprint(word)); });
+      this._wordSnapshots = new Map();
+      (this.words || []).forEach(word => {
+        if (!word || !word.id) return;
+        const id = String(word.id);
+        this._wordFingerprints.set(id, this.wordFingerprint(word));
+        this._wordSnapshots.set(id, JSON.parse(JSON.stringify(word)));
+      });
+    },
+
+    inferFieldUpdatedAt(word, field, overallAt = 0) {
+      const contentFields = new Set(['word', 'reading', 'meaning', 'example', 'exampleTrans', 'examples', 'notes', 'userNote']);
+      if (contentFields.has(field)) {
+        return Number(word && (word.userEditedAt || word.createdAt) || overallAt || 1);
+      }
+      return Number(overallAt || word && (word.updatedAt || word.createdAt) || 1);
     },
 
     markLocallyChangedWords() {
       const previous = this._wordFingerprints || new Map();
+      const snapshots = this._wordSnapshots || new Map();
       const now = Date.now();
       const changedIds = [];
       (this.words || []).forEach(word => {
         if (!word || !word.id) return;
-        if (!previous.has(String(word.id)) || previous.get(String(word.id)) !== this.wordFingerprint(word)) {
-          word.updatedAt = now;
-          changedIds.push(String(word.id));
+        const id = String(word.id);
+        if (!previous.has(id) || previous.get(id) !== this.wordFingerprint(word)) {
+          const oldWord = snapshots.get(id) || null;
+          const baselineAt = Number(oldWord && (oldWord.updatedAt || oldWord.createdAt) || word.createdAt || 1);
+          const fieldUpdatedAt = word.fieldUpdatedAt && typeof word.fieldUpdatedAt === 'object' ? { ...word.fieldUpdatedAt } : {};
+          const fields = new Set([...Object.keys(oldWord || {}), ...Object.keys(word)]);
+          fields.delete('id');
+          fields.delete('updatedAt');
+          fields.delete('fieldUpdatedAt');
+          fields.forEach(field => {
+            if (!Number(fieldUpdatedAt[field])) fieldUpdatedAt[field] = this.inferFieldUpdatedAt(oldWord || word, field, baselineAt);
+            const before = oldWord && Object.prototype.hasOwnProperty.call(oldWord, field) ? JSON.stringify(oldWord[field]) : undefined;
+            const after = Object.prototype.hasOwnProperty.call(word, field) ? JSON.stringify(word[field]) : undefined;
+            if (!oldWord || before !== after) fieldUpdatedAt[field] = now;
+          });
+          word.fieldUpdatedAt = fieldUpdatedAt;
+          word.updatedAt = Math.max(now, Number(word.updatedAt || 0));
+          changedIds.push(id);
         }
       });
       if (changedIds.length > 0) this.markPendingCloudChanges(changedIds, now);
       this.refreshWordFingerprints();
+    },
+
+    mergeWordFields(localWord, cloudPayload, localUpdatedAt, cloudUpdatedAt) {
+      const localTimes = localWord && localWord.fieldUpdatedAt && typeof localWord.fieldUpdatedAt === 'object' ? localWord.fieldUpdatedAt : {};
+      const cloudTimes = cloudPayload && cloudPayload.fieldUpdatedAt && typeof cloudPayload.fieldUpdatedAt === 'object' ? cloudPayload.fieldUpdatedAt : {};
+      const hasFieldContext = Object.keys(localTimes).length > 0 || Object.keys(cloudTimes).length > 0 || Number(localWord && localWord.userEditedAt || 0) > 0 || Number(cloudPayload && cloudPayload.userEditedAt || 0) > 0;
+      if (!hasFieldContext) return null;
+      const merged = { ...localWord };
+      const mergedTimes = {};
+      const fields = new Set([...Object.keys(localWord || {}), ...Object.keys(cloudPayload || {})]);
+      fields.delete('id');
+      fields.delete('updatedAt');
+      fields.delete('fieldUpdatedAt');
+      fields.forEach(field => {
+        const localAt = Number(localTimes[field] || this.inferFieldUpdatedAt(localWord, field, localUpdatedAt));
+        const cloudAt = Number(cloudTimes[field] || this.inferFieldUpdatedAt(cloudPayload, field, cloudUpdatedAt));
+        if (cloudAt > localAt) {
+          if (Object.prototype.hasOwnProperty.call(cloudPayload, field)) merged[field] = cloudPayload[field];
+          else delete merged[field];
+        }
+        mergedTimes[field] = Math.max(localAt, cloudAt);
+      });
+      merged.id = localWord.id || cloudPayload.id;
+      merged.fieldUpdatedAt = mergedTimes;
+      merged.updatedAt = Math.max(Number(localUpdatedAt || 0), Number(cloudUpdatedAt || 0), ...Object.values(mergedTimes).map(Number));
+      return merged;
+    },
+
+    scheduleCloudSync(delay = 350) {
+      const session = this.getCloudSession();
+      if (!session || (!session.access_token && !session.refresh_token)) return false;
+      if (this._cloudSyncTimer) clearTimeout(this._cloudSyncTimer);
+      this._cloudSyncTimer = setTimeout(() => {
+        this._cloudSyncTimer = null;
+        this.syncWithSupabase(false);
+      }, Math.max(0, Number(delay) || 0));
+      return true;
     },
 
     persistSyncedData() {
@@ -6152,6 +6220,19 @@ function createSupabaseSyncMethods(language) {
         const systemUpdateCanYield = locallyPending && pendingMeta.source === 'system' && cloudDiffers && cloudContentRevision >= localContentRevision;
         const cloudWinsByTime = cloudUpdatedAt > localUpdatedAt;
         const localWinsByTime = localWord && cloudDiffers && localUpdatedAt >= cloudUpdatedAt && !systemUpdateCanYield;
+        const fieldMergedWord = localWord && cloudPayload && cloudDiffers && !systemUpdateCanYield
+          ? this.mergeWordFields(localWord, cloudPayload, localUpdatedAt, cloudUpdatedAt)
+          : null;
+        if (fieldMergedWord) {
+          fieldMergedWord.tags = Array.isArray(fieldMergedWord.tags) ? fieldMergedWord.tags.filter(tag => tag !== '\u6613\u6df7') : [];
+          const differsFromLocal = this.wordFingerprint(fieldMergedWord) !== this.wordFingerprint(localWord);
+          const differsFromCloud = this.wordFingerprint(fieldMergedWord) !== this.wordFingerprint(cloudPayload);
+          localMap.set(id, fieldMergedWord);
+          if (differsFromCloud) pending[id] = { changedAt: Math.max(Number(fieldMergedWord.updatedAt || 0), 1), source: 'user' };
+          else delete pending[id];
+          if (differsFromLocal) changedCount++;
+          return;
+        }
         if (localWinsByTime && !locallyPending) {
           pending[id] = { changedAt: Math.max(localUpdatedAt, 1), source: 'user' };
         }
@@ -6459,7 +6540,7 @@ class JpVocabApp {
     this.updateStats();
     this.bindEvents();
     if (this.consumeCloudAuthCallback) this.consumeCloudAuthCallback();
-    // 云端同步仅由用户手动点击顶部云朵触发。
+    // 页面启动不主动联网；登录后的本地编辑会静默上传，顶部云朵用于立即双向同步。
   }
 
   loadData() {
@@ -6554,6 +6635,7 @@ class JpVocabApp {
         this.showToast('⚠️ 保存失败：浏览器未能持久保存，请保留当前窗口并重试');
         return false;
       }
+      if (this.scheduleCloudSync) this.scheduleCloudSync();
       return true;
     } catch (e) {
       this.showToast('⚠️ 保存失败：浏览器存储异常，请保留当前窗口并重试');
