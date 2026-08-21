@@ -68,7 +68,15 @@ class VocabAppTester:
             and 'scheduleCloudSync(delay = 350)' in content
             and 'this.syncWithSupabase(false)' in content
         )
-        self.assert_true(edit_auto_upload, f"[{lang_name}] 云同步-登录后编辑自动上传且启动时不抢先覆盖", "本地编辑保存后未安排静默上传，或页面启动时错误地直接拉取云端")
+        self.assert_true(edit_auto_upload, f"[{lang_name}] 云同步-登录后编辑自动上传且启动时不无条件拉取", "本地编辑保存后未安排静默上传，或页面启动时错误地无条件拉取云端")
+
+        historical_pending_upload = bool(init_body) and all(token in init_body.group(1) for token in (
+            "const pendingCloudChanges = this.getPendingCloudChanges",
+            "this.getCloudSession()",
+            "Object.keys(pendingCloudChanges).length > 0",
+            "this.scheduleCloudSync(600)",
+        ))
+        self.assert_true(historical_pending_upload, f"[{lang_name}] 云同步-重新打开页面自动补传历史待同步编辑", "旧版本积压在浏览器本地的修改不会在升级后自动进入云端")
 
         # Supabase 双端同步回归矩阵：覆盖账号隔离、全字段编辑、删除与冲突合并。
         supabase_configured = (

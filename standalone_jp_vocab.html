@@ -6540,7 +6540,11 @@ class JpVocabApp {
     this.updateStats();
     this.bindEvents();
     if (this.consumeCloudAuthCallback) this.consumeCloudAuthCallback();
-    // 页面启动不主动联网；登录后的本地编辑会静默上传，顶部云朵用于立即双向同步。
+    // 登录后自动补传历史待同步编辑；没有待上传记录时，页面启动不会主动联网。
+    const pendingCloudChanges = this.getPendingCloudChanges ? this.getPendingCloudChanges() : {};
+    if (this.getCloudSession && this.getCloudSession() && Object.keys(pendingCloudChanges).length > 0 && this.scheduleCloudSync) {
+      this.scheduleCloudSync(600);
+    }
   }
 
   loadData() {
