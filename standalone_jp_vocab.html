@@ -22349,19 +22349,60 @@ class JpVocabApp {
     let count = 0;
     let changed = false;
     const changedIds = [];
+    const userChangedIds = [];
     const reconciliationTime = Date.now();
-    const uniqueCachedWords = new Map();
+    const getCachePriority = word => {
+      const pendingMeta = this.getPendingCloudMeta(pendingCloudChanges[String(word && word.id || '')]);
+      return [
+        Number(word && word.userEditedAt || 0) > 0 ? 1 : 0,
+        Number(word && word.userEditedAt || 0),
+        pendingMeta.source === 'user' ? 1 : 0,
+        Number(word && word.contentRevision || 0),
+        Number(word && (word.updatedAt || word.createdAt) || 0)
+      ];
+    };
+    const preferCachedWord = (current, candidate) => {
+      const currentPriority = getCachePriority(current);
+      const candidatePriority = getCachePriority(candidate);
+      for (let index = 0; index < currentPriority.length; index++) {
+        if (candidatePriority[index] !== currentPriority[index]) return candidatePriority[index] > currentPriority[index] ? candidate : current;
+      }
+      return current;
+    };
+    const uniqueCachedIds = new Map();
     this.words.forEach(word => {
-      const key = String(word && word.word || '').trim();
-      if (key && !uniqueCachedWords.has(key)) uniqueCachedWords.set(key, word);
-    });
-    if (uniqueCachedWords.size !== this.words.length) {
-      this.words = Array.from(uniqueCachedWords.values());
+      const idKey = word && word.id ? `id:${String(word.id)}` : `word:${String(word && word.word || '').trim()}`;
+      if (!uniqueCachedIds.has(idKey)) {
+        uniqueCachedIds.set(idKey, word);
+        return;
+      }
+      const preferred = preferCachedWord(uniqueCachedIds.get(idKey), word);
+      uniqueCachedIds.set(idKey, preferred);
+      preferred.updatedAt = Math.max(reconciliationTime, Number(preferred.updatedAt || 0));
       changed = true;
-    }
+      if (Number(preferred.userEditedAt || 0) > 0 || this.getPendingCloudMeta(pendingCloudChanges[String(preferred.id)]).source === 'user') userChangedIds.push(String(preferred.id));
+      else changedIds.push(String(preferred.id));
+    });
+    const uniqueCachedWords = new Map();
+    uniqueCachedIds.forEach(word => {
+      const key = String(word && word.word || '').trim();
+      if (!key) return;
+      if (!uniqueCachedWords.has(key)) uniqueCachedWords.set(key, word);
+      else {
+        const preferred = preferCachedWord(uniqueCachedWords.get(key), word);
+        uniqueCachedWords.set(key, preferred);
+        preferred.updatedAt = Math.max(reconciliationTime, Number(preferred.updatedAt || 0));
+        changed = true;
+        if (Number(preferred.userEditedAt || 0) > 0 || this.getPendingCloudMeta(pendingCloudChanges[String(preferred.id)]).source === 'user') userChangedIds.push(String(preferred.id));
+        else changedIds.push(String(preferred.id));
+      }
+    });
+    if (uniqueCachedWords.size !== this.words.length) changed = true;
+    this.words = Array.from(uniqueCachedWords.values());
     samples.forEach(item => {
       if (deletedIds.has(String(item.id)) || deletedWords.has(item.word)) return;
-      const idx = this.words.findIndex(w => w.word === item.word);
+      const idMatchIndex = this.words.findIndex(w => String(w && w.id || '') === String(item.id));
+      const idx = idMatchIndex !== -1 ? idMatchIndex : this.words.findIndex(w => w.word === item.word);
       if (idx === -1) {
         this.words.push({ ...item, updatedAt: reconciliationTime });
         count++;
@@ -22383,6 +22424,7 @@ class JpVocabApp {
       SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
       if (this.refreshWordFingerprints) this.refreshWordFingerprints();
       if (this.markPendingCloudChanges) this.markPendingCloudChanges(changedIds, reconciliationTime, 'system');
+      if (this.markPendingCloudChanges) this.markPendingCloudChanges(userChangedIds, reconciliationTime, 'user');
     }
     this.renderWordList();
     this.updateStats();

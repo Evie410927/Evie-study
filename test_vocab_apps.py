@@ -1121,6 +1121,15 @@ class VocabAppTester:
         ))
         self.assert_true(user_edit_upgrade_guard, f"[{lang_name}] 数据升级-用户手动编辑标记永久阻止内置样本覆盖", "编辑词条未写入 userEditedAt，或内置数据升级仍可能覆盖用户修改的释义、读音与例句")
 
+        renamed_word_identity_guard = all(token in content for token in (
+            'const uniqueCachedIds = new Map();',
+            'const preferred = preferCachedWord',
+            "const idMatchIndex = this.words.findIndex",
+            'const idx = idMatchIndex !== -1 ? idMatchIndex',
+            "markPendingCloudChanges(userChangedIds, reconciliationTime, 'user')",
+        ))
+        self.assert_true(renamed_word_identity_guard, f"[{lang_name}] 数据升级-用户改词名后按稳定 ID 匹配且旧样本不得复活", "loadSampleData 仍只按旧词名查找，用户改名后会重新补入同 ID 的旧卡并覆盖同步结果")
+
         corrected_example_migration = all(token in content for token in (
             'hasNewerContent' if lang_name == '韩语' else 'Number(item.contentRevision || 0) > Number(old.contentRevision || 0)',
             'examples: Array.isArray(item.examples)',
@@ -1642,6 +1651,46 @@ class VocabAppTester:
                 bool(auto_sync_result and auto_sync_result.get('scheduled') and auto_sync_result.get('calls') == 1),
                 f"[{lang_name}] 浏览器本地编辑-登录状态下自动安排一次静默云上传",
                 "本地保存后的自动同步调度器没有真正调用双向同步引擎",
+            )
+
+            rename_reconciliation_result = driver.execute_script("""
+                const app = window.app;
+                const originalWords = app.words;
+                const originalPending = app.getPendingCloudChanges();
+                const prefix = originalWords[0] && String(originalWords[0].id).startsWith('jp_') ? 'jp' : 'kr';
+                const target = prefix === 'kr' ? originalWords.find(word => word.word === '둥그라미') : originalWords.find(word => word && word.id);
+                if (!target) return {targetFound:false};
+                const originalName = target.word;
+                const renamedName = prefix === 'kr' ? '동그라미' : `${originalName}（用户改名）`;
+                const editAt = Date.now() + 1000;
+                try {
+                  const edited = {...target, word:renamedName, userEditedAt:editAt, updatedAt:editAt, fieldUpdatedAt:{...(target.fieldUpdatedAt || {}), word:editAt}};
+                  const staleSample = {...target, word:originalName, userEditedAt:0, updatedAt:editAt + 100};
+                  app.words = originalWords.flatMap(word => String(word.id) === String(target.id) ? [edited, staleSample] : [word]);
+                  app.savePendingCloudChanges({});
+                  app.refreshWordFingerprints();
+                  app.loadSampleData(false);
+                  const sameIdCards = app.words.filter(word => String(word.id) === String(target.id));
+                  const pendingMeta = app.getPendingCloudMeta(app.getPendingCloudChanges()[String(target.id)]);
+                  return {
+                    targetFound:true,
+                    onlyOneStableId:sameIdCards.length === 1,
+                    renamedPreserved:sameIdCards.length === 1 && sameIdCards[0].word === renamedName,
+                    oldSampleNotRevived:!app.words.some(word => String(word.id) === String(target.id) && word.word === originalName),
+                    queuedAsUserEdit:pendingMeta.source === 'user'
+                  };
+                } finally {
+                  app.words = originalWords;
+                  app.savePendingCloudChanges(originalPending);
+                  app.persistSyncedData();
+                  app.renderWordList();
+                  app.updateStats();
+                }
+            """)
+            self.assert_true(
+                bool(rename_reconciliation_result and rename_reconciliation_result.get('targetFound') and rename_reconciliation_result.get('onlyOneStableId') and rename_reconciliation_result.get('renamedPreserved') and rename_reconciliation_result.get('oldSampleNotRevived') and rename_reconciliation_result.get('queuedAsUserEdit')),
+                f"[{lang_name}] 浏览器数据升级-改词名后旧样本不复活且改名版本重新排队上传",
+                "用户改词名后 loadSampleData 又补回同 ID 的旧词名，或没有保留并上传用户版本",
             )
 
             merge_result = driver.execute_script("""

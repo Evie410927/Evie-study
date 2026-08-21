@@ -42971,22 +42971,63 @@ class KrVocabApp {
     let count = 0;
     let changed = false;
     const changedIds = [];
+    const userChangedIds = [];
     const reconciliationTime = Date.now();
-    const uniqueCachedWords = new Map();
+    const getCachePriority = word => {
+      const pendingMeta = this.getPendingCloudMeta(pendingCloudChanges[String(word && word.id || '')]);
+      return [
+        Number(word && word.userEditedAt || 0) > 0 ? 1 : 0,
+        Number(word && word.userEditedAt || 0),
+        pendingMeta.source === 'user' ? 1 : 0,
+        Number(word && word.contentRevision || 0),
+        Number(word && (word.updatedAt || word.createdAt) || 0)
+      ];
+    };
+    const preferCachedWord = (current, candidate) => {
+      const currentPriority = getCachePriority(current);
+      const candidatePriority = getCachePriority(candidate);
+      for (let index = 0; index < currentPriority.length; index++) {
+        if (candidatePriority[index] !== currentPriority[index]) return candidatePriority[index] > currentPriority[index] ? candidate : current;
+      }
+      return current;
+    };
+    const uniqueCachedIds = new Map();
     this.words.forEach(word => {
+      const idKey = word && word.id ? `id:${String(word.id)}` : `word:${String(word && word.word || '').trim()}`;
+      if (!uniqueCachedIds.has(idKey)) {
+        uniqueCachedIds.set(idKey, word);
+        return;
+      }
+      const preferred = preferCachedWord(uniqueCachedIds.get(idKey), word);
+      uniqueCachedIds.set(idKey, preferred);
+      preferred.updatedAt = Math.max(reconciliationTime, Number(preferred.updatedAt || 0));
+      changed = true;
+      if (Number(preferred.userEditedAt || 0) > 0 || this.getPendingCloudMeta(pendingCloudChanges[String(preferred.id)]).source === 'user') userChangedIds.push(String(preferred.id));
+      else changedIds.push(String(preferred.id));
+    });
+    const uniqueCachedWords = new Map();
+    uniqueCachedIds.forEach(word => {
       const legacyWord = String(word && word.word || '').trim();
       const renamedWord = legacyWord === '어그로를 붙다' ? '어그로를 끌다' : (legacyWord === '떼려야 뗼 수 없는' ? '떼려야 뗄 수 없는' : legacyWord);
       const normalizedWord = renamedWord === legacyWord ? word : { ...word, word: renamedWord };
       if (renamedWord !== legacyWord) changed = true;
-      if (renamedWord && !uniqueCachedWords.has(renamedWord)) uniqueCachedWords.set(renamedWord, normalizedWord);
+      if (!renamedWord) return;
+      if (!uniqueCachedWords.has(renamedWord)) uniqueCachedWords.set(renamedWord, normalizedWord);
+      else {
+        const preferred = preferCachedWord(uniqueCachedWords.get(renamedWord), normalizedWord);
+        uniqueCachedWords.set(renamedWord, preferred);
+        preferred.updatedAt = Math.max(reconciliationTime, Number(preferred.updatedAt || 0));
+        changed = true;
+        if (Number(preferred.userEditedAt || 0) > 0 || this.getPendingCloudMeta(pendingCloudChanges[String(preferred.id)]).source === 'user') userChangedIds.push(String(preferred.id));
+        else changedIds.push(String(preferred.id));
+      }
     });
-    if (uniqueCachedWords.size !== this.words.length) {
-      this.words = Array.from(uniqueCachedWords.values());
-      changed = true;
-    }
+    if (uniqueCachedWords.size !== this.words.length) changed = true;
+    this.words = Array.from(uniqueCachedWords.values());
     samples.forEach(item => {
       if (deletedIds.has(String(item.id)) || deletedWords.has(item.word)) return;
-      const idx = this.words.findIndex(w => w.word === item.word);
+      const idMatchIndex = this.words.findIndex(w => String(w && w.id || '') === String(item.id));
+      const idx = idMatchIndex !== -1 ? idMatchIndex : this.words.findIndex(w => w.word === item.word);
       if (idx === -1) {
         this.words.push({ ...item, updatedAt: reconciliationTime });
         count++;
@@ -43012,6 +43053,7 @@ class KrVocabApp {
       SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
       if (this.refreshWordFingerprints) this.refreshWordFingerprints();
       if (this.markPendingCloudChanges) this.markPendingCloudChanges(changedIds, reconciliationTime, 'system');
+      if (this.markPendingCloudChanges) this.markPendingCloudChanges(userChangedIds, reconciliationTime, 'user');
     }
     this.renderWordList();
     if (showNotification) {
