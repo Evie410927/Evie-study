@@ -19392,17 +19392,24 @@ function createSupabaseSyncMethods(language) {
     },
 
     async fetchCloudRows(accessToken) {
-      const query = `select=word_id,payload,updated_at,deleted_at&language=eq.${language}`;
-      const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/vocab_items?${query}`, {
-        cache: 'no-store',
-        headers: this.cloudHeaders(accessToken, { 'Cache-Control': 'no-cache' })
-      });
-      const data = await response.json().catch(() => []);
-      if (!response.ok) {
-        const error = new Error(data.message || data.hint || `云端读取失败 (${response.status})`);
-        error.status = response.status; error.code = data.code; throw error;
+      const pageSize = 500;
+      const allRows = [];
+      for (let offset = 0; ; offset += pageSize) {
+        const query = `select=word_id,payload,updated_at,deleted_at&language=eq.${language}&order=word_id.asc&limit=${pageSize}&offset=${offset}`;
+        const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/vocab_items?${query}`, {
+          cache: 'no-store',
+          headers: this.cloudHeaders(accessToken, { 'Cache-Control': 'no-cache' })
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          const error = new Error(data && (data.message || data.hint) || `云端读取失败 (${response.status})`);
+          error.status = response.status; error.code = data && data.code; throw error;
+        }
+        if (!Array.isArray(data)) throw new Error(`云端第 ${Math.floor(offset / pageSize) + 1} 页数据格式异常，已停止同步以保护本地词库`);
+        allRows.push(...data);
+        if (data.length < pageSize) break;
       }
-      return Array.isArray(data) ? data : [];
+      return allRows;
     },
 
     getCloudDeviceId() {
@@ -19452,6 +19459,17 @@ function createSupabaseSyncMethods(language) {
       this.savePendingCloudChanges({});
       if (!this.persistSyncedData()) throw new Error('云端数据已载入，但浏览器未能持久保存，请保留当前页面并重试');
       return nextWords.length;
+    },
+
+    countUnexplainedMissingCloudWords(rows) {
+      const localIds = new Set((this.words || []).filter(word => word && word.id).map(word => String(word.id)));
+      const locallyDeletedIds = new Set(Object.keys(this.getDeletedRecords()));
+      return (rows || []).filter(row => {
+        const id = String(row && row.word_id || '');
+        return id && id !== '__sync_meta__' && Number(row.deleted_at || 0) <= 0
+          && row.payload && typeof row.payload === 'object'
+          && !localIds.has(id) && !locallyDeletedIds.has(id);
+      }).length;
     },
 
     async upsertCloudMeta(accessToken, userId, revision) {
@@ -19605,6 +19623,7 @@ function createSupabaseSyncMethods(language) {
         const localRevision = this.getCloudBaselineRevision();
         const pending = this.getPendingCloudChanges();
         const pendingCount = Object.keys(pending).filter(id => this.getPendingCloudMeta(pending[id]).changedAt > 0).length;
+        const missingCloudWordCount = this.countUnexplainedMissingCloudWords(dataRows);
 
         // 另一设备已提交新版本：本次严格只下载，整库覆盖并放弃本机尚未上传的修改。
         if (metaRow && localRevision !== cloudRevision) {
@@ -19617,6 +19636,16 @@ function createSupabaseSyncMethods(language) {
               ? `⚠️ 发现另一设备已上传版本 ${cloudRevision}：已先同步云端并放弃本机 ${pendingCount} 项未上传修改，请重新修改后再点云朵`
               : `✅ 已同步另一设备上传的版本 ${cloudRevision}，共 ${downloadedCount} 个词条`);
           }
+          return true;
+        }
+
+        // 修复旧版 1000 行截断造成的残缺本地快照：版本相同也必须补全，且本次禁止上传。
+        if (metaRow && localRevision === cloudRevision && missingCloudWordCount > 0) {
+          const downloadedCount = this.replaceLocalWithCloudRows(dataRows);
+          this.saveCloudBaselineRevision(cloudRevision);
+          this.renderWordList();
+          this.updateStats();
+          if (showToastNotification) this.showToast(`✅ 检测到本机缺少 ${missingCloudWordCount} 个云端词条，已重新下载完整版本 ${cloudRevision}，共 ${downloadedCount} 个词条`);
           return true;
         }
 

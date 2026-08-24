@@ -98,6 +98,14 @@ class VocabAppTester:
         ))
         self.assert_true(per_word_sync, f"[{lang_name}] 云同步-逐词条全量 payload Upsert", "云端同步没有按 word_id 保存完整卡片字段或缺少 Upsert 防重复")
 
+        paginated_cloud_read = all(token in content for token in (
+            "const pageSize = 500", "for (let offset = 0; ; offset += pageSize)",
+            "order=word_id.asc", "limit=${pageSize}&offset=${offset}",
+            "allRows.push(...data)", "if (data.length < pageSize) break",
+            "已停止同步以保护本地词库",
+        ))
+        self.assert_true(paginated_cloud_read, f"[{lang_name}] 云同步-超过 1000 行时固定排序并循环分页读取完整整库", "云端读取仍是单次请求，1053 个词条可能被 Supabase 1000 行上限截断")
+
         edit_tracking = all(token in content for token in (
             "wordFingerprint", "markLocallyChangedWords", "word.updatedAt = Math.max(now",
             "if (this.markLocallyChangedWords) this.markLocallyChangedWords()",
@@ -138,6 +146,14 @@ class VocabAppTester:
             "this.saveDeletedRecords(nextDeleted)", "this.savePendingCloudChanges({})",
         ))
         self.assert_true(discard_local_pending, f"[{lang_name}] 云同步-远端新版本整库覆盖并清空本机待上传修改", "检测到另一设备版本后没有完整清空本机冲突修改与待上传队列")
+
+        truncated_snapshot_repair = all(token in content for token in (
+            "countUnexplainedMissingCloudWords(rows)",
+            "const missingCloudWordCount = this.countUnexplainedMissingCloudWords(dataRows)",
+            "localRevision === cloudRevision && missingCloudWordCount > 0",
+            "检测到本机缺少", "已重新下载完整版本",
+        ))
+        self.assert_true(truncated_snapshot_repair, f"[{lang_name}] 云同步-版本相同但本机词条残缺时强制重新下载完整快照", "旧手机已把 992 条记为当前版本后仍会提前退出，无法自动恢复到 1053 条")
 
         sync_lock = "this._cloudSyncing" in content and "this._cloudSyncPending" in content
         self.assert_true(sync_lock, f"[{lang_name}] 云同步-并发请求锁与待同步补偿", "连续编辑可能并发上传并产生覆盖竞争")
@@ -1912,6 +1928,103 @@ class VocabAppTester:
                 bool(strict_sync_flow_result and strict_sync_flow_result.get('safeUploadAfterPull')),
                 f"[{lang_name}] 浏览器真实同步门禁-先拉取后重新修改才允许上传下一版本",
                 f"完成远端同步并重新修改后仍不能安全上传：{strict_sync_flow_result}",
+            )
+
+            paginated_fetch_result = driver.execute_async_script("""
+                const done = arguments[0];
+                const app = window.app;
+                const originalFetch = window.fetch;
+                const originalWords = app.words;
+                const originalDeleted = app.getDeletedRecords();
+                const originalPending = app.getPendingCloudChanges();
+                const originalBaseline = SafeStorage.getItem(app.CLOUD_BASE_REVISION_KEY);
+                const originals = {
+                  getValidCloudSession:app.getValidCloudSession,
+                  upsertCloudRows:app.upsertCloudRows,
+                  upsertCloudMeta:app.upsertCloudMeta
+                };
+                const prefix = originalWords[0] && String(originalWords[0].id).startsWith('jp_') ? 'jp' : 'kr';
+                const cloudRows = [
+                  {word_id:'__sync_meta__', updated_at:5000, deleted_at:null, payload:{schema:1, revision:8, updatedBy:'pagination-test'}},
+                  ...Array.from({length:1053}, (_, index) => ({
+                    word_id:`${prefix}_page_${String(index).padStart(4, '0')}`,
+                    updated_at:1000 + index,
+                    deleted_at:null,
+                    payload:{id:`${prefix}_page_${String(index).padStart(4, '0')}`, word:`分页词条${index}`, meaning:`释义${index}`, rating:index % 6, mastered:index % 2 === 0, tags:[]}
+                  })),
+                  ...Array.from({length:7}, (_, index) => ({
+                    word_id:`${prefix}_deleted_${index}`,
+                    updated_at:4000 + index,
+                    deleted_at:4000 + index,
+                    payload:{id:`${prefix}_deleted_${index}`, word:`已删除${index}`}
+                  }))
+                ].sort((a, b) => String(a.word_id).localeCompare(String(b.word_id)));
+                const requestedOffsets = [];
+                window.fetch = async url => {
+                  const parsed = new URL(String(url));
+                  const offset = Number(parsed.searchParams.get('offset') || 0);
+                  const limit = Number(parsed.searchParams.get('limit') || 500);
+                  requestedOffsets.push(offset);
+                  const page = cloudRows.slice(offset, offset + limit);
+                  return {ok:true, status:200, json:async () => page};
+                };
+                (async () => {
+                  const fetched = await app.fetchCloudRows('pagination-test-token');
+                  const split = app.splitCloudRows(fetched);
+                  const firstFetchOffsets = requestedOffsets.join(',');
+                  const activeRows = split.dataRows.filter(row => Number(row.deleted_at || 0) <= 0);
+                  app.words = activeRows.slice(0, 992).map(row => ({...row.payload}));
+                  app.saveDeletedRecords({});
+                  app.savePendingCloudChanges({[`${prefix}_page_0000`]:{changedAt:9999, source:'system', fields:[]}});
+                  app.saveCloudBaselineRevision(8);
+                  const missingBeforeRepair = app.countUnexplainedMissingCloudWords(split.dataRows);
+                  let rowUploadCalls = 0;
+                  let metaUploadCalls = 0;
+                  app.getValidCloudSession = async () => ({access_token:'pagination-test-token', user:{id:'00000000-0000-0000-0000-000000000000'}});
+                  app.upsertCloudRows = async () => { rowUploadCalls += 1; return []; };
+                  app.upsertCloudMeta = async () => { metaUploadCalls += 1; return {}; };
+                  requestedOffsets.length = 0;
+                  const repaired = await app.syncWithSupabase(false);
+                  const deletedCount = Object.keys(app.getDeletedRecords()).length;
+                  done({
+                    fetchedCount:fetched.length,
+                    firstFetchOffsets,
+                    repairFetchOffsets:requestedOffsets.join(','),
+                    hasMeta:!!split.metaRow,
+                    missingBeforeRepair,
+                    repaired,
+                    rowUploadCalls,
+                    metaUploadCalls,
+                    deletedCount,
+                    finalWordCount:app.words.length,
+                    pendingAfterRepair:Object.keys(app.getPendingCloudChanges()).length
+                  });
+                })().catch(error => done({error:String(error && error.message || error)})).finally(() => {
+                  window.fetch = originalFetch;
+                  app.getValidCloudSession = originals.getValidCloudSession;
+                  app.upsertCloudRows = originals.upsertCloudRows;
+                  app.upsertCloudMeta = originals.upsertCloudMeta;
+                  app.words = originalWords;
+                  app.saveDeletedRecords(originalDeleted);
+                  app.savePendingCloudChanges(originalPending);
+                  if (originalBaseline === null) SafeStorage.removeItem(app.CLOUD_BASE_REVISION_KEY);
+                  else SafeStorage.setItem(app.CLOUD_BASE_REVISION_KEY, originalBaseline);
+                  app._cloudSyncing = false;
+                  app._cloudSyncPending = false;
+                  app.persistSyncedData();
+                  app.renderWordList();
+                  app.updateStats();
+                });
+            """)
+            self.assert_true(
+                bool(paginated_fetch_result and paginated_fetch_result.get('fetchedCount') == 1061 and paginated_fetch_result.get('firstFetchOffsets') == '0,500,1000' and paginated_fetch_result.get('repairFetchOffsets') == '0,500,1000' and paginated_fetch_result.get('hasMeta')),
+                f"[{lang_name}] 浏览器云端分页-1061 行分三批完整读取且包含版本元数据",
+                f"超过 1000 行后仍发生截断或分页偏移错误：{paginated_fetch_result}",
+            )
+            self.assert_true(
+                bool(paginated_fetch_result and paginated_fetch_result.get('missingBeforeRepair') == 61 and paginated_fetch_result.get('repaired') and paginated_fetch_result.get('rowUploadCalls') == 0 and paginated_fetch_result.get('metaUploadCalls') == 0 and paginated_fetch_result.get('finalWordCount') == 1053 and paginated_fetch_result.get('deletedCount') == 7 and paginated_fetch_result.get('pendingAfterRepair') == 0),
+                f"[{lang_name}] 浏览器云端分页-识别 992→1053 缺失并完整分类 7 条删除记录",
+                f"整库分页完成后有效词条数量仍不正确：{paginated_fetch_result}",
             )
 
             empty_navigation_result = driver.execute_script("""
