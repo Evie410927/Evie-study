@@ -61,22 +61,18 @@ class VocabAppTester:
 
         init_body = re.search(r'\n\s*init\(\)\s*\{(.*?)\n\s*\}\n\s*\n\s*loadData\(', content, re.S)
         save_data_body = re.search(r'\n\s*saveData\(\)\s*\{(.*?)\n\s*\}\n\s*\n\s*loadTheme\(', content, re.S)
-        edit_auto_upload = (
+        strict_manual_upload = (
             'title="手动云端同步"' in content
             and bool(init_body) and 'fetchFromCloud(' not in init_body.group(1)
-            and bool(save_data_body) and 'this.scheduleCloudSync()' in save_data_body.group(1)
+            and bool(init_body) and 'scheduleCloudSync(' not in init_body.group(1)
+            and bool(save_data_body) and 'this.scheduleCloudSync()' not in save_data_body.group(1)
             and 'scheduleCloudSync(delay = 350)' in content
-            and 'this.syncWithSupabase(false)' in content
+            and '严格手动同步' in content
         )
-        self.assert_true(edit_auto_upload, f"[{lang_name}] 云同步-登录后编辑自动上传且启动时不无条件拉取", "本地编辑保存后未安排静默上传，或页面启动时错误地无条件拉取云端")
+        self.assert_true(strict_manual_upload, f"[{lang_name}] 云同步-编辑后仅入待上传队列且必须手动点击云朵", "页面仍可能在保存或启动时自动上传，绕过云端版本门禁")
 
-        historical_pending_upload = bool(init_body) and all(token in init_body.group(1) for token in (
-            "const pendingCloudChanges = this.getPendingCloudChanges",
-            "this.getCloudSession()",
-            "Object.keys(pendingCloudChanges).length > 0",
-            "this.scheduleCloudSync(600)",
-        ))
-        self.assert_true(historical_pending_upload, f"[{lang_name}] 云同步-重新打开页面自动补传历史待同步编辑", "旧版本积压在浏览器本地的修改不会在升级后自动进入云端")
+        pending_waits_for_click = bool(init_body) and "只有点击云朵才执行版本门禁" in init_body.group(1)
+        self.assert_true(pending_waits_for_click, f"[{lang_name}] 云同步-重新打开页面保留待上传修改但不自动抢占云端", "历史待上传修改仍可能在页面启动时绕过版本检查自动上传")
 
         # Supabase 双端同步回归矩阵：覆盖账号隔离、全字段编辑、删除与冲突合并。
         supabase_configured = (
@@ -108,12 +104,12 @@ class VocabAppTester:
         ))
         self.assert_true(edit_tracking, f"[{lang_name}] 云同步-释义/例句/Tag/掌握状态等所有编辑统一更新时间追踪", "saveData 未通过全卡片指纹捕获所有字段修改")
 
-        field_level_merge = all(token in content for token in (
-            "fieldUpdatedAt", "mergeWordFields(localWord, cloudPayload",
-            "const fieldMergedWord =", "differsFromCloud", "differsFromLocal",
-            "changedFieldsById", "fieldsById = {}", "forceLocalFields = []",
+        revision_protocol = all(token in content for token in (
+            "CLOUD_BASE_REVISION_KEY", "CLOUD_DEVICE_KEY", "__sync_meta__",
+            "getCloudBaselineRevision", "saveCloudBaselineRevision",
+            "splitCloudRows", "upsertCloudMeta", "revision", "updatedBy",
         ))
-        self.assert_true(field_level_merge, f"[{lang_name}] 云同步-释义例句与星级状态按字段合并", "同步仍按整张卡片覆盖，手机改星级时可能反向覆盖电脑端新释义或例句")
+        self.assert_true(revision_protocol, f"[{lang_name}] 云同步-整库版本号与设备同步基线协议", "缺少设备基线或云端整库版本号，无法判断另一设备是否已先上传")
 
         pending_field_migration = all(token in content for token in (
             "CLOUD_FIELD_PENDING_MIGRATION_KEY",
@@ -129,29 +125,30 @@ class VocabAppTester:
         ))
         self.assert_true(tombstone_sync, f"[{lang_name}] 云同步-删除 Tombstone 跨设备传播并防止复活", "删除记录未携带时间戳，或云端删除不能覆盖旧的本地卡片")
 
-        conflict_merge = all(token in content for token in (
-            "const cloudAuthoritative = localWord && cloudPayload && cloudDiffers && !locallyPending",
-            "const forcedLocalFields = locallyPending && pendingMeta.source === 'user'",
-            "pendingMeta.fields.length > 0 ? pendingMeta.fields",
-            "localDeletedAt >= cloudUpdatedAt", "mergeCloudRows", "syncWithSupabase",
+        strict_conflict_gate = all(token in content for token in (
+            "if (metaRow && localRevision !== cloudRevision)",
+            "this.replaceLocalWithCloudRows(dataRows)",
+            "this.saveCloudBaselineRevision(cloudRevision)",
+            "已先同步云端并放弃本机", "return true;",
         ))
-        self.assert_true(conflict_merge, f"[{lang_name}] 云同步-仅保护明确待上传字段且无本地修改时云端权威", "无待上传修改的手机旧缓存仍可能凭较大时间戳拒绝电脑端的云端改名或星级")
+        self.assert_true(strict_conflict_gate, f"[{lang_name}] 云同步-发现另一设备新版本时只下载并禁止本次上传", "版本冲突时仍可能合并或上传本机修改，而不是先整库接受另一设备版本")
 
-        legacy_pending_protected = all(token in content for token in (
-            "return { changedAt, source: changedAt > 0 ? 'user' : 'none', fields: [] }",
-            "pendingMeta.source === 'system'",
-        )) and "pendingMeta.source === 'legacy'" not in content
-        self.assert_true(legacy_pending_protected, f"[{lang_name}] 云同步-旧格式待上传记录按用户编辑保护", "legacy 待上传记录仍可能被当作系统更新，导致较旧云端内容覆盖较新的本地编辑")
+        discard_local_pending = all(token in content for token in (
+            "replaceLocalWithCloudRows(rows)", "this.words = nextWords",
+            "this.saveDeletedRecords(nextDeleted)", "this.savePendingCloudChanges({})",
+        ))
+        self.assert_true(discard_local_pending, f"[{lang_name}] 云同步-远端新版本整库覆盖并清空本机待上传修改", "检测到另一设备版本后没有完整清空本机冲突修改与待上传队列")
 
         sync_lock = "this._cloudSyncing" in content and "this._cloudSyncPending" in content
         self.assert_true(sync_lock, f"[{lang_name}] 云同步-并发请求锁与待同步补偿", "连续编辑可能并发上传并产生覆盖竞争")
 
-        delta_sync = all(token in content for token in (
+        guarded_upload = all(token in content for token in (
             "PENDING_CLOUD_KEY", "getPendingCloudChanges", "markPendingCloudChanges",
-            "clearUploadedCloudChanges", "cloudIds.has(String(w.id))",
-            "this.upsertCloudRows(session.access_token, userId, cloudRows)",
+            "clearUploadedCloudChanges", "forceAll || this.getPendingCloudMeta",
+            "this.upsertCloudRows(session.access_token, userId, dataRows, forceAll)",
+            "const nextRevision = cloudRevision + 1", "this.upsertCloudMeta",
         ))
-        self.assert_true(delta_sync, f"[{lang_name}] 云同步-手机编辑待上传队列与差量 Upsert", "点击云朵仍可能把浏览器旧整库反向覆盖手机新编辑")
+        self.assert_true(guarded_upload, f"[{lang_name}] 云同步-基线一致后才差量上传并递增云端版本", "本机修改可能未经过版本门禁就上传，或上传后没有生成新云端版本")
 
         explicit_error = "PGRST205" in content and "supabase_vocab_sync.sql" in content and "云同步失败" in content
         self.assert_true(explicit_error, f"[{lang_name}] 云同步-缺表/断网/鉴权失败显式提示", "云端异常仍可能被误报为已经同步成功")
@@ -1641,7 +1638,7 @@ class VocabAppTester:
             )
             driver.execute_script("window.app.closeCloudAuthModal()")
 
-            auto_sync_result = driver.execute_async_script("""
+            manual_sync_result = driver.execute_async_script("""
                 const done = arguments[0];
                 const app = window.app;
                 const originalGetSession = app.getCloudSession;
@@ -1657,9 +1654,9 @@ class VocabAppTester:
                 }, 80);
             """)
             self.assert_true(
-                bool(auto_sync_result and auto_sync_result.get('scheduled') and auto_sync_result.get('calls') == 1),
-                f"[{lang_name}] 浏览器本地编辑-登录状态下自动安排一次静默云上传",
-                "本地保存后的自动同步调度器没有真正调用双向同步引擎",
+                bool(manual_sync_result and not manual_sync_result.get('scheduled') and manual_sync_result.get('calls') == 0),
+                f"[{lang_name}] 浏览器本地编辑-不会绕过云端版本门禁自动上传",
+                "本地编辑仍会自动调用同步引擎，可能在用户点击云朵前覆盖另一设备版本",
             )
 
             pending_rebuild_result = driver.execute_script("""
@@ -1735,94 +1732,186 @@ class VocabAppTester:
                 "用户改词名后 loadSampleData 又补回同 ID 的旧词名，或没有保留并上传用户版本",
             )
 
-            merge_result = driver.execute_script("""
+            revision_gate_result = driver.execute_script("""
                 const app = window.app;
                 const originalWords = app.words;
                 const originalDeleted = app.getDeletedRecords();
                 const originalPending = app.getPendingCloudChanges();
+                const originalBaseline = SafeStorage.getItem(app.CLOUD_BASE_REVISION_KEY);
                 const prefix = originalWords[0] && String(originalWords[0].id).startsWith('jp_') ? 'jp' : 'kr';
                 try {
                   app.words = [
-                    {id: prefix + '_sync_edit', word:'编辑测试', meaning:'旧释义', example:'旧例句', tags:['旧Tag'], mastered:false, updatedAt:100},
-                    {id: prefix + '_sync_newer', word:'本地较新', meaning:'保留本地', tags:[], mastered:false, updatedAt:300},
-                    {id: prefix + '_sync_stale_future', word:'浏览器旧缓存', meaning:'浏览器旧释义', tags:[], mastered:false, updatedAt:9999},
-                    {id: prefix + '_sync_field_merge', word:'字段合并', meaning:'手机旧释义', example:'手机旧例句', rating:5, mastered:false, tags:[], createdAt:50, updatedAt:500, fieldUpdatedAt:{rating:500}},
-                    {id: prefix + '_sync_delete', word:'删除测试', meaning:'待删除', tags:[], mastered:false, updatedAt:100}
+                    {id: prefix + '_rating', word:'빼돌리다', meaning:'手机旧释义', rating:4, mastered:false, tags:[], updatedAt:9000},
+                    {id: prefix + '_circle', word:'둥그라미', meaning:'手机旧释义', rating:1, mastered:false, tags:[], updatedAt:9001},
+                    {id: prefix + '_status', word:'덤벙대다', meaning:'手机旧释义', rating:0, mastered:true, tags:[], updatedAt:9002}
                   ];
                   app.saveDeletedRecords({});
                   app.savePendingCloudChanges({
-                    [prefix + '_sync_newer']:{changedAt:300, source:'user', fields:['meaning','mastered']},
-                    [prefix + '_sync_field_merge']:{changedAt:500, source:'user', fields:['rating']}
+                    [prefix + '_rating']:{changedAt:9000, source:'user', fields:['rating']},
+                    [prefix + '_circle']:{changedAt:9001, source:'user', fields:['word','rating','mastered']},
+                    [prefix + '_status']:{changedAt:9002, source:'user', fields:['mastered']}
                   });
                   app.refreshWordFingerprints();
                   const cloudRows = [
-                    {word_id:prefix + '_sync_edit', updated_at:200, deleted_at:null, payload:{id:prefix + '_sync_edit', word:'编辑测试', meaning:'云端释义', example:'云端例句', tags:['云端Tag'], mastered:true}},
-                    {word_id:prefix + '_sync_newer', updated_at:200, deleted_at:null, payload:{id:prefix + '_sync_newer', word:'本地较新', meaning:'错误覆盖', tags:['云端Tag'], mastered:true}},
-                    {word_id:prefix + '_sync_stale_future', updated_at:250, deleted_at:null, payload:{id:prefix + '_sync_stale_future', word:'手机新编辑', meaning:'手机新释义', tags:['手机Tag'], mastered:true}},
-                    {word_id:prefix + '_sync_field_merge', updated_at:9000, deleted_at:null, payload:{id:prefix + '_sync_field_merge', word:'字段合并', meaning:'电脑新释义', example:'电脑新例句', rating:0, mastered:true, tags:[], createdAt:50, userEditedAt:400, fieldUpdatedAt:{meaning:400, example:400, rating:9000}}},
-                    {word_id:prefix + '_sync_delete', updated_at:400, deleted_at:400, payload:{id:prefix + '_sync_delete', word:'删除测试'}}
+                    {word_id:'__sync_meta__', updated_at:10000, deleted_at:null, payload:{schema:1, revision:2, updatedBy:'browser-device'}},
+                    {word_id:prefix + '_rating', updated_at:500, deleted_at:null, payload:{id:prefix + '_rating', word:'빼돌리다', meaning:'浏览器释义', rating:5, mastered:false, tags:[]}},
+                    {word_id:prefix + '_circle', updated_at:501, deleted_at:null, payload:{id:prefix + '_circle', word:'동그라미', meaning:'浏览器释义', rating:2, mastered:true, tags:[]}},
+                    {word_id:prefix + '_status', updated_at:502, deleted_at:null, payload:{id:prefix + '_status', word:'덤벙대다', meaning:'浏览器释义', rating:0, mastered:false, tags:[]}}
                   ];
-                  const changed = app.mergeCloudRows(cloudRows);
-                  const edited = app.words.find(w => w.id === prefix + '_sync_edit');
-                  const newer = app.words.find(w => w.id === prefix + '_sync_newer');
-                  const staleFuture = app.words.find(w => w.id === prefix + '_sync_stale_future');
-                  const fieldMerged = app.words.find(w => w.id === prefix + '_sync_field_merge');
-                  const deletedGone = !app.words.some(w => w.id === prefix + '_sync_delete');
-                  const allFields = edited && edited.meaning === '云端释义' && edited.example === '云端例句' && edited.tags.includes('云端Tag') && edited.mastered === true;
-                  const localWins = newer && newer.meaning === '保留本地' && newer.mastered === false;
-                  const unmarkedLocalPulledCloud = staleFuture && staleFuture.meaning === '手机新释义' && staleFuture.mastered === true;
-                  const uploadRows = app.buildCloudRows('00000000-0000-0000-0000-000000000000', cloudRows);
-                  const unmarkedLocalNotQueued = !uploadRows.some(row => row.word_id === prefix + '_sync_stale_future');
-                  const fieldMergePreserved = fieldMerged && fieldMerged.meaning === '电脑新释义' && fieldMerged.example === '电脑新例句' && fieldMerged.rating === 5;
-                  const fieldMergeQueued = uploadRows.some(row => row.word_id === prefix + '_sync_field_merge' && row.payload.meaning === '电脑新释义' && row.payload.rating === 5);
-                  const before = Number(edited.updatedAt || 0);
-                  edited.tags.push('本地新增Tag');
+                  SafeStorage.setItem(app.CLOUD_BASE_REVISION_KEY, '1');
+                  const split = app.splitCloudRows(cloudRows);
+                  const versionMismatch = app.getCloudBaselineRevision() !== split.revision;
+                  const downloaded = app.replaceLocalWithCloudRows(split.dataRows);
+                  app.saveCloudBaselineRevision(split.revision);
+                  const ratingWord = app.words.find(w => w.id === prefix + '_rating');
+                  const circleWord = app.words.find(w => w.id === prefix + '_circle');
+                  const statusWord = app.words.find(w => w.id === prefix + '_status');
+                  const browserStateFullyWins = ratingWord?.rating === 5
+                    && circleWord?.word === '동그라미' && circleWord?.rating === 2 && circleWord?.mastered === true
+                    && statusWord?.mastered === false;
+                  const pendingDiscarded = Object.keys(app.getPendingCloudChanges()).length === 0;
+                  const metaExcluded = split.dataRows.length === 3 && !app.words.some(word => word.id === '__sync_meta__');
+                  const fullBootstrapRows = app.buildCloudRows('00000000-0000-0000-0000-000000000000', split.dataRows, true);
+                  const forceAllUploadsWholeLibrary = fullBootstrapRows.length === 3;
+                  app.refreshWordFingerprints();
+                  const before = Number(ratingWord.updatedAt || 0);
+                  ratingWord.rating = 4;
                   app.markLocallyChangedWords();
-                  const localEditTracked = Number(edited.updatedAt || 0) > before;
-                  return {changed, allFields, localWins, unmarkedLocalPulledCloud, unmarkedLocalNotQueued, fieldMergePreserved, fieldMergeQueued, deletedGone, localEditTracked};
+                  const deltaRows = app.buildCloudRows('00000000-0000-0000-0000-000000000000', split.dataRows, false);
+                  const baselineMatchedDeltaUpload = app.getCloudBaselineRevision() === 2
+                    && deltaRows.length === 1 && deltaRows[0].word_id === prefix + '_rating' && deltaRows[0].payload.rating === 4;
+                  const localEditTracked = Number(ratingWord.updatedAt || 0) > before;
+                  return {versionMismatch, downloaded, browserStateFullyWins, pendingDiscarded, metaExcluded, forceAllUploadsWholeLibrary, baselineMatchedDeltaUpload, localEditTracked};
                 } finally {
                   app.words = originalWords;
                   app.saveDeletedRecords(originalDeleted);
                   app.savePendingCloudChanges(originalPending);
+                  if (originalBaseline === null) SafeStorage.removeItem(app.CLOUD_BASE_REVISION_KEY);
+                  else SafeStorage.setItem(app.CLOUD_BASE_REVISION_KEY, originalBaseline);
                   app.persistSyncedData();
                   app.renderWordList();
                   app.updateStats();
                 }
             """)
             self.assert_true(
-                bool(merge_result and merge_result.get('allFields')),
-                f"[{lang_name}] 浏览器双设备模拟-释义/例句/Tag/掌握状态完整同步",
-                "云端较新卡片没有完整覆盖所有可编辑字段",
+                bool(revision_gate_result and revision_gate_result.get('versionMismatch')),
+                f"[{lang_name}] 浏览器双设备模拟-准确识别另一设备整库新版本",
+                "本机基线版本与云端版本不一致时没有识别出必须先下载",
             )
             self.assert_true(
-                bool(merge_result and merge_result.get('localWins')),
-                f"[{lang_name}] 浏览器双设备模拟-本地较新版本不被旧云端覆盖",
-                "冲突合并没有保留更新时间更晚的本地编辑",
+                bool(revision_gate_result and revision_gate_result.get('browserStateFullyWins')),
+                f"[{lang_name}] 浏览器双设备模拟-星级词名与掌握状态整库覆盖手机冲突值",
+                "浏览器五星/改名/已掌握/学习中状态未完整覆盖手机旧值",
             )
             self.assert_true(
-                bool(merge_result and merge_result.get('unmarkedLocalPulledCloud')),
-                f"[{lang_name}] 浏览器双设备模拟-无待上传修改时云端覆盖手机旧缓存",
-                "手机没有本地待上传修改时，旧缓存仍凭较大时间戳拒绝电脑云端版本",
+                bool(revision_gate_result and revision_gate_result.get('pendingDiscarded')),
+                f"[{lang_name}] 浏览器双设备模拟-发现远端新版后放弃手机全部未上传修改",
+                "接受另一设备版本后仍残留手机待上传修改，下一次可能反向覆盖云端",
             )
             self.assert_true(
-                bool(merge_result and merge_result.get('unmarkedLocalNotQueued')),
-                f"[{lang_name}] 浏览器双设备模拟-手机旧缓存不会被误排队反向覆盖云端",
-                "无本地编辑的手机旧卡仍被误加入上传队列，可能再次覆盖电脑改名或星级",
+                bool(revision_gate_result and revision_gate_result.get('metaExcluded')),
+                f"[{lang_name}] 浏览器双设备模拟-云端版本元数据不会渲染成单词卡片",
+                "__sync_meta__ 被误当作普通词条载入列表",
             )
             self.assert_true(
-                bool(merge_result and merge_result.get('fieldMergePreserved') and merge_result.get('fieldMergeQueued')),
-                f"[{lang_name}] 浏览器双设备模拟-电脑新释义与手机新星级按字段合并",
-                "手机只改星级后仍覆盖了电脑端的新释义/例句，或合并结果没有重新上传",
+                bool(revision_gate_result and revision_gate_result.get('forceAllUploadsWholeLibrary')),
+                f"[{lang_name}] 浏览器双设备模拟-首次点击设备建立完整云端基准",
+                "新协议首次初始化没有上传本机完整词库，第二台设备可能得到残缺快照",
             )
             self.assert_true(
-                bool(merge_result and merge_result.get('deletedGone')),
-                f"[{lang_name}] 浏览器双设备模拟-云端删除同步到本地",
-                "另一设备产生的删除记录没有移除本地旧卡片",
+                bool(revision_gate_result and revision_gate_result.get('baselineMatchedDeltaUpload')),
+                f"[{lang_name}] 浏览器双设备模拟-基线一致后只上传重新修改的词条",
+                "同步远端版本后重新修改时，不能按待上传队列进行安全差量上传",
             )
             self.assert_true(
-                bool(merge_result and merge_result.get('localEditTracked')),
+                bool(revision_gate_result and revision_gate_result.get('localEditTracked')),
                 f"[{lang_name}] 浏览器双设备模拟-本地任意字段编辑更新时间自动刷新",
                 "Tag 等编辑没有更新卡片 updatedAt，无法可靠上传",
+            )
+
+            strict_sync_flow_result = driver.execute_async_script("""
+                const done = arguments[0];
+                const app = window.app;
+                const originalWords = app.words;
+                const originalDeleted = app.getDeletedRecords();
+                const originalPending = app.getPendingCloudChanges();
+                const originalBaseline = SafeStorage.getItem(app.CLOUD_BASE_REVISION_KEY);
+                const originals = {
+                  getValidCloudSession:app.getValidCloudSession,
+                  fetchCloudRows:app.fetchCloudRows,
+                  upsertCloudRows:app.upsertCloudRows,
+                  upsertCloudMeta:app.upsertCloudMeta
+                };
+                const prefix = originalWords[0] && String(originalWords[0].id).startsWith('jp_') ? 'jp' : 'kr';
+                const id = prefix + '_strict_flow';
+                (async () => {
+                  let rowUploadCalls = 0;
+                  let metaUploadCalls = 0;
+                  let uploadedRevision = null;
+                  let cloudRows = [
+                    {word_id:'__sync_meta__', updated_at:2000, deleted_at:null, payload:{schema:1, revision:2, updatedBy:'other-device'}},
+                    {word_id:id, updated_at:2001, deleted_at:null, payload:{id, word:'远端版本', meaning:'远端修改', rating:5, mastered:true, tags:[]}}
+                  ];
+                  app.words = [{id, word:'本机冲突版本', meaning:'本机修改', rating:1, mastered:false, tags:[], updatedAt:9999}];
+                  app.saveDeletedRecords({});
+                  app.savePendingCloudChanges({[id]:{changedAt:9999, source:'user', fields:['word','rating','mastered']}});
+                  app.saveCloudBaselineRevision(1);
+                  app.refreshWordFingerprints();
+                  app.getValidCloudSession = async () => ({access_token:'strict-sync-token', user:{id:'00000000-0000-0000-0000-000000000000'}});
+                  app.fetchCloudRows = async () => cloudRows;
+                  app.upsertCloudRows = async (token, userId, rows, forceAll) => {
+                    rowUploadCalls += 1;
+                    return app.buildCloudRows(userId, rows, forceAll);
+                  };
+                  app.upsertCloudMeta = async (token, userId, revision) => {
+                    metaUploadCalls += 1;
+                    uploadedRevision = revision;
+                    return {revision};
+                  };
+
+                  const conflictSyncOk = await app.syncWithSupabase(false);
+                  const afterPull = app.words.find(word => word.id === id);
+                  const conflictOnlyDownloaded = conflictSyncOk
+                    && rowUploadCalls === 0 && metaUploadCalls === 0
+                    && afterPull?.word === '远端版本' && afterPull?.rating === 5 && afterPull?.mastered === true
+                    && Object.keys(app.getPendingCloudChanges()).length === 0
+                    && app.getCloudBaselineRevision() === 2;
+
+                  afterPull.rating = 4;
+                  afterPull.updatedAt = Date.now();
+                  app.markPendingCloudChanges([id], afterPull.updatedAt, 'user', {[id]:['rating']});
+                  app.refreshWordFingerprints();
+                  const uploadSyncOk = await app.syncWithSupabase(false);
+                  const safeUploadAfterPull = uploadSyncOk
+                    && rowUploadCalls === 1 && metaUploadCalls === 1
+                    && uploadedRevision === 3 && app.getCloudBaselineRevision() === 3;
+                  done({conflictOnlyDownloaded, safeUploadAfterPull});
+                })().catch(error => done({error:String(error && error.message || error)})).finally(() => {
+                  app.getValidCloudSession = originals.getValidCloudSession;
+                  app.fetchCloudRows = originals.fetchCloudRows;
+                  app.upsertCloudRows = originals.upsertCloudRows;
+                  app.upsertCloudMeta = originals.upsertCloudMeta;
+                  app.words = originalWords;
+                  app.saveDeletedRecords(originalDeleted);
+                  app.savePendingCloudChanges(originalPending);
+                  if (originalBaseline === null) SafeStorage.removeItem(app.CLOUD_BASE_REVISION_KEY);
+                  else SafeStorage.setItem(app.CLOUD_BASE_REVISION_KEY, originalBaseline);
+                  app._cloudSyncing = false;
+                  app._cloudSyncPending = false;
+                  app.persistSyncedData();
+                  app.renderWordList();
+                  app.updateStats();
+                });
+            """)
+            self.assert_true(
+                bool(strict_sync_flow_result and strict_sync_flow_result.get('conflictOnlyDownloaded')),
+                f"[{lang_name}] 浏览器真实同步门禁-远端版本较新时零上传且整库覆盖本机",
+                f"同步主流程未严格阻止冲突上传：{strict_sync_flow_result}",
+            )
+            self.assert_true(
+                bool(strict_sync_flow_result and strict_sync_flow_result.get('safeUploadAfterPull')),
+                f"[{lang_name}] 浏览器真实同步门禁-先拉取后重新修改才允许上传下一版本",
+                f"完成远端同步并重新修改后仍不能安全上传：{strict_sync_flow_result}",
             )
 
             empty_navigation_result = driver.execute_script("""

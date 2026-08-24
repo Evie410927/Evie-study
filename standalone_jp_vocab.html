@@ -6182,14 +6182,8 @@ function createSupabaseSyncMethods(language) {
     },
 
     scheduleCloudSync(delay = 350) {
-      const session = this.getCloudSession();
-      if (!session || (!session.access_token && !session.refresh_token)) return false;
-      if (this._cloudSyncTimer) clearTimeout(this._cloudSyncTimer);
-      this._cloudSyncTimer = setTimeout(() => {
-        this._cloudSyncTimer = null;
-        this.syncWithSupabase(false);
-      }, Math.max(0, Number(delay) || 0));
-      return true;
+      // 严格手动同步：本地编辑只进入待上传队列，必须点击云朵后才检查云端版本并上传。
+      return false;
     },
 
     persistSyncedData() {
@@ -6218,6 +6212,78 @@ function createSupabaseSyncMethods(language) {
         error.status = response.status; error.code = data.code; throw error;
       }
       return Array.isArray(data) ? data : [];
+    },
+
+    getCloudDeviceId() {
+      let deviceId = SafeStorage.getItem(this.CLOUD_DEVICE_KEY);
+      if (deviceId) return deviceId;
+      deviceId = `device_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+      SafeStorage.setItem(this.CLOUD_DEVICE_KEY, deviceId);
+      return deviceId;
+    },
+
+    getCloudBaselineRevision() {
+      const raw = SafeStorage.getItem(this.CLOUD_BASE_REVISION_KEY);
+      if (raw === null || raw === '') return null;
+      const value = Number(raw);
+      return Number.isFinite(value) && value >= 0 ? value : null;
+    },
+
+    saveCloudBaselineRevision(revision) {
+      SafeStorage.setItem(this.CLOUD_BASE_REVISION_KEY, String(Math.max(0, Number(revision) || 0)));
+    },
+
+    splitCloudRows(rows) {
+      const metaRow = (rows || []).find(row => String(row && row.word_id || '') === '__sync_meta__') || null;
+      const dataRows = (rows || []).filter(row => String(row && row.word_id || '') !== '__sync_meta__');
+      const revision = Math.max(0, Number(metaRow && metaRow.payload && metaRow.payload.revision || 0));
+      return { metaRow, dataRows, revision };
+    },
+
+    replaceLocalWithCloudRows(rows) {
+      const nextWords = [];
+      const nextDeleted = {};
+      (rows || []).forEach(row => {
+        const id = String(row && row.word_id || '');
+        if (!id || id === '__sync_meta__') return;
+        const deletedAt = Number(row.deleted_at || 0);
+        if (deletedAt > 0) {
+          nextDeleted[id] = { id, word: row.payload && row.payload.word || '', deletedAt };
+          return;
+        }
+        if (!row.payload || typeof row.payload !== 'object') return;
+        const payload = { ...row.payload, id: String(row.payload.id || id), updatedAt: Number(row.updated_at || row.payload.updatedAt || 1) };
+        payload.tags = Array.isArray(payload.tags) ? payload.tags.filter(tag => tag !== '\u6613\u6df7') : [];
+        nextWords.push(payload);
+      });
+      this.words = nextWords;
+      this.saveDeletedRecords(nextDeleted);
+      this.savePendingCloudChanges({});
+      if (!this.persistSyncedData()) throw new Error('云端数据已载入，但浏览器未能持久保存，请保留当前页面并重试');
+      return nextWords.length;
+    },
+
+    async upsertCloudMeta(accessToken, userId, revision) {
+      const now = Date.now();
+      const row = {
+        user_id: userId,
+        language,
+        word_id: '__sync_meta__',
+        payload: { schema: 1, revision, updatedBy: this.getCloudDeviceId(), updatedAt: now },
+        updated_at: now,
+        deleted_at: null
+      };
+      const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/vocab_items?on_conflict=user_id,language,word_id`, {
+        method: 'POST',
+        headers: this.cloudHeaders(accessToken, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+        body: JSON.stringify([row])
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        const error = new Error(data.message || data.hint || `云端版本写入失败 (${response.status})`);
+        error.status = response.status; error.code = data.code; throw error;
+      }
+      return row;
     },
 
     mergeCloudRows(rows) {
@@ -6299,10 +6365,10 @@ function createSupabaseSyncMethods(language) {
       return changedCount;
     },
 
-    buildCloudRows(userId, cloudRows = []) {
+    buildCloudRows(userId, cloudRows = [], forceAll = false) {
       const pending = this.getPendingCloudChanges();
-      const cloudIds = new Set((cloudRows || []).map(row => String(row && row.word_id || '')).filter(Boolean));
-      const activeRows = (this.words || []).filter(w => w && w.id && (this.getPendingCloudMeta(pending[String(w.id)]).changedAt > 0 || !cloudIds.has(String(w.id)))).map(word => {
+      const cloudIds = new Set((cloudRows || []).map(row => String(row && row.word_id || '')).filter(id => id && id !== '__sync_meta__'));
+      const activeRows = (this.words || []).filter(w => w && w.id && (forceAll || this.getPendingCloudMeta(pending[String(w.id)]).changedAt > 0 || !cloudIds.has(String(w.id)))).map(word => {
         const payload = { ...word, tags: Array.isArray(word.tags) ? word.tags.filter(tag => tag !== '\u6613\u6df7') : [] };
         return { user_id: userId, language, word_id: String(word.id), payload, updated_at: Number(word.updatedAt || word.createdAt || 1), deleted_at: null };
       });
@@ -6310,8 +6376,8 @@ function createSupabaseSyncMethods(language) {
       return activeRows.concat(deletedRows);
     },
 
-    async upsertCloudRows(accessToken, userId, cloudRows = []) {
-      const rows = this.buildCloudRows(userId, cloudRows);
+    async upsertCloudRows(accessToken, userId, cloudRows = [], forceAll = false) {
+      const rows = this.buildCloudRows(userId, cloudRows, forceAll);
       for (let index = 0; index < rows.length; index += 50) {
         const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/vocab_items?on_conflict=user_id,language,word_id`, {
           method: 'POST',
@@ -6344,13 +6410,43 @@ function createSupabaseSyncMethods(language) {
         const userId = session.user && session.user.id || jwtUser && jwtUser.sub;
         if (!userId) throw new Error('无法识别云同步账号，请重新登录');
         const cloudRows = await this.fetchCloudRows(session.access_token);
-        const changedCount = this.mergeCloudRows(cloudRows);
-        const uploadedRows = await this.upsertCloudRows(session.access_token, userId, cloudRows);
+        const { metaRow, dataRows, revision: cloudRevision } = this.splitCloudRows(cloudRows);
+        const localRevision = this.getCloudBaselineRevision();
+        const pending = this.getPendingCloudChanges();
+        const pendingCount = Object.keys(pending).filter(id => this.getPendingCloudMeta(pending[id]).changedAt > 0).length;
+
+        // 另一设备已提交新版本：本次严格只下载，整库覆盖并放弃本机尚未上传的修改。
+        if (metaRow && localRevision !== cloudRevision) {
+          const downloadedCount = this.replaceLocalWithCloudRows(dataRows);
+          this.saveCloudBaselineRevision(cloudRevision);
+          this.renderWordList();
+          this.updateStats();
+          if (showToastNotification) {
+            this.showToast(pendingCount > 0
+              ? `⚠️ 发现另一设备已上传版本 ${cloudRevision}：已先同步云端并放弃本机 ${pendingCount} 项未上传修改，请重新修改后再点云朵`
+              : `✅ 已同步另一设备上传的版本 ${cloudRevision}，共 ${downloadedCount} 个词条`);
+          }
+          return true;
+        }
+
+        if (metaRow && pendingCount === 0) {
+          if (showToastNotification) this.showToast(`✅ 当前已是云端最新版本 ${cloudRevision}，没有待上传修改`);
+          return true;
+        }
+
+        // 新同步协议首次启用：第一台点击云朵的设备建立权威整库基准。
+        const forceAll = !metaRow;
+        const uploadedRows = await this.upsertCloudRows(session.access_token, userId, dataRows, forceAll);
+        const nextRevision = cloudRevision + 1;
+        await this.upsertCloudMeta(session.access_token, userId, nextRevision);
         this.clearUploadedCloudChanges(uploadedRows);
+        this.saveCloudBaselineRevision(nextRevision);
         const uploadedCount = uploadedRows.length;
         this.renderWordList();
         this.updateStats();
-        if (showToastNotification) this.showToast(`✅ 双向同步成功：更新 ${changedCount} 项，校验 ${uploadedCount} 项`);
+        if (showToastNotification) this.showToast(forceAll
+          ? `✅ 已用本设备建立云端基准版本 ${nextRevision}，上传 ${uploadedCount} 个词条`
+          : `✅ 已上传本机修改并生成云端版本 ${nextRevision}，更新 ${uploadedCount} 项`);
         return true;
       } catch (err) {
         console.warn('Supabase sync error:', err);
@@ -6548,6 +6644,8 @@ class JpVocabApp {
     this.STORAGE_KEY = 'evie_jp_vocab_data_v5000';
     this.PENDING_CLOUD_KEY = `${this.STORAGE_KEY}_cloud_pending_v1`;
     this.CLOUD_FIELD_PENDING_MIGRATION_KEY = `${this.STORAGE_KEY}_cloud_field_pending_v3`;
+    this.CLOUD_DEVICE_KEY = `${this.STORAGE_KEY}_cloud_device_v1`;
+    this.CLOUD_BASE_REVISION_KEY = `${this.STORAGE_KEY}_cloud_base_revision_v1`;
     this.THEME_KEY = 'evie_jp_vocab_theme';
     this.DELETED_KEY = 'evie_jp_vocab_deleted_v1';
     this.SIMILAR_RELATION_MIGRATION_KEY = `${this.STORAGE_KEY}_similar_bidirectional_v1`;
@@ -6569,7 +6667,7 @@ class JpVocabApp {
     try {
       // Auto purge old obsolete storage keys safely
       SafeStorage.keys().forEach(k => {
-        if (k.startsWith('evie_jp_') && k !== this.STORAGE_KEY && k !== this.PENDING_CLOUD_KEY && k !== this.CLOUD_FIELD_PENDING_MIGRATION_KEY && k !== this.THEME_KEY && k !== this.DELETED_KEY && k !== this.SIMILAR_RELATION_MIGRATION_KEY && k !== SUPABASE_CONFIG.sessionKey) {
+        if (k.startsWith('evie_jp_') && k !== this.STORAGE_KEY && k !== this.PENDING_CLOUD_KEY && k !== this.CLOUD_FIELD_PENDING_MIGRATION_KEY && k !== this.CLOUD_DEVICE_KEY && k !== this.CLOUD_BASE_REVISION_KEY && k !== this.THEME_KEY && k !== this.DELETED_KEY && k !== this.SIMILAR_RELATION_MIGRATION_KEY && k !== SUPABASE_CONFIG.sessionKey) {
           SafeStorage.removeItem(k);
         }
       });
@@ -6583,11 +6681,7 @@ class JpVocabApp {
     this.updateStats();
     this.bindEvents();
     if (this.consumeCloudAuthCallback) this.consumeCloudAuthCallback();
-    // 登录后自动补传历史待同步编辑；没有待上传记录时，页面启动不会主动联网。
-    const pendingCloudChanges = this.getPendingCloudChanges ? this.getPendingCloudChanges() : {};
-    if (this.getCloudSession && this.getCloudSession() && Object.keys(pendingCloudChanges).length > 0 && this.scheduleCloudSync) {
-      this.scheduleCloudSync(600);
-    }
+    // 严格手动同步：页面启动与本地保存均不自动上传，只有点击云朵才执行版本门禁。
   }
 
   loadData() {
@@ -6683,7 +6777,6 @@ class JpVocabApp {
         this.showToast('⚠️ 保存失败：浏览器未能持久保存，请保留当前窗口并重试');
         return false;
       }
-      if (this.scheduleCloudSync) this.scheduleCloudSync();
       return true;
     } catch (e) {
       this.showToast('⚠️ 保存失败：浏览器存储异常，请保留当前窗口并重试');
