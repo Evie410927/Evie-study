@@ -6137,7 +6137,14 @@ function createSupabaseSyncMethods(language) {
       let rebuiltCount = 0;
       (this.words || []).forEach(word => {
         if (!word || !word.id || !word.fieldUpdatedAt || typeof word.fieldUpdatedAt !== 'object') return;
-        const fields = Object.keys(word.fieldUpdatedAt).filter(field => !['id', 'updatedAt', 'fieldUpdatedAt', 'createdAt', 'contentRevision'].includes(field) && Number(word.fieldUpdatedAt[field] || 0) > 0);
+        const userEditedAt = Number(word.userEditedAt || 0);
+        const contentFields = new Set(['word', 'reading', 'meaning', 'example', 'exampleTrans', 'examples', 'notes', 'userNote', 'krMeaning']);
+        const fields = Object.keys(word.fieldUpdatedAt).filter(field => {
+          const fieldAt = Number(word.fieldUpdatedAt[field] || 0);
+          if (fieldAt <= 0) return false;
+          if (field === 'rating') return Number(word.rating || 0) > 0;
+          return contentFields.has(field) && userEditedAt > 0 && fieldAt >= userEditedAt - 2000;
+        });
         if (fields.length === 0) return;
         const changedAt = Math.max(Number(word.updatedAt || 0), ...fields.map(field => Number(word.fieldUpdatedAt[field] || 0)), 1);
         this.markPendingCloudChanges([String(word.id)], changedAt, 'user', { [String(word.id)]: fields });
@@ -6540,7 +6547,7 @@ class JpVocabApp {
     window.vocabApp = this;
     this.STORAGE_KEY = 'evie_jp_vocab_data_v5000';
     this.PENDING_CLOUD_KEY = `${this.STORAGE_KEY}_cloud_pending_v1`;
-    this.CLOUD_FIELD_PENDING_MIGRATION_KEY = `${this.STORAGE_KEY}_cloud_field_pending_v2`;
+    this.CLOUD_FIELD_PENDING_MIGRATION_KEY = `${this.STORAGE_KEY}_cloud_field_pending_v3`;
     this.THEME_KEY = 'evie_jp_vocab_theme';
     this.DELETED_KEY = 'evie_jp_vocab_deleted_v1';
     this.SIMILAR_RELATION_MIGRATION_KEY = `${this.STORAGE_KEY}_similar_bidirectional_v1`;

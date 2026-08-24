@@ -1671,7 +1671,7 @@ class VocabAppTester:
                 const prefix = originalWords[0] && String(originalWords[0].id).startsWith('jp_') ? 'jp' : 'kr';
                 const id = prefix + '_pending_rebuild';
                 try {
-                  app.words = [{id, word:'本地改名', rating:4, createdAt:10, updatedAt:500, fieldUpdatedAt:{word:400, rating:500}}];
+                  app.words = [{id, word:'本地改名', rating:4, createdAt:10, userEditedAt:400, updatedAt:500, fieldUpdatedAt:{word:400, rating:500}}];
                   app.savePendingCloudChanges({});
                   if (migrationKey) SafeStorage.removeItem(migrationKey);
                   const rebuilt = app.rebuildPendingFieldsFromWordMetadata();
