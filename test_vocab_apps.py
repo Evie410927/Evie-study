@@ -111,8 +111,17 @@ class VocabAppTester:
         field_level_merge = all(token in content for token in (
             "fieldUpdatedAt", "mergeWordFields(localWord, cloudPayload",
             "const fieldMergedWord =", "differsFromCloud", "differsFromLocal",
+            "changedFieldsById", "fieldsById = {}", "forceLocalFields = []",
         ))
         self.assert_true(field_level_merge, f"[{lang_name}] 云同步-释义例句与星级状态按字段合并", "同步仍按整张卡片覆盖，手机改星级时可能反向覆盖电脑端新释义或例句")
+
+        pending_field_migration = all(token in content for token in (
+            "CLOUD_FIELD_PENDING_MIGRATION_KEY",
+            "rebuildPendingFieldsFromWordMetadata()",
+            "this.markPendingCloudChanges([String(word.id)], changedAt, 'user'",
+            "if (this.rebuildPendingFieldsFromWordMetadata) this.rebuildPendingFieldsFromWordMetadata()",
+        ))
+        self.assert_true(pending_field_migration, f"[{lang_name}] 云同步-升级后从字段元数据一次性重建历史待上传修改", "升级前已改好的词名或星级在待上传队列清空后无法恢复上传权")
 
         tombstone_sync = all(token in content for token in (
             "getDeletedRecords", "saveDeletedRecords", "recordDeletedWord",
@@ -121,15 +130,15 @@ class VocabAppTester:
         self.assert_true(tombstone_sync, f"[{lang_name}] 云同步-删除 Tombstone 跨设备传播并防止复活", "删除记录未携带时间戳，或云端删除不能覆盖旧的本地卡片")
 
         conflict_merge = all(token in content for token in (
-            "const cloudWinsByTime = cloudUpdatedAt > localUpdatedAt",
-            "const localWinsByTime = localWord && cloudDiffers && localUpdatedAt >= cloudUpdatedAt",
-            "pending[id] = { changedAt: Math.max(localUpdatedAt, 1), source: 'user' }",
+            "const cloudAuthoritative = localWord && cloudPayload && cloudDiffers && !locallyPending",
+            "const forcedLocalFields = locallyPending && pendingMeta.source === 'user'",
+            "pendingMeta.fields.length > 0 ? pendingMeta.fields",
             "localDeletedAt >= cloudUpdatedAt", "mergeCloudRows", "syncWithSupabase",
-        )) and "(!locallyPending && cloudDiffers)" not in content
-        self.assert_true(conflict_merge, f"[{lang_name}] 云同步-严格 Last-Write-Wins 且旧云端禁止覆盖较新本地编辑", "冲突合并仍可能因待上传标记缺失而用旧云端副本覆盖较新本地编辑")
+        ))
+        self.assert_true(conflict_merge, f"[{lang_name}] 云同步-仅保护明确待上传字段且无本地修改时云端权威", "无待上传修改的手机旧缓存仍可能凭较大时间戳拒绝电脑端的云端改名或星级")
 
         legacy_pending_protected = all(token in content for token in (
-            "return { changedAt, source: changedAt > 0 ? 'user' : 'none' }",
+            "return { changedAt, source: changedAt > 0 ? 'user' : 'none', fields: [] }",
             "pendingMeta.source === 'system'",
         )) and "pendingMeta.source === 'legacy'" not in content
         self.assert_true(legacy_pending_protected, f"[{lang_name}] 云同步-旧格式待上传记录按用户编辑保护", "legacy 待上传记录仍可能被当作系统更新，导致较旧云端内容覆盖较新的本地编辑")
@@ -1653,6 +1662,39 @@ class VocabAppTester:
                 "本地保存后的自动同步调度器没有真正调用双向同步引擎",
             )
 
+            pending_rebuild_result = driver.execute_script("""
+                const app = window.app;
+                const originalWords = app.words;
+                const originalPending = app.getPendingCloudChanges();
+                const migrationKey = app.CLOUD_FIELD_PENDING_MIGRATION_KEY;
+                const originalMigration = migrationKey ? SafeStorage.getItem(migrationKey) : null;
+                const prefix = originalWords[0] && String(originalWords[0].id).startsWith('jp_') ? 'jp' : 'kr';
+                const id = prefix + '_pending_rebuild';
+                try {
+                  app.words = [{id, word:'本地改名', rating:4, createdAt:10, updatedAt:500, fieldUpdatedAt:{word:400, rating:500}}];
+                  app.savePendingCloudChanges({});
+                  if (migrationKey) SafeStorage.removeItem(migrationKey);
+                  const rebuilt = app.rebuildPendingFieldsFromWordMetadata();
+                  const meta = app.getPendingCloudMeta(app.getPendingCloudChanges()[id]);
+                  return {rebuilt, source:meta.source, fields:meta.fields, done:migrationKey && SafeStorage.getItem(migrationKey) === 'done'};
+                } finally {
+                  app.words = originalWords;
+                  app.savePendingCloudChanges(originalPending);
+                  if (migrationKey) {
+                    if (originalMigration === null) SafeStorage.removeItem(migrationKey);
+                    else SafeStorage.setItem(migrationKey, originalMigration);
+                  }
+                  app.persistSyncedData();
+                  app.renderWordList();
+                  app.updateStats();
+                }
+            """)
+            self.assert_true(
+                bool(pending_rebuild_result and pending_rebuild_result.get('rebuilt') == 1 and pending_rebuild_result.get('source') == 'user' and set(pending_rebuild_result.get('fields', [])) == {'word', 'rating'} and pending_rebuild_result.get('done')),
+                f"[{lang_name}] 浏览器升级迁移-现有改名与星级字段重新取得待上传状态",
+                "旧版本中已改好的词名/星级没有从 fieldUpdatedAt 重建为明确的用户待上传字段",
+            )
+
             rename_reconciliation_result = driver.execute_script("""
                 const app = window.app;
                 const originalWords = app.words;
@@ -1704,17 +1746,20 @@ class VocabAppTester:
                     {id: prefix + '_sync_edit', word:'编辑测试', meaning:'旧释义', example:'旧例句', tags:['旧Tag'], mastered:false, updatedAt:100},
                     {id: prefix + '_sync_newer', word:'本地较新', meaning:'保留本地', tags:[], mastered:false, updatedAt:300},
                     {id: prefix + '_sync_stale_future', word:'浏览器旧缓存', meaning:'浏览器旧释义', tags:[], mastered:false, updatedAt:9999},
-                    {id: prefix + '_sync_field_merge', word:'字段合并', meaning:'手机旧释义', example:'手机旧例句', rating:5, mastered:false, tags:[], createdAt:50, updatedAt:500},
+                    {id: prefix + '_sync_field_merge', word:'字段合并', meaning:'手机旧释义', example:'手机旧例句', rating:5, mastered:false, tags:[], createdAt:50, updatedAt:500, fieldUpdatedAt:{rating:500}},
                     {id: prefix + '_sync_delete', word:'删除测试', meaning:'待删除', tags:[], mastered:false, updatedAt:100}
                   ];
                   app.saveDeletedRecords({});
-                  app.savePendingCloudChanges({[prefix + '_sync_newer']: 300});
+                  app.savePendingCloudChanges({
+                    [prefix + '_sync_newer']:{changedAt:300, source:'user', fields:['meaning','mastered']},
+                    [prefix + '_sync_field_merge']:{changedAt:500, source:'user', fields:['rating']}
+                  });
                   app.refreshWordFingerprints();
                   const cloudRows = [
                     {word_id:prefix + '_sync_edit', updated_at:200, deleted_at:null, payload:{id:prefix + '_sync_edit', word:'编辑测试', meaning:'云端释义', example:'云端例句', tags:['云端Tag'], mastered:true}},
                     {word_id:prefix + '_sync_newer', updated_at:200, deleted_at:null, payload:{id:prefix + '_sync_newer', word:'本地较新', meaning:'错误覆盖', tags:['云端Tag'], mastered:true}},
                     {word_id:prefix + '_sync_stale_future', updated_at:250, deleted_at:null, payload:{id:prefix + '_sync_stale_future', word:'手机新编辑', meaning:'手机新释义', tags:['手机Tag'], mastered:true}},
-                    {word_id:prefix + '_sync_field_merge', updated_at:400, deleted_at:null, payload:{id:prefix + '_sync_field_merge', word:'字段合并', meaning:'电脑新释义', example:'电脑新例句', rating:0, mastered:true, tags:[], createdAt:50, userEditedAt:400}},
+                    {word_id:prefix + '_sync_field_merge', updated_at:9000, deleted_at:null, payload:{id:prefix + '_sync_field_merge', word:'字段合并', meaning:'电脑新释义', example:'电脑新例句', rating:0, mastered:true, tags:[], createdAt:50, userEditedAt:400, fieldUpdatedAt:{meaning:400, example:400, rating:9000}}},
                     {word_id:prefix + '_sync_delete', updated_at:400, deleted_at:400, payload:{id:prefix + '_sync_delete', word:'删除测试'}}
                   ];
                   const changed = app.mergeCloudRows(cloudRows);
@@ -1725,16 +1770,16 @@ class VocabAppTester:
                   const deletedGone = !app.words.some(w => w.id === prefix + '_sync_delete');
                   const allFields = edited && edited.meaning === '云端释义' && edited.example === '云端例句' && edited.tags.includes('云端Tag') && edited.mastered === true;
                   const localWins = newer && newer.meaning === '保留本地' && newer.mastered === false;
-                  const unmarkedNewerLocalPreserved = staleFuture && staleFuture.meaning === '浏览器旧释义' && staleFuture.mastered === false;
+                  const unmarkedLocalPulledCloud = staleFuture && staleFuture.meaning === '手机新释义' && staleFuture.mastered === true;
                   const uploadRows = app.buildCloudRows('00000000-0000-0000-0000-000000000000', cloudRows);
-                  const recoveredPendingQueued = uploadRows.some(row => row.word_id === prefix + '_sync_stale_future' && row.payload.meaning === '浏览器旧释义');
+                  const unmarkedLocalNotQueued = !uploadRows.some(row => row.word_id === prefix + '_sync_stale_future');
                   const fieldMergePreserved = fieldMerged && fieldMerged.meaning === '电脑新释义' && fieldMerged.example === '电脑新例句' && fieldMerged.rating === 5;
                   const fieldMergeQueued = uploadRows.some(row => row.word_id === prefix + '_sync_field_merge' && row.payload.meaning === '电脑新释义' && row.payload.rating === 5);
                   const before = Number(edited.updatedAt || 0);
                   edited.tags.push('本地新增Tag');
                   app.markLocallyChangedWords();
                   const localEditTracked = Number(edited.updatedAt || 0) > before;
-                  return {changed, allFields, localWins, unmarkedNewerLocalPreserved, recoveredPendingQueued, fieldMergePreserved, fieldMergeQueued, deletedGone, localEditTracked};
+                  return {changed, allFields, localWins, unmarkedLocalPulledCloud, unmarkedLocalNotQueued, fieldMergePreserved, fieldMergeQueued, deletedGone, localEditTracked};
                 } finally {
                   app.words = originalWords;
                   app.saveDeletedRecords(originalDeleted);
@@ -1755,14 +1800,14 @@ class VocabAppTester:
                 "冲突合并没有保留更新时间更晚的本地编辑",
             )
             self.assert_true(
-                bool(merge_result and merge_result.get('unmarkedNewerLocalPreserved')),
-                f"[{lang_name}] 浏览器双设备模拟-待上传标记缺失时仍按时间保留较新本地版本",
-                "待上传标记缺失时，较旧云端副本仍覆盖了较新的本地编辑",
+                bool(merge_result and merge_result.get('unmarkedLocalPulledCloud')),
+                f"[{lang_name}] 浏览器双设备模拟-无待上传修改时云端覆盖手机旧缓存",
+                "手机没有本地待上传修改时，旧缓存仍凭较大时间戳拒绝电脑云端版本",
             )
             self.assert_true(
-                bool(merge_result and merge_result.get('recoveredPendingQueued')),
-                f"[{lang_name}] 浏览器双设备模拟-自动补回缺失的待上传标记并上传较新本地版本",
-                "本地版本胜出后没有重新加入待上传队列，下一次同步仍可能继续冲突",
+                bool(merge_result and merge_result.get('unmarkedLocalNotQueued')),
+                f"[{lang_name}] 浏览器双设备模拟-手机旧缓存不会被误排队反向覆盖云端",
+                "无本地编辑的手机旧卡仍被误加入上传队列，可能再次覆盖电脑改名或星级",
             )
             self.assert_true(
                 bool(merge_result and merge_result.get('fieldMergePreserved') and merge_result.get('fieldMergeQueued')),

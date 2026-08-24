@@ -19224,23 +19224,26 @@ function createSupabaseSyncMethods(language) {
       if (value && typeof value === 'object') {
         return {
           changedAt: Number(value.changedAt || 0),
-          source: value.source === 'system' ? 'system' : 'user'
+          source: value.source === 'system' ? 'system' : 'user',
+          fields: [...new Set(Array.isArray(value.fields) ? value.fields.map(String).filter(Boolean) : [])]
         };
       }
       const changedAt = Number(value || 0);
-      return { changedAt, source: changedAt > 0 ? 'user' : 'none' };
+      return { changedAt, source: changedAt > 0 ? 'user' : 'none', fields: [] };
     },
 
-    markPendingCloudChanges(ids, changedAt = Date.now(), source = 'user') {
+    markPendingCloudChanges(ids, changedAt = Date.now(), source = 'user', fieldsById = {}) {
       const pending = this.getPendingCloudChanges();
       (ids || []).filter(Boolean).forEach(id => {
         const key = String(id);
         const previous = this.getPendingCloudMeta(pending[key]);
         const hasPrevious = previous.changedAt > 0;
         const nextSource = source !== 'system' || (hasPrevious && previous.source === 'user') ? 'user' : 'system';
+        const nextFields = Array.isArray(fieldsById[key]) ? fieldsById[key].map(String).filter(Boolean) : [];
         pending[key] = {
           changedAt: Math.max(previous.changedAt, Number(changedAt || Date.now())),
-          source: nextSource
+          source: nextSource,
+          fields: [...new Set([...previous.fields, ...nextFields])]
         };
       });
       this.savePendingCloudChanges(pending);
@@ -19288,6 +19291,7 @@ function createSupabaseSyncMethods(language) {
       const snapshots = this._wordSnapshots || new Map();
       const now = Date.now();
       const changedIds = [];
+      const changedFieldsById = {};
       (this.words || []).forEach(word => {
         if (!word || !word.id) return;
         const id = String(word.id);
@@ -19299,25 +19303,46 @@ function createSupabaseSyncMethods(language) {
           fields.delete('id');
           fields.delete('updatedAt');
           fields.delete('fieldUpdatedAt');
+          const changedFields = [];
           fields.forEach(field => {
             if (!Number(fieldUpdatedAt[field])) fieldUpdatedAt[field] = this.inferFieldUpdatedAt(oldWord || word, field, baselineAt);
             const before = oldWord && Object.prototype.hasOwnProperty.call(oldWord, field) ? JSON.stringify(oldWord[field]) : undefined;
             const after = Object.prototype.hasOwnProperty.call(word, field) ? JSON.stringify(word[field]) : undefined;
-            if (!oldWord || before !== after) fieldUpdatedAt[field] = now;
+            if (!oldWord || before !== after) {
+              fieldUpdatedAt[field] = now;
+              changedFields.push(field);
+            }
           });
           word.fieldUpdatedAt = fieldUpdatedAt;
           word.updatedAt = Math.max(now, Number(word.updatedAt || 0));
           changedIds.push(id);
+          changedFieldsById[id] = changedFields;
         }
       });
-      if (changedIds.length > 0) this.markPendingCloudChanges(changedIds, now);
+      if (changedIds.length > 0) this.markPendingCloudChanges(changedIds, now, 'user', changedFieldsById);
       this.refreshWordFingerprints();
     },
 
-    mergeWordFields(localWord, cloudPayload, localUpdatedAt, cloudUpdatedAt) {
+    rebuildPendingFieldsFromWordMetadata() {
+      if (!this.CLOUD_FIELD_PENDING_MIGRATION_KEY || SafeStorage.getItem(this.CLOUD_FIELD_PENDING_MIGRATION_KEY) === 'done') return 0;
+      let rebuiltCount = 0;
+      (this.words || []).forEach(word => {
+        if (!word || !word.id || !word.fieldUpdatedAt || typeof word.fieldUpdatedAt !== 'object') return;
+        const fields = Object.keys(word.fieldUpdatedAt).filter(field => !['id', 'updatedAt', 'fieldUpdatedAt', 'createdAt', 'contentRevision'].includes(field) && Number(word.fieldUpdatedAt[field] || 0) > 0);
+        if (fields.length === 0) return;
+        const changedAt = Math.max(Number(word.updatedAt || 0), ...fields.map(field => Number(word.fieldUpdatedAt[field] || 0)), 1);
+        this.markPendingCloudChanges([String(word.id)], changedAt, 'user', { [String(word.id)]: fields });
+        rebuiltCount++;
+      });
+      SafeStorage.setItem(this.CLOUD_FIELD_PENDING_MIGRATION_KEY, 'done');
+      return rebuiltCount;
+    },
+
+    mergeWordFields(localWord, cloudPayload, localUpdatedAt, cloudUpdatedAt, forceLocalFields = []) {
       const localTimes = localWord && localWord.fieldUpdatedAt && typeof localWord.fieldUpdatedAt === 'object' ? localWord.fieldUpdatedAt : {};
       const cloudTimes = cloudPayload && cloudPayload.fieldUpdatedAt && typeof cloudPayload.fieldUpdatedAt === 'object' ? cloudPayload.fieldUpdatedAt : {};
-      const hasFieldContext = Object.keys(localTimes).length > 0 || Object.keys(cloudTimes).length > 0 || Number(localWord && localWord.userEditedAt || 0) > 0 || Number(cloudPayload && cloudPayload.userEditedAt || 0) > 0;
+      const forcedFields = new Set((forceLocalFields || []).map(String));
+      const hasFieldContext = forcedFields.size > 0 || Object.keys(localTimes).length > 0 || Object.keys(cloudTimes).length > 0 || Number(localWord && localWord.userEditedAt || 0) > 0 || Number(cloudPayload && cloudPayload.userEditedAt || 0) > 0;
       if (!hasFieldContext) return null;
       const merged = { ...localWord };
       const mergedTimes = {};
@@ -19328,7 +19353,7 @@ function createSupabaseSyncMethods(language) {
       fields.forEach(field => {
         const localAt = Number(localTimes[field] || this.inferFieldUpdatedAt(localWord, field, localUpdatedAt));
         const cloudAt = Number(cloudTimes[field] || this.inferFieldUpdatedAt(cloudPayload, field, cloudUpdatedAt));
-        if (cloudAt > localAt) {
+        if (!forcedFields.has(field) && cloudAt > localAt) {
           if (Object.prototype.hasOwnProperty.call(cloudPayload, field)) merged[field] = cloudPayload[field];
           else delete merged[field];
         }
@@ -19410,22 +19435,32 @@ function createSupabaseSyncMethods(language) {
         const cloudContentRevision = Number(cloudPayload && cloudPayload.contentRevision || 0);
         const systemUpdateCanYield = locallyPending && pendingMeta.source === 'system' && cloudDiffers && cloudContentRevision >= localContentRevision;
         const cloudWinsByTime = cloudUpdatedAt > localUpdatedAt;
-        const localWinsByTime = localWord && cloudDiffers && localUpdatedAt >= cloudUpdatedAt && !systemUpdateCanYield;
-        const fieldMergedWord = localWord && cloudPayload && cloudDiffers && !systemUpdateCanYield
-          ? this.mergeWordFields(localWord, cloudPayload, localUpdatedAt, cloudUpdatedAt)
+        const cloudAuthoritative = localWord && cloudPayload && cloudDiffers && !locallyPending;
+        if (cloudAuthoritative) {
+          const payload = { ...cloudPayload };
+          payload.tags = Array.isArray(payload.tags) ? payload.tags.filter(tag => tag !== '\u6613\u6df7') : [];
+          payload.id = payload.id || id;
+          payload.updatedAt = cloudUpdatedAt;
+          localMap.set(id, payload);
+          delete pending[id];
+          changedCount++;
+          return;
+        }
+        const forcedLocalFields = locallyPending && pendingMeta.source === 'user'
+          ? (pendingMeta.fields.length > 0 ? pendingMeta.fields : Object.keys(localWord || {}).filter(field => !['id', 'updatedAt', 'fieldUpdatedAt'].includes(field)))
+          : [];
+        const fieldMergedWord = localWord && cloudPayload && cloudDiffers && pendingMeta.source === 'user' && !systemUpdateCanYield
+          ? this.mergeWordFields(localWord, cloudPayload, localUpdatedAt, cloudUpdatedAt, forcedLocalFields)
           : null;
         if (fieldMergedWord) {
           fieldMergedWord.tags = Array.isArray(fieldMergedWord.tags) ? fieldMergedWord.tags.filter(tag => tag !== '\u6613\u6df7') : [];
           const differsFromLocal = this.wordFingerprint(fieldMergedWord) !== this.wordFingerprint(localWord);
           const differsFromCloud = this.wordFingerprint(fieldMergedWord) !== this.wordFingerprint(cloudPayload);
           localMap.set(id, fieldMergedWord);
-          if (differsFromCloud) pending[id] = { changedAt: Math.max(Number(fieldMergedWord.updatedAt || 0), 1), source: 'user' };
+          if (differsFromCloud) pending[id] = { changedAt: Math.max(Number(fieldMergedWord.updatedAt || 0), 1), source: 'user', fields: [...new Set(forcedLocalFields)] };
           else delete pending[id];
           if (differsFromLocal) changedCount++;
           return;
-        }
-        if (localWinsByTime && !locallyPending) {
-          pending[id] = { changedAt: Math.max(localUpdatedAt, 1), source: 'user' };
         }
         if (!localWord || cloudWinsByTime || systemUpdateCanYield) {
           const payload = row.payload && typeof row.payload === 'object' ? { ...row.payload } : null;
@@ -19693,6 +19728,7 @@ class KrVocabApp {
     window.app = this;
     this.STORAGE_KEY = 'evie_kr_vocab_data_v5000';
     this.PENDING_CLOUD_KEY = `${this.STORAGE_KEY}_cloud_pending_v1`;
+    this.CLOUD_FIELD_PENDING_MIGRATION_KEY = `${this.STORAGE_KEY}_cloud_field_pending_v2`;
     this.THEME_KEY = 'evie_kr_vocab_theme';
     this.DELETED_KEY = 'evie_kr_vocab_deleted_v1';
     this.SIMILAR_RELATION_MIGRATION_KEY = `${this.STORAGE_KEY}_similar_bidirectional_v1`;
@@ -19714,7 +19750,7 @@ class KrVocabApp {
     try {
       // Auto purge old obsolete storage keys safely
       SafeStorage.keys().forEach(k => {
-        if (k.startsWith('evie_kr_') && k !== this.STORAGE_KEY && k !== this.PENDING_CLOUD_KEY && k !== this.THEME_KEY && k !== this.DELETED_KEY && k !== this.SIMILAR_RELATION_MIGRATION_KEY && k !== SUPABASE_CONFIG.sessionKey) {
+        if (k.startsWith('evie_kr_') && k !== this.STORAGE_KEY && k !== this.PENDING_CLOUD_KEY && k !== this.CLOUD_FIELD_PENDING_MIGRATION_KEY && k !== this.THEME_KEY && k !== this.DELETED_KEY && k !== this.SIMILAR_RELATION_MIGRATION_KEY && k !== SUPABASE_CONFIG.sessionKey) {
           SafeStorage.removeItem(k);
         }
       });
@@ -19781,6 +19817,7 @@ class KrVocabApp {
       } catch (e) {}
     }
     this.migrateBidirectionalManualSimilarities();
+    if (this.rebuildPendingFieldsFromWordMetadata) this.rebuildPendingFieldsFromWordMetadata();
     if (this.refreshWordFingerprints) this.refreshWordFingerprints();
   }
 
