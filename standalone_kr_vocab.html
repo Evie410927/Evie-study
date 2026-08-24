@@ -19622,7 +19622,11 @@ function createSupabaseSyncMethods(language) {
         const { metaRow, dataRows, revision: cloudRevision } = this.splitCloudRows(cloudRows);
         const localRevision = this.getCloudBaselineRevision();
         const pending = this.getPendingCloudChanges();
-        const pendingCount = Object.keys(pending).filter(id => this.getPendingCloudMeta(pending[id]).changedAt > 0).length;
+        const pendingIds = Object.keys(pending).filter(id => this.getPendingCloudMeta(pending[id]).changedAt > 0);
+        const pendingCount = pendingIds.length;
+        // 覆盖警告只能统计用户在本机实际做出的修改；内置词库补全、数据迁移等系统维护项
+        // 即使进入待上传队列，也不能冒充已经在上一次同步中丢弃过的本机编辑反复提示。
+        const pendingUserCount = pendingIds.filter(id => this.getPendingCloudMeta(pending[id]).source === 'user').length;
         const missingCloudWordCount = this.countUnexplainedMissingCloudWords(dataRows);
 
         // 另一设备已提交新版本：本次严格只下载，整库覆盖并放弃本机尚未上传的修改。
@@ -19632,8 +19636,8 @@ function createSupabaseSyncMethods(language) {
           this.renderWordList();
           this.updateStats();
           if (showToastNotification) {
-            this.showToast(pendingCount > 0
-              ? `⚠️ 发现另一设备已上传版本 ${cloudRevision}：已先同步云端并放弃本机 ${pendingCount} 项未上传修改，请重新修改后再点云朵`
+            this.showToast(pendingUserCount > 0
+              ? `⚠️ 发现另一设备已上传版本 ${cloudRevision}：已先同步云端并放弃本机 ${pendingUserCount} 项未上传修改，请重新修改后再点云朵`
               : `✅ 已同步另一设备上传的版本 ${cloudRevision}，共 ${downloadedCount} 个词条`);
           }
           return true;

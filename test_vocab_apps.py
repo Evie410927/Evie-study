@@ -147,6 +147,14 @@ class VocabAppTester:
         ))
         self.assert_true(discard_local_pending, f"[{lang_name}] 云同步-远端新版本整库覆盖并清空本机待上传修改", "检测到另一设备版本后没有完整清空本机冲突修改与待上传队列")
 
+        one_time_discard_notice = all(token in content for token in (
+            "const pendingIds = Object.keys(pending)",
+            "const pendingUserCount = pendingIds.filter",
+            "source === 'user'",
+            "this.showToast(pendingUserCount > 0",
+        ))
+        self.assert_true(one_time_discard_notice, f"[{lang_name}] 云同步-覆盖提示只统计本轮真实用户修改", "系统补全或迁移项仍会被当成本机用户修改，导致已经覆盖过的旧提示反复出现")
+
         truncated_snapshot_repair = all(token in content for token in (
             "countUnexplainedMissingCloudWords(rows)",
             "const missingCloudWordCount = this.countUnexplainedMissingCloudWords(dataRows)",
@@ -1856,7 +1864,8 @@ class VocabAppTester:
                   getValidCloudSession:app.getValidCloudSession,
                   fetchCloudRows:app.fetchCloudRows,
                   upsertCloudRows:app.upsertCloudRows,
-                  upsertCloudMeta:app.upsertCloudMeta
+                  upsertCloudMeta:app.upsertCloudMeta,
+                  showToast:app.showToast
                 };
                 const prefix = originalWords[0] && String(originalWords[0].id).startsWith('jp_') ? 'jp' : 'kr';
                 const id = prefix + '_strict_flow';
@@ -1864,6 +1873,7 @@ class VocabAppTester:
                   let rowUploadCalls = 0;
                   let metaUploadCalls = 0;
                   let uploadedRevision = null;
+                  const toastMessages = [];
                   let cloudRows = [
                     {word_id:'__sync_meta__', updated_at:2000, deleted_at:null, payload:{schema:1, revision:2, updatedBy:'other-device'}},
                     {word_id:id, updated_at:2001, deleted_at:null, payload:{id, word:'远端版本', meaning:'远端修改', rating:5, mastered:true, tags:[]}}
@@ -1884,29 +1894,52 @@ class VocabAppTester:
                     uploadedRevision = revision;
                     return {revision};
                   };
+                  app.showToast = message => toastMessages.push(String(message));
 
-                  const conflictSyncOk = await app.syncWithSupabase(false);
+                  const firstToastStart = toastMessages.length;
+                  const conflictSyncOk = await app.syncWithSupabase(true);
+                  const firstSyncToasts = toastMessages.slice(firstToastStart);
                   const afterPull = app.words.find(word => word.id === id);
                   const conflictOnlyDownloaded = conflictSyncOk
                     && rowUploadCalls === 0 && metaUploadCalls === 0
                     && afterPull?.word === '远端版本' && afterPull?.rating === 5 && afterPull?.mastered === true
                     && Object.keys(app.getPendingCloudChanges()).length === 0
                     && app.getCloudBaselineRevision() === 2;
+                  const firstConflictWarnedOnce = firstSyncToasts.filter(message => message.includes('放弃本机 1 项未上传修改')).length === 1;
 
-                  afterPull.rating = 4;
-                  afterPull.updatedAt = Date.now();
-                  app.markPendingCloudChanges([id], afterPull.updatedAt, 'user', {[id]:['rating']});
+                  // 模拟覆盖后由内置词库补全/迁移生成的系统维护队列；这不是用户再次修改，不能重复显示旧覆盖警告。
+                  app.markPendingCloudChanges([id], 2100, 'system', {[id]:['contentRevision']});
+                  cloudRows = [
+                    {word_id:'__sync_meta__', updated_at:3000, deleted_at:null, payload:{schema:1, revision:3, updatedBy:'other-device'}},
+                    {word_id:id, updated_at:3001, deleted_at:null, payload:{id, word:'远端第二版', meaning:'远端再次修改', rating:3, mastered:false, tags:[]}}
+                  ];
+                  const secondToastStart = toastMessages.length;
+                  const secondPullOk = await app.syncWithSupabase(true);
+                  const secondSyncToasts = toastMessages.slice(secondToastStart);
+                  const afterSecondPull = app.words.find(word => word.id === id);
+                  const secondRemoteSyncedWithoutRepeatedDiscard = secondPullOk
+                    && rowUploadCalls === 0 && metaUploadCalls === 0
+                    && afterSecondPull?.word === '远端第二版' && afterSecondPull?.rating === 3
+                    && Object.keys(app.getPendingCloudChanges()).length === 0
+                    && app.getCloudBaselineRevision() === 3
+                    && secondSyncToasts.some(message => message.includes('已同步另一设备上传的版本 3'))
+                    && secondSyncToasts.every(message => !message.includes('放弃本机'));
+
+                  afterSecondPull.rating = 4;
+                  afterSecondPull.updatedAt = Date.now();
+                  app.markPendingCloudChanges([id], afterSecondPull.updatedAt, 'user', {[id]:['rating']});
                   app.refreshWordFingerprints();
                   const uploadSyncOk = await app.syncWithSupabase(false);
                   const safeUploadAfterPull = uploadSyncOk
                     && rowUploadCalls === 1 && metaUploadCalls === 1
-                    && uploadedRevision === 3 && app.getCloudBaselineRevision() === 3;
-                  done({conflictOnlyDownloaded, safeUploadAfterPull});
+                    && uploadedRevision === 4 && app.getCloudBaselineRevision() === 4;
+                  done({conflictOnlyDownloaded, firstConflictWarnedOnce, secondRemoteSyncedWithoutRepeatedDiscard, safeUploadAfterPull});
                 })().catch(error => done({error:String(error && error.message || error)})).finally(() => {
                   app.getValidCloudSession = originals.getValidCloudSession;
                   app.fetchCloudRows = originals.fetchCloudRows;
                   app.upsertCloudRows = originals.upsertCloudRows;
                   app.upsertCloudMeta = originals.upsertCloudMeta;
+                  app.showToast = originals.showToast;
                   app.words = originalWords;
                   app.saveDeletedRecords(originalDeleted);
                   app.savePendingCloudChanges(originalPending);
@@ -1923,6 +1956,16 @@ class VocabAppTester:
                 bool(strict_sync_flow_result and strict_sync_flow_result.get('conflictOnlyDownloaded')),
                 f"[{lang_name}] 浏览器真实同步门禁-远端版本较新时零上传且整库覆盖本机",
                 f"同步主流程未严格阻止冲突上传：{strict_sync_flow_result}",
+            )
+            self.assert_true(
+                bool(strict_sync_flow_result and strict_sync_flow_result.get('firstConflictWarnedOnce')),
+                f"[{lang_name}] 浏览器连续同步-首次冲突只提示一次本机真实修改被覆盖",
+                f"首次远端覆盖没有准确提示本轮被丢弃的本机修改：{strict_sync_flow_result}",
+            )
+            self.assert_true(
+                bool(strict_sync_flow_result and strict_sync_flow_result.get('secondRemoteSyncedWithoutRepeatedDiscard')),
+                f"[{lang_name}] 浏览器连续同步-无新本机编辑时不重复提示旧修改被覆盖",
+                f"第二轮只接收远端修改时仍重复报告第一次已丢弃的本机修改：{strict_sync_flow_result}",
             )
             self.assert_true(
                 bool(strict_sync_flow_result and strict_sync_flow_result.get('safeUploadAfterPull')),
