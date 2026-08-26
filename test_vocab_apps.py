@@ -134,36 +134,42 @@ class VocabAppTester:
         self.assert_true(tombstone_sync, f"[{lang_name}] 云同步-删除 Tombstone 跨设备传播并防止复活", "删除记录未携带时间戳，或云端删除不能覆盖旧的本地卡片")
 
         lossless_conflict_gate = all(token in content for token in (
-            "if (metaRow && localRevision !== cloudRevision)",
-            "if (pendingCount === 0)",
+            "if (metaRow && (localRevision !== cloudRevision || missingCloudWordCount > 0))",
             "this.mergeCloudRows(dataRows)",
             "const pendingAfterMerge = this.getPendingCloudChanges()",
+            "const localOnlyAfterMergeIds = this.getLocalOnlyCloudWordIds(dataRows)",
+            "const protectedLocalIds = [...new Set([...pendingAfterMergeIds, ...localOnlyAfterMergeIds])]",
             "await this.upsertCloudRows(session.access_token, userId, dataRows, false)",
             "保留并上传本机", "return true;",
         ))
-        self.assert_true(lossless_conflict_gate, f"[{lang_name}] 云同步-远端版本变化时无损合并并上传本机待同步修改", "版本冲突时仍会整库覆盖本机新增词，或没有把保留的修改上传为下一版本")
+        self.assert_true(lossless_conflict_gate, f"[{lang_name}] 云同步-版本变化或本地缺词时统一无损合并并补传本机数据", "残缺快照修复仍可能整库覆盖本机新增词，或没有把本地独有卡片补传为下一版本")
 
-        clean_download_without_pending = all(token in content for token in (
-            "replaceLocalWithCloudRows(rows)", "this.words = nextWords",
-            "this.saveDeletedRecords(nextDeleted)", "this.savePendingCloudChanges({})",
-            "if (pendingCount === 0)", "const downloadedCount = this.replaceLocalWithCloudRows(dataRows)",
-        ))
-        self.assert_true(clean_download_without_pending, f"[{lang_name}] 云同步-仅在本机无待上传修改时接受远端整库", "本机无修改时不能完整接收云端快照，或整库覆盖缺少待上传队列保护条件")
+        destructive_replace_removed = "this.replaceLocalWithCloudRows(dataRows)" not in content
+        self.assert_true(destructive_replace_removed, f"[{lang_name}] 云同步-主流程彻底禁用破坏性整库替换", "同步主流程仍调用 replaceLocalWithCloudRows，可能清空待上传队列并删除本地新增词")
 
         preserved_edit_notice = all(token in content for token in (
             "const pendingIds = Object.keys(pending)",
             "const pendingAfterMergeIds = Object.keys(pendingAfterMerge)",
-            "保留并上传本机 ${pendingAfterMergeIds.length} 项修改",
+            "保留并上传本机 ${protectedLocalIds.length} 项数据",
         ))
         self.assert_true(preserved_edit_notice, f"[{lang_name}] 云同步-明确提示已保留并上传的本机修改数量", "冲突合并成功后没有向用户反馈本机修改已被保护并上传")
 
         truncated_snapshot_repair = all(token in content for token in (
             "countUnexplainedMissingCloudWords(rows)",
             "const missingCloudWordCount = this.countUnexplainedMissingCloudWords(dataRows)",
-            "localRevision === cloudRevision && missingCloudWordCount > 0",
-            "检测到本机缺少", "已重新下载完整版本",
+            "missingCloudWordCount > 0",
+            "已无损合并云端版本",
         ))
-        self.assert_true(truncated_snapshot_repair, f"[{lang_name}] 云同步-版本相同但本机词条残缺时强制重新下载完整快照", "旧手机已把 992 条记为当前版本后仍会提前退出，无法自动恢复到 1053 条")
+        self.assert_true(truncated_snapshot_repair, f"[{lang_name}] 云同步-版本相同但本机缺词时无损补全而不覆盖本地新增词", "旧手机快照缺词时仍提前退出，或修复方式会破坏本地独有卡片")
+
+        local_only_recovery = all(token in content for token in (
+            "getLocalOnlyCloudWordIds(rows)",
+            "const localOnlyCloudWordIds = this.getLocalOnlyCloudWordIds(dataRows)",
+            "pendingCount === 0 && localOnlyCloudWordIds.length === 0",
+            "locallyPending && localWord && cloudPayload && !cloudDiffers",
+            "delete pending[id]",
+        ))
+        self.assert_true(local_only_recovery, f"[{lang_name}] 云同步-本地独有词强制补传且已一致 pending 自动清理", "待上传标记丢失的本地卡片无法补传，或与云端相同的冗余队列阻断无损修复")
 
         sync_lock = "this._cloudSyncing" in content and "this._cloudSyncPending" in content
         self.assert_true(sync_lock, f"[{lang_name}] 云同步-并发请求锁与待同步补偿", "连续编辑可能并发上传并产生覆盖竞争")
@@ -1934,7 +1940,7 @@ class VocabAppTester:
                     && newWordAfterConflict?.word === '삐걱거리다'
                     && Object.keys(app.getPendingCloudChanges()).length === 0
                     && app.getCloudBaselineRevision() === 3;
-                  const firstConflictPreservedNotice = firstSyncToasts.some(message => message.includes('保留并上传本机 2 项修改'))
+                  const firstConflictPreservedNotice = firstSyncToasts.some(message => message.includes('保留并上传本机 2 项数据'))
                     && firstSyncToasts.every(message => !message.includes('放弃本机'));
 
                   // 模拟另一设备基于版本 3 又上传了版本 4；本机此时没有修改，应只接收完整云端快照。
@@ -1953,7 +1959,7 @@ class VocabAppTester:
                     && app.words.some(word => word.id === newId && word.word === '삐걱거리다')
                     && Object.keys(app.getPendingCloudChanges()).length === 0
                     && app.getCloudBaselineRevision() === 4
-                    && secondSyncToasts.some(message => message.includes('已同步另一设备上传的版本 4'))
+                    && secondSyncToasts.some(message => message.includes('已无损合并云端版本 4'))
                     && secondSyncToasts.every(message => !message.includes('放弃本机'));
 
                   afterSecondPull.rating = 4;
@@ -2048,15 +2054,30 @@ class VocabAppTester:
                   const firstFetchOffsets = requestedOffsets.join(',');
                   const activeRows = split.dataRows.filter(row => Number(row.deleted_at || 0) <= 0);
                   app.words = activeRows.slice(0, 992).map(row => ({...row.payload}));
+                  const localOnlyId = `${prefix}_local_only_preserve`;
+                  app.words.push({id:localOnlyId, word:'삐걱거리다', meaning:'本机新增且必须保留', rating:0, mastered:false, tags:[], createdAt:9998, updatedAt:9998});
                   app.saveDeletedRecords({});
-                  app.savePendingCloudChanges({[`${prefix}_page_0000`]:{changedAt:9999, source:'system', fields:[]}});
+                  app.savePendingCloudChanges({
+                    [`${prefix}_page_0000`]:{changedAt:9999, source:'system', fields:[]},
+                    [localOnlyId]:{changedAt:9998, source:'user', fields:['word','meaning']}
+                  });
                   app.saveCloudBaselineRevision(8);
                   const missingBeforeRepair = app.countUnexplainedMissingCloudWords(split.dataRows);
                   let rowUploadCalls = 0;
                   let metaUploadCalls = 0;
+                  let uploadedRevision = null;
+                  let uploadedRows = [];
                   app.getValidCloudSession = async () => ({access_token:'pagination-test-token', user:{id:'00000000-0000-0000-0000-000000000000'}});
-                  app.upsertCloudRows = async () => { rowUploadCalls += 1; return []; };
-                  app.upsertCloudMeta = async () => { metaUploadCalls += 1; return {}; };
+                  app.upsertCloudRows = async (token, userId, rows, forceAll) => {
+                    rowUploadCalls += 1;
+                    uploadedRows = app.buildCloudRows(userId, rows, forceAll);
+                    return uploadedRows;
+                  };
+                  app.upsertCloudMeta = async (token, userId, revision) => {
+                    metaUploadCalls += 1;
+                    uploadedRevision = revision;
+                    return {revision};
+                  };
                   requestedOffsets.length = 0;
                   const repaired = await app.syncWithSupabase(false);
                   const deletedCount = Object.keys(app.getDeletedRecords()).length;
@@ -2069,6 +2090,9 @@ class VocabAppTester:
                     repaired,
                     rowUploadCalls,
                     metaUploadCalls,
+                    uploadedRevision,
+                    localOnlySurvived:app.words.some(word => word.id === localOnlyId && word.word === '삐걱거리다'),
+                    localOnlyUploaded:uploadedRows.some(row => row.word_id === localOnlyId && row.payload?.word === '삐걱거리다'),
                     deletedCount,
                     finalWordCount:app.words.length,
                     pendingAfterRepair:Object.keys(app.getPendingCloudChanges()).length
@@ -2096,9 +2120,9 @@ class VocabAppTester:
                 f"超过 1000 行后仍发生截断或分页偏移错误：{paginated_fetch_result}",
             )
             self.assert_true(
-                bool(paginated_fetch_result and paginated_fetch_result.get('missingBeforeRepair') == 61 and paginated_fetch_result.get('repaired') and paginated_fetch_result.get('rowUploadCalls') == 0 and paginated_fetch_result.get('metaUploadCalls') == 0 and paginated_fetch_result.get('finalWordCount') == 1053 and paginated_fetch_result.get('deletedCount') == 7 and paginated_fetch_result.get('pendingAfterRepair') == 0),
-                f"[{lang_name}] 浏览器云端分页-识别 992→1053 缺失并完整分类 7 条删除记录",
-                f"整库分页完成后有效词条数量仍不正确：{paginated_fetch_result}",
+                bool(paginated_fetch_result and paginated_fetch_result.get('missingBeforeRepair') == 61 and paginated_fetch_result.get('repaired') and paginated_fetch_result.get('rowUploadCalls') == 1 and paginated_fetch_result.get('metaUploadCalls') == 1 and paginated_fetch_result.get('uploadedRevision') == 9 and paginated_fetch_result.get('localOnlySurvived') and paginated_fetch_result.get('localOnlyUploaded') and paginated_fetch_result.get('finalWordCount') == 1054 and paginated_fetch_result.get('deletedCount') == 7 and paginated_fetch_result.get('pendingAfterRepair') == 0),
+                f"[{lang_name}] 浏览器残缺快照修复-补齐 61 个云端词且保留上传本机 삐걱거리다",
+                f"版本相同但本机缺词时仍覆盖本地新增词，或没有完成无损补全与补传：{paginated_fetch_result}",
             )
 
             empty_navigation_result = driver.execute_script("""

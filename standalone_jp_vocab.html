@@ -6316,6 +6316,11 @@ function createSupabaseSyncMethods(language) {
       }).length;
     },
 
+    getLocalOnlyCloudWordIds(rows) {
+      const cloudIds = new Set((rows || []).map(row => String(row && row.word_id || '')).filter(id => id && id !== '__sync_meta__'));
+      return (this.words || []).filter(word => word && word.id && !cloudIds.has(String(word.id))).map(word => String(word.id));
+    },
+
     async upsertCloudMeta(accessToken, userId, revision) {
       const now = Date.now();
       const row = {
@@ -6366,6 +6371,10 @@ function createSupabaseSyncMethods(language) {
         const locallyPending = pendingMeta.changedAt > 0;
         const cloudPayload = row.payload && typeof row.payload === 'object' ? row.payload : null;
         const cloudDiffers = cloudPayload && (!localWord || this.wordFingerprint(cloudPayload) !== this.wordFingerprint(localWord));
+        if (locallyPending && localWord && cloudPayload && !cloudDiffers) {
+          delete pending[id];
+          return;
+        }
         const localContentRevision = Number(localWord && localWord.contentRevision || 0);
         const cloudContentRevision = Number(cloudPayload && cloudPayload.contentRevision || 0);
         const systemUpdateCanYield = locallyPending && pendingMeta.source === 'system' && cloudDiffers && cloudContentRevision >= localContentRevision;
@@ -6469,52 +6478,35 @@ function createSupabaseSyncMethods(language) {
         const pendingIds = Object.keys(pending).filter(id => this.getPendingCloudMeta(pending[id]).changedAt > 0);
         const pendingCount = pendingIds.length;
         const missingCloudWordCount = this.countUnexplainedMissingCloudWords(dataRows);
+        const localOnlyCloudWordIds = this.getLocalOnlyCloudWordIds(dataRows);
 
-        // 另一设备已提交新版本：没有本机修改时整库接收；存在待上传修改时先逐字段合并，
-        // 再把保留下来的本机新增/编辑上传为下一版本，绝不因点击云朵而丢失本地卡片。
-        if (metaRow && localRevision !== cloudRevision) {
-          if (pendingCount === 0) {
-            const downloadedCount = this.replaceLocalWithCloudRows(dataRows);
-            this.saveCloudBaselineRevision(cloudRevision);
-            this.renderWordList();
-            this.updateStats();
-            if (showToastNotification) this.showToast(`✅ 已同步另一设备上传的版本 ${cloudRevision}，共 ${downloadedCount} 个词条`);
-            return true;
-          }
-
+        // 云端版本变化或本地快照缺词时一律逐词无损合并；禁止整库替换。
+        // 即使待上传标记意外缺失，本地独有卡片也会被识别并补传，点击云朵绝不删除本地新增词。
+        if (metaRow && (localRevision !== cloudRevision || missingCloudWordCount > 0)) {
           this.mergeCloudRows(dataRows);
           this.saveCloudBaselineRevision(cloudRevision);
           const pendingAfterMerge = this.getPendingCloudChanges();
           const pendingAfterMergeIds = Object.keys(pendingAfterMerge).filter(id => this.getPendingCloudMeta(pendingAfterMerge[id]).changedAt > 0);
-          if (pendingAfterMergeIds.length === 0) {
+          const localOnlyAfterMergeIds = this.getLocalOnlyCloudWordIds(dataRows);
+          const protectedLocalIds = [...new Set([...pendingAfterMergeIds, ...localOnlyAfterMergeIds])];
+          if (protectedLocalIds.length > 0) {
+            const uploadedRows = await this.upsertCloudRows(session.access_token, userId, dataRows, false);
+            const nextRevision = cloudRevision + 1;
+            await this.upsertCloudMeta(session.access_token, userId, nextRevision);
+            this.clearUploadedCloudChanges(uploadedRows);
+            this.saveCloudBaselineRevision(nextRevision);
             this.renderWordList();
             this.updateStats();
-            if (showToastNotification) this.showToast(`✅ 已合并云端版本 ${cloudRevision}，本机与云端数据已一致`);
+            if (showToastNotification) this.showToast(`✅ 已无损合并云端版本 ${cloudRevision}，保留并上传本机 ${protectedLocalIds.length} 项数据，生成版本 ${nextRevision}`);
             return true;
           }
-
-          const uploadedRows = await this.upsertCloudRows(session.access_token, userId, dataRows, false);
-          const nextRevision = cloudRevision + 1;
-          await this.upsertCloudMeta(session.access_token, userId, nextRevision);
-          this.clearUploadedCloudChanges(uploadedRows);
-          this.saveCloudBaselineRevision(nextRevision);
           this.renderWordList();
           this.updateStats();
-          if (showToastNotification) this.showToast(`✅ 已合并云端版本 ${cloudRevision}，保留并上传本机 ${pendingAfterMergeIds.length} 项修改，生成版本 ${nextRevision}`);
+          if (showToastNotification) this.showToast(`✅ 已无损合并云端版本 ${cloudRevision}，本机与云端数据已一致`);
           return true;
         }
 
-        // 修复旧版 1000 行截断造成的残缺本地快照：版本相同也必须补全，且本次禁止上传。
-        if (metaRow && localRevision === cloudRevision && missingCloudWordCount > 0) {
-          const downloadedCount = this.replaceLocalWithCloudRows(dataRows);
-          this.saveCloudBaselineRevision(cloudRevision);
-          this.renderWordList();
-          this.updateStats();
-          if (showToastNotification) this.showToast(`✅ 检测到本机缺少 ${missingCloudWordCount} 个云端词条，已重新下载完整版本 ${cloudRevision}，共 ${downloadedCount} 个词条`);
-          return true;
-        }
-
-        if (metaRow && pendingCount === 0) {
+        if (metaRow && pendingCount === 0 && localOnlyCloudWordIds.length === 0) {
           if (showToastNotification) this.showToast(`✅ 当前已是云端最新版本 ${cloudRevision}，没有待上传修改`);
           return true;
         }
