@@ -6433,22 +6433,39 @@ function createSupabaseSyncMethods(language) {
         const pending = this.getPendingCloudChanges();
         const pendingIds = Object.keys(pending).filter(id => this.getPendingCloudMeta(pending[id]).changedAt > 0);
         const pendingCount = pendingIds.length;
-        // 覆盖警告只能统计用户在本机实际做出的修改；内置词库补全、数据迁移等系统维护项
-        // 即使进入待上传队列，也不能冒充已经在上一次同步中丢弃过的本机编辑反复提示。
-        const pendingUserCount = pendingIds.filter(id => this.getPendingCloudMeta(pending[id]).source === 'user').length;
         const missingCloudWordCount = this.countUnexplainedMissingCloudWords(dataRows);
 
-        // 另一设备已提交新版本：本次严格只下载，整库覆盖并放弃本机尚未上传的修改。
+        // 另一设备已提交新版本：没有本机修改时整库接收；存在待上传修改时先逐字段合并，
+        // 再把保留下来的本机新增/编辑上传为下一版本，绝不因点击云朵而丢失本地卡片。
         if (metaRow && localRevision !== cloudRevision) {
-          const downloadedCount = this.replaceLocalWithCloudRows(dataRows);
+          if (pendingCount === 0) {
+            const downloadedCount = this.replaceLocalWithCloudRows(dataRows);
+            this.saveCloudBaselineRevision(cloudRevision);
+            this.renderWordList();
+            this.updateStats();
+            if (showToastNotification) this.showToast(`✅ 已同步另一设备上传的版本 ${cloudRevision}，共 ${downloadedCount} 个词条`);
+            return true;
+          }
+
+          this.mergeCloudRows(dataRows);
           this.saveCloudBaselineRevision(cloudRevision);
+          const pendingAfterMerge = this.getPendingCloudChanges();
+          const pendingAfterMergeIds = Object.keys(pendingAfterMerge).filter(id => this.getPendingCloudMeta(pendingAfterMerge[id]).changedAt > 0);
+          if (pendingAfterMergeIds.length === 0) {
+            this.renderWordList();
+            this.updateStats();
+            if (showToastNotification) this.showToast(`✅ 已合并云端版本 ${cloudRevision}，本机与云端数据已一致`);
+            return true;
+          }
+
+          const uploadedRows = await this.upsertCloudRows(session.access_token, userId, dataRows, false);
+          const nextRevision = cloudRevision + 1;
+          await this.upsertCloudMeta(session.access_token, userId, nextRevision);
+          this.clearUploadedCloudChanges(uploadedRows);
+          this.saveCloudBaselineRevision(nextRevision);
           this.renderWordList();
           this.updateStats();
-          if (showToastNotification) {
-            this.showToast(pendingUserCount > 0
-              ? `⚠️ 发现另一设备已上传版本 ${cloudRevision}：已先同步云端并放弃本机 ${pendingUserCount} 项未上传修改，请重新修改后再点云朵`
-              : `✅ 已同步另一设备上传的版本 ${cloudRevision}，共 ${downloadedCount} 个词条`);
-          }
+          if (showToastNotification) this.showToast(`✅ 已合并云端版本 ${cloudRevision}，保留并上传本机 ${pendingAfterMergeIds.length} 项修改，生成版本 ${nextRevision}`);
           return true;
         }
 

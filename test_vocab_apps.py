@@ -133,27 +133,29 @@ class VocabAppTester:
         ))
         self.assert_true(tombstone_sync, f"[{lang_name}] 云同步-删除 Tombstone 跨设备传播并防止复活", "删除记录未携带时间戳，或云端删除不能覆盖旧的本地卡片")
 
-        strict_conflict_gate = all(token in content for token in (
+        lossless_conflict_gate = all(token in content for token in (
             "if (metaRow && localRevision !== cloudRevision)",
-            "this.replaceLocalWithCloudRows(dataRows)",
-            "this.saveCloudBaselineRevision(cloudRevision)",
-            "已先同步云端并放弃本机", "return true;",
+            "if (pendingCount === 0)",
+            "this.mergeCloudRows(dataRows)",
+            "const pendingAfterMerge = this.getPendingCloudChanges()",
+            "await this.upsertCloudRows(session.access_token, userId, dataRows, false)",
+            "保留并上传本机", "return true;",
         ))
-        self.assert_true(strict_conflict_gate, f"[{lang_name}] 云同步-发现另一设备新版本时只下载并禁止本次上传", "版本冲突时仍可能合并或上传本机修改，而不是先整库接受另一设备版本")
+        self.assert_true(lossless_conflict_gate, f"[{lang_name}] 云同步-远端版本变化时无损合并并上传本机待同步修改", "版本冲突时仍会整库覆盖本机新增词，或没有把保留的修改上传为下一版本")
 
-        discard_local_pending = all(token in content for token in (
+        clean_download_without_pending = all(token in content for token in (
             "replaceLocalWithCloudRows(rows)", "this.words = nextWords",
             "this.saveDeletedRecords(nextDeleted)", "this.savePendingCloudChanges({})",
+            "if (pendingCount === 0)", "const downloadedCount = this.replaceLocalWithCloudRows(dataRows)",
         ))
-        self.assert_true(discard_local_pending, f"[{lang_name}] 云同步-远端新版本整库覆盖并清空本机待上传修改", "检测到另一设备版本后没有完整清空本机冲突修改与待上传队列")
+        self.assert_true(clean_download_without_pending, f"[{lang_name}] 云同步-仅在本机无待上传修改时接受远端整库", "本机无修改时不能完整接收云端快照，或整库覆盖缺少待上传队列保护条件")
 
-        one_time_discard_notice = all(token in content for token in (
+        preserved_edit_notice = all(token in content for token in (
             "const pendingIds = Object.keys(pending)",
-            "const pendingUserCount = pendingIds.filter",
-            "source === 'user'",
-            "this.showToast(pendingUserCount > 0",
+            "const pendingAfterMergeIds = Object.keys(pendingAfterMerge)",
+            "保留并上传本机 ${pendingAfterMergeIds.length} 项修改",
         ))
-        self.assert_true(one_time_discard_notice, f"[{lang_name}] 云同步-覆盖提示只统计本轮真实用户修改", "系统补全或迁移项仍会被当成本机用户修改，导致已经覆盖过的旧提示反复出现")
+        self.assert_true(preserved_edit_notice, f"[{lang_name}] 云同步-明确提示已保留并上传的本机修改数量", "冲突合并成功后没有向用户反馈本机修改已被保护并上传")
 
         truncated_snapshot_repair = all(token in content for token in (
             "countUnexplainedMissingCloudWords(rows)",
@@ -1766,15 +1768,17 @@ class VocabAppTester:
                 const prefix = originalWords[0] && String(originalWords[0].id).startsWith('jp_') ? 'jp' : 'kr';
                 try {
                   app.words = [
-                    {id: prefix + '_rating', word:'빼돌리다', meaning:'手机旧释义', rating:4, mastered:false, tags:[], updatedAt:9000},
-                    {id: prefix + '_circle', word:'둥그라미', meaning:'手机旧释义', rating:1, mastered:false, tags:[], updatedAt:9001},
-                    {id: prefix + '_status', word:'덤벙대다', meaning:'手机旧释义', rating:0, mastered:true, tags:[], updatedAt:9002}
+                    {id: prefix + '_rating', word:'빼돌리다', meaning:'手机旧释义', rating:4, mastered:false, tags:[], updatedAt:400},
+                    {id: prefix + '_circle', word:'둥그라미', meaning:'手机旧释义', rating:1, mastered:true, tags:[], updatedAt:401},
+                    {id: prefix + '_status', word:'덤벙대다', meaning:'手机旧释义', rating:0, mastered:true, tags:[], updatedAt:402},
+                    {id: prefix + '_new_word', word:'삐걱거리다', meaning:'本机新增词', rating:0, mastered:false, tags:[], createdAt:9003, updatedAt:9003}
                   ];
                   app.saveDeletedRecords({});
                   app.savePendingCloudChanges({
                     [prefix + '_rating']:{changedAt:9000, source:'user', fields:['rating']},
                     [prefix + '_circle']:{changedAt:9001, source:'user', fields:['word','rating','mastered']},
-                    [prefix + '_status']:{changedAt:9002, source:'user', fields:['mastered']}
+                    [prefix + '_status']:{changedAt:9002, source:'user', fields:['mastered']},
+                    [prefix + '_new_word']:{changedAt:9003, source:'user', fields:['word','meaning','rating','mastered','tags']}
                   });
                   app.refreshWordFingerprints();
                   const cloudRows = [
@@ -1786,27 +1790,35 @@ class VocabAppTester:
                   SafeStorage.setItem(app.CLOUD_BASE_REVISION_KEY, '1');
                   const split = app.splitCloudRows(cloudRows);
                   const versionMismatch = app.getCloudBaselineRevision() !== split.revision;
-                  const downloaded = app.replaceLocalWithCloudRows(split.dataRows);
+                  const merged = app.mergeCloudRows(split.dataRows);
                   app.saveCloudBaselineRevision(split.revision);
                   const ratingWord = app.words.find(w => w.id === prefix + '_rating');
                   const circleWord = app.words.find(w => w.id === prefix + '_circle');
                   const statusWord = app.words.find(w => w.id === prefix + '_status');
-                  const browserStateFullyWins = ratingWord?.rating === 5
-                    && circleWord?.word === '동그라미' && circleWord?.rating === 2 && circleWord?.mastered === true
-                    && statusWord?.mastered === false;
-                  const pendingDiscarded = Object.keys(app.getPendingCloudChanges()).length === 0;
+                  const newWord = app.words.find(w => w.id === prefix + '_new_word');
+                  const localChangesPreserved = ratingWord?.rating === 4 && ratingWord?.meaning === '浏览器释义'
+                    && circleWord?.word === '둥그라미' && circleWord?.rating === 1 && circleWord?.mastered === true && circleWord?.meaning === '浏览器释义'
+                    && statusWord?.mastered === true && statusWord?.meaning === '浏览器释义'
+                    && newWord?.word === '삐걱거리다';
+                  const pendingRows = app.buildCloudRows('00000000-0000-0000-0000-000000000000', split.dataRows, false);
+                  const pendingPreserved = Object.keys(app.getPendingCloudChanges()).length === 4
+                    && pendingRows.length === 4 && pendingRows.some(row => row.word_id === prefix + '_new_word' && row.payload.word === '삐걱거리다');
                   const metaExcluded = split.dataRows.length === 3 && !app.words.some(word => word.id === '__sync_meta__');
                   const fullBootstrapRows = app.buildCloudRows('00000000-0000-0000-0000-000000000000', split.dataRows, true);
-                  const forceAllUploadsWholeLibrary = fullBootstrapRows.length === 3;
+                  const forceAllUploadsWholeLibrary = fullBootstrapRows.length === 4;
+                  app.clearUploadedCloudChanges(pendingRows);
+                  const cloudRowsAfterConflictUpload = split.dataRows.concat([
+                    {word_id:prefix + '_new_word', updated_at:9003, deleted_at:null, payload:{...newWord}}
+                  ]);
                   app.refreshWordFingerprints();
                   const before = Number(ratingWord.updatedAt || 0);
-                  ratingWord.rating = 4;
+                  ratingWord.rating = 3;
                   app.markLocallyChangedWords();
-                  const deltaRows = app.buildCloudRows('00000000-0000-0000-0000-000000000000', split.dataRows, false);
+                  const deltaRows = app.buildCloudRows('00000000-0000-0000-0000-000000000000', cloudRowsAfterConflictUpload, false);
                   const baselineMatchedDeltaUpload = app.getCloudBaselineRevision() === 2
-                    && deltaRows.length === 1 && deltaRows[0].word_id === prefix + '_rating' && deltaRows[0].payload.rating === 4;
+                    && deltaRows.length === 1 && deltaRows[0].word_id === prefix + '_rating' && deltaRows[0].payload.rating === 3;
                   const localEditTracked = Number(ratingWord.updatedAt || 0) > before;
-                  return {versionMismatch, downloaded, browserStateFullyWins, pendingDiscarded, metaExcluded, forceAllUploadsWholeLibrary, baselineMatchedDeltaUpload, localEditTracked};
+                  return {versionMismatch, merged, localChangesPreserved, pendingPreserved, metaExcluded, forceAllUploadsWholeLibrary, baselineMatchedDeltaUpload, localEditTracked};
                 } finally {
                   app.words = originalWords;
                   app.saveDeletedRecords(originalDeleted);
@@ -1824,14 +1836,14 @@ class VocabAppTester:
                 "本机基线版本与云端版本不一致时没有识别出必须先下载",
             )
             self.assert_true(
-                bool(revision_gate_result and revision_gate_result.get('browserStateFullyWins')),
-                f"[{lang_name}] 浏览器双设备模拟-星级词名与掌握状态整库覆盖手机冲突值",
-                "浏览器五星/改名/已掌握/学习中状态未完整覆盖手机旧值",
+                bool(revision_gate_result and revision_gate_result.get('localChangesPreserved')),
+                f"[{lang_name}] 浏览器双设备模拟-逐字段合并远端更新并保留本机用户编辑",
+                "版本冲突后本机明确编辑字段被远端覆盖，或远端未冲突字段没有同步下来",
             )
             self.assert_true(
-                bool(revision_gate_result and revision_gate_result.get('pendingDiscarded')),
-                f"[{lang_name}] 浏览器双设备模拟-发现远端新版后放弃手机全部未上传修改",
-                "接受另一设备版本后仍残留手机待上传修改，下一次可能反向覆盖云端",
+                bool(revision_gate_result and revision_gate_result.get('pendingPreserved')),
+                f"[{lang_name}] 浏览器双设备模拟-远端新版不会吞掉本机新增词与待上传队列",
+                "版本冲突合并后本机新增的 삐걱거리다 消失，或没有继续进入差量上传",
             )
             self.assert_true(
                 bool(revision_gate_result and revision_gate_result.get('metaExcluded')),
@@ -1870,6 +1882,7 @@ class VocabAppTester:
                 };
                 const prefix = originalWords[0] && String(originalWords[0].id).startsWith('jp_') ? 'jp' : 'kr';
                 const id = prefix + '_strict_flow';
+                const newId = prefix + '_strict_new_word';
                 (async () => {
                   let rowUploadCalls = 0;
                   let metaUploadCalls = 0;
@@ -1879,9 +1892,15 @@ class VocabAppTester:
                     {word_id:'__sync_meta__', updated_at:2000, deleted_at:null, payload:{schema:1, revision:2, updatedBy:'other-device'}},
                     {word_id:id, updated_at:2001, deleted_at:null, payload:{id, word:'远端版本', meaning:'远端修改', rating:5, mastered:true, tags:[]}}
                   ];
-                  app.words = [{id, word:'本机冲突版本', meaning:'本机修改', rating:1, mastered:false, tags:[], updatedAt:9999}];
+                  app.words = [
+                    {id, word:'本机冲突版本', meaning:'本机修改', rating:1, mastered:false, tags:[], updatedAt:9999},
+                    {id:newId, word:'삐걱거리다', meaning:'本机新增词', rating:0, mastered:false, tags:[], createdAt:10000, updatedAt:10000}
+                  ];
                   app.saveDeletedRecords({});
-                  app.savePendingCloudChanges({[id]:{changedAt:9999, source:'user', fields:['word','rating','mastered']}});
+                  app.savePendingCloudChanges({
+                    [id]:{changedAt:9999, source:'user', fields:['word','rating','mastered']},
+                    [newId]:{changedAt:10000, source:'user', fields:['word','meaning','rating','mastered','tags']}
+                  });
                   app.saveCloudBaselineRevision(1);
                   app.refreshWordFingerprints();
                   app.getValidCloudSession = async () => ({access_token:'strict-sync-token', user:{id:'00000000-0000-0000-0000-000000000000'}});
@@ -1901,29 +1920,33 @@ class VocabAppTester:
                   const conflictSyncOk = await app.syncWithSupabase(true);
                   const firstSyncToasts = toastMessages.slice(firstToastStart);
                   const afterPull = app.words.find(word => word.id === id);
-                  const conflictOnlyDownloaded = conflictSyncOk
-                    && rowUploadCalls === 0 && metaUploadCalls === 0
-                    && afterPull?.word === '远端版本' && afterPull?.rating === 5 && afterPull?.mastered === true
+                  const newWordAfterConflict = app.words.find(word => word.id === newId);
+                  const conflictMergedAndUploaded = conflictSyncOk
+                    && rowUploadCalls === 1 && metaUploadCalls === 1 && uploadedRevision === 3
+                    && afterPull?.word === '本机冲突版本' && afterPull?.rating === 1 && afterPull?.mastered === false
+                    && newWordAfterConflict?.word === '삐걱거리다'
                     && Object.keys(app.getPendingCloudChanges()).length === 0
-                    && app.getCloudBaselineRevision() === 2;
-                  const firstConflictWarnedOnce = firstSyncToasts.filter(message => message.includes('放弃本机 1 项未上传修改')).length === 1;
+                    && app.getCloudBaselineRevision() === 3;
+                  const firstConflictPreservedNotice = firstSyncToasts.some(message => message.includes('保留并上传本机 2 项修改'))
+                    && firstSyncToasts.every(message => !message.includes('放弃本机'));
 
-                  // 模拟覆盖后由内置词库补全/迁移生成的系统维护队列；这不是用户再次修改，不能重复显示旧覆盖警告。
-                  app.markPendingCloudChanges([id], 2100, 'system', {[id]:['contentRevision']});
+                  // 模拟另一设备基于版本 3 又上传了版本 4；本机此时没有修改，应只接收完整云端快照。
                   cloudRows = [
-                    {word_id:'__sync_meta__', updated_at:3000, deleted_at:null, payload:{schema:1, revision:3, updatedBy:'other-device'}},
-                    {word_id:id, updated_at:3001, deleted_at:null, payload:{id, word:'远端第二版', meaning:'远端再次修改', rating:3, mastered:false, tags:[]}}
+                    {word_id:'__sync_meta__', updated_at:3000, deleted_at:null, payload:{schema:1, revision:4, updatedBy:'other-device'}},
+                    {word_id:id, updated_at:3001, deleted_at:null, payload:{id, word:'远端第二版', meaning:'远端再次修改', rating:3, mastered:false, tags:[]}},
+                    {word_id:newId, updated_at:3002, deleted_at:null, payload:{id:newId, word:'삐걱거리다', meaning:'已上传的新词', rating:0, mastered:false, tags:[]}}
                   ];
                   const secondToastStart = toastMessages.length;
                   const secondPullOk = await app.syncWithSupabase(true);
                   const secondSyncToasts = toastMessages.slice(secondToastStart);
                   const afterSecondPull = app.words.find(word => word.id === id);
                   const secondRemoteSyncedWithoutRepeatedDiscard = secondPullOk
-                    && rowUploadCalls === 0 && metaUploadCalls === 0
+                    && rowUploadCalls === 1 && metaUploadCalls === 1
                     && afterSecondPull?.word === '远端第二版' && afterSecondPull?.rating === 3
+                    && app.words.some(word => word.id === newId && word.word === '삐걱거리다')
                     && Object.keys(app.getPendingCloudChanges()).length === 0
-                    && app.getCloudBaselineRevision() === 3
-                    && secondSyncToasts.some(message => message.includes('已同步另一设备上传的版本 3'))
+                    && app.getCloudBaselineRevision() === 4
+                    && secondSyncToasts.some(message => message.includes('已同步另一设备上传的版本 4'))
                     && secondSyncToasts.every(message => !message.includes('放弃本机'));
 
                   afterSecondPull.rating = 4;
@@ -1932,9 +1955,9 @@ class VocabAppTester:
                   app.refreshWordFingerprints();
                   const uploadSyncOk = await app.syncWithSupabase(false);
                   const safeUploadAfterPull = uploadSyncOk
-                    && rowUploadCalls === 1 && metaUploadCalls === 1
-                    && uploadedRevision === 4 && app.getCloudBaselineRevision() === 4;
-                  done({conflictOnlyDownloaded, firstConflictWarnedOnce, secondRemoteSyncedWithoutRepeatedDiscard, safeUploadAfterPull});
+                    && rowUploadCalls === 2 && metaUploadCalls === 2
+                    && uploadedRevision === 5 && app.getCloudBaselineRevision() === 5;
+                  done({conflictMergedAndUploaded, firstConflictPreservedNotice, secondRemoteSyncedWithoutRepeatedDiscard, safeUploadAfterPull});
                 })().catch(error => done({error:String(error && error.message || error)})).finally(() => {
                   app.getValidCloudSession = originals.getValidCloudSession;
                   app.fetchCloudRows = originals.fetchCloudRows;
@@ -1954,23 +1977,23 @@ class VocabAppTester:
                 });
             """)
             self.assert_true(
-                bool(strict_sync_flow_result and strict_sync_flow_result.get('conflictOnlyDownloaded')),
-                f"[{lang_name}] 浏览器真实同步门禁-远端版本较新时零上传且整库覆盖本机",
-                f"同步主流程未严格阻止冲突上传：{strict_sync_flow_result}",
+                bool(strict_sync_flow_result and strict_sync_flow_result.get('conflictMergedAndUploaded')),
+                f"[{lang_name}] 浏览器真实同步门禁-远端版本较新时保留并上传本机新增词",
+                f"同步主流程仍吞掉本机新增词或没有将合并结果上传：{strict_sync_flow_result}",
             )
             self.assert_true(
-                bool(strict_sync_flow_result and strict_sync_flow_result.get('firstConflictWarnedOnce')),
-                f"[{lang_name}] 浏览器连续同步-首次冲突只提示一次本机真实修改被覆盖",
-                f"首次远端覆盖没有准确提示本轮被丢弃的本机修改：{strict_sync_flow_result}",
+                bool(strict_sync_flow_result and strict_sync_flow_result.get('firstConflictPreservedNotice')),
+                f"[{lang_name}] 浏览器连续同步-首次冲突明确提示本机修改已保留上传",
+                f"首次冲突没有准确提示本机修改已受保护，或仍显示丢弃警告：{strict_sync_flow_result}",
             )
             self.assert_true(
                 bool(strict_sync_flow_result and strict_sync_flow_result.get('secondRemoteSyncedWithoutRepeatedDiscard')),
-                f"[{lang_name}] 浏览器连续同步-无新本机编辑时不重复提示旧修改被覆盖",
-                f"第二轮只接收远端修改时仍重复报告第一次已丢弃的本机修改：{strict_sync_flow_result}",
+                f"[{lang_name}] 浏览器连续同步-无新本机编辑时只接收完整远端版本",
+                f"第二轮无本机修改时仍发生上传，或先前新增词未包含在云端快照中：{strict_sync_flow_result}",
             )
             self.assert_true(
                 bool(strict_sync_flow_result and strict_sync_flow_result.get('safeUploadAfterPull')),
-                f"[{lang_name}] 浏览器真实同步门禁-先拉取后重新修改才允许上传下一版本",
+                f"[{lang_name}] 浏览器真实同步门禁-无损合并后后续修改仍可上传下一版本",
                 f"完成远端同步并重新修改后仍不能安全上传：{strict_sync_flow_result}",
             )
 
