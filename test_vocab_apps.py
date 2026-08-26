@@ -1205,6 +1205,8 @@ class VocabAppTester:
                 expected = {
                     '후유증': ('kr_777', '[후유쯩]', '名词'),
                     '삐걱거리다': ('kr_778', '[삐걱꺼리다]', '动词'),
+                    '뒤탈': ('kr_779', '[뒤ː탈]', '名词'),
+                    '데우다': ('kr_780', '[데우다]', '动词'),
                 }
                 recovered_today_cards_ok = True
                 for source_name, cards in (('samples', primary_cards), ('fallbackWords', fallback_cards)):
@@ -1233,7 +1235,7 @@ class VocabAppTester:
                 recovered_today_error = f'解析今日恢复词条失败: {err}'
             self.assert_true(
                 recovered_today_cards_ok,
-                '[韩语] 数据恢复-今日丢失的 후유증 与 삐걱거리다 在主数据和失效保护数据中唯一且完整',
+                '[韩语] 数据恢复-今日确认丢失的四个词在主数据和失效保护数据中唯一且完整',
                 recovered_today_error,
             )
 
