@@ -1197,6 +1197,46 @@ class VocabAppTester:
             )
             self.assert_true(repaired_example_cluster, '[韩语] 数据质量-截图词条及同批情绪/说话表达使用人工自然例句', '무르다、성질 내다 或同批词条仍保留模板句，或修订未覆盖主数据与备用数据')
 
+            recovered_today_cards_ok = False
+            recovered_today_error = ''
+            try:
+                primary_cards = json.loads(samples_m.group(1), strict=False) if samples_m else []
+                fallback_cards = json.loads(fallback_m.group(1), strict=False) if fallback_m else []
+                expected = {
+                    '후유증': ('kr_777', '[후유쯩]', '名词'),
+                    '삐걱거리다': ('kr_778', '[삐걱꺼리다]', '动词'),
+                }
+                recovered_today_cards_ok = True
+                for source_name, cards in (('samples', primary_cards), ('fallbackWords', fallback_cards)):
+                    for word, (expected_id, expected_reading, expected_tag) in expected.items():
+                        matches = [item for item in cards if item.get('word') == word]
+                        if len(matches) != 1:
+                            recovered_today_cards_ok = False
+                            recovered_today_error = f'{source_name} 中 {word} 数量为 {len(matches)}，应为 1'
+                            break
+                        card = matches[0]
+                        if not (
+                            card.get('id') == expected_id
+                            and card.get('reading') == expected_reading
+                            and card.get('tags') == [expected_tag]
+                            and card.get('autoSimilarWordIds') == []
+                            and len(card.get('examples') or []) >= 3
+                            and len([line for line in str(card.get('example') or '').split('\n') if line]) >= 3
+                            and len([line for line in str(card.get('exampleTrans') or '').split('\n') if line]) >= 3
+                        ):
+                            recovered_today_cards_ok = False
+                            recovered_today_error = f'{source_name} 中 {word} 的 ID、读音、词性、例句或空相近词字段不完整'
+                            break
+                    if not recovered_today_cards_ok:
+                        break
+            except Exception as err:
+                recovered_today_error = f'解析今日恢复词条失败: {err}'
+            self.assert_true(
+                recovered_today_cards_ok,
+                '[韩语] 数据恢复-今日丢失的 후유증 与 삐걱거리다 在主数据和失效保护数据中唯一且完整',
+                recovered_today_error,
+            )
+
         # ---------------------------------------------------------------------
         # 测试点 43: 释义纯净度 (meaning 字段 100% 隔离方括号 [...] 读音)
         # ---------------------------------------------------------------------
