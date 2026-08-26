@@ -20417,14 +20417,14 @@ class KrVocabApp {
     const addWordSimilarGroup = document.getElementById('addWordSimilarGroup');
     if (!modal || !form || !title || !wordIdInput || !wordInput || !readingInput || !meaningInput || !userNoteInput || !addWordTagsGroup || !addWordRatingGroup || !addWordMasteredGroup || !addWordSimilarGroup) return;
     form.reset();
-    this.editingModalTags = [];
-    this.editingModalRating = 0;
-    this.editingModalMastered = false;
-    this.editingModalSimilarWordIds = [];
-    addWordTagsGroup.style.display = word ? 'none' : 'block';
-    addWordRatingGroup.style.display = word ? 'none' : 'block';
-    addWordMasteredGroup.style.display = word ? 'none' : 'block';
-    addWordSimilarGroup.style.display = word ? 'none' : 'block';
+    this.editingModalTags = word && Array.isArray(word.tags) ? [...word.tags] : [];
+    this.editingModalRating = word ? this.normalizeRating(word.rating) : 0;
+    this.editingModalMastered = word ? Boolean(word.mastered) : false;
+    this.editingModalSimilarWordIds = word ? this.getSimilarWords(word).map(similarWord => String(similarWord.id)) : [];
+    addWordTagsGroup.style.display = 'block';
+    addWordRatingGroup.style.display = 'block';
+    addWordMasteredGroup.style.display = 'block';
+    addWordSimilarGroup.style.display = 'block';
 
     if (word) {
       title.textContent = '编辑韩语单词';
@@ -20439,16 +20439,14 @@ class KrVocabApp {
     }
 
     this.fillExamplePairsEditor(word);
-    if (!word) {
-      this.renderModalTags();
-      this.renderModalDraftRating();
-      this.renderModalDraftMastered();
-      this.renderModalSelectedSimilarWords();
-      const modalSimilarSearchInput = document.getElementById('modalSimilarSearchInput');
-      if (modalSimilarSearchInput) {
-        modalSimilarSearchInput.value = '';
-        this.searchModalSimilarWordOptions(modalSimilarSearchInput);
-      }
+    this.renderModalTags();
+    this.renderModalDraftRating();
+    this.renderModalDraftMastered();
+    this.renderModalSelectedSimilarWords();
+    const modalSimilarSearchInput = document.getElementById('modalSimilarSearchInput');
+    if (modalSimilarSearchInput) {
+      modalSimilarSearchInput.value = '';
+      this.searchModalSimilarWordOptions(modalSimilarSearchInput);
     }
     modal.classList.add('active');
   }
@@ -20658,7 +20656,8 @@ class KrVocabApp {
       return;
     }
     const selectedIds = new Set((this.editingModalSimilarWordIds || []).map(String));
-    const matches = this.words.filter(word => word && [word.word, word.reading, word.meaning].some(value => String(value || '').toLowerCase().includes(query))).slice(0, 20);
+    const editingWordId = String(document.getElementById('wordId')?.value || '');
+    const matches = this.words.filter(word => word && String(word.id) !== editingWordId && [word.word, word.reading, word.meaning].some(value => String(value || '').toLowerCase().includes(query))).slice(0, 20);
     results.innerHTML = matches.length ? matches.map(word => {
       const isAdded = selectedIds.has(String(word.id));
       return `<button type="button" class="similar-word-search-result${isAdded ? ' is-added' : ''}" ${isAdded ? 'disabled aria-disabled="true"' : `onclick="event.stopPropagation(); (window.app||window.vocabApp).addModalSimilarWord('${this.escapeHtml(String(word.id))}')"`}>
@@ -20670,7 +20669,8 @@ class KrVocabApp {
 
   addModalSimilarWord(similarWordId) {
     const id = String(similarWordId || '');
-    if (!id || !this.words.some(word => String(word.id) === id)) return;
+    const editingWordId = String(document.getElementById('wordId')?.value || '');
+    if (!id || id === editingWordId || !this.words.some(word => String(word.id) === id)) return;
     if (!Array.isArray(this.editingModalSimilarWordIds)) this.editingModalSimilarWordIds = [];
     if (!this.editingModalSimilarWordIds.map(String).includes(id)) this.editingModalSimilarWordIds.push(id);
     this.renderModalSelectedSimilarWords();
@@ -21062,6 +21062,35 @@ class KrVocabApp {
     }
   }
 
+  syncModalManualSimilarRelations(targetWord, previousSimilarWordIds, nextSimilarWordIds, updatedAt = Date.now()) {
+    if (!targetWord || !targetWord.id) return [];
+    const targetId = String(targetWord.id);
+    const validWordIds = new Set((this.words || []).filter(word => word && word.id).map(word => String(word.id)));
+    const previousIds = new Set((previousSimilarWordIds || []).map(String).filter(id => id !== targetId && validWordIds.has(id)));
+    const nextIds = [...new Set((nextSimilarWordIds || []).map(String))].filter(id => id !== targetId && validWordIds.has(id));
+    const nextIdSet = new Set(nextIds);
+    targetWord.manualSimilarWordIds = [...nextIds];
+    targetWord.hiddenSimilarWordIds = Array.isArray(targetWord.hiddenSimilarWordIds) ? targetWord.hiddenSimilarWordIds.map(String) : [];
+    targetWord.hiddenSimilarWordIds = targetWord.hiddenSimilarWordIds.filter(id => !nextIdSet.has(id));
+
+    new Set([...previousIds, ...nextIdSet]).forEach(similarId => {
+      const similarWord = this.words.find(word => String(word.id) === similarId);
+      if (!similarWord) return;
+      similarWord.manualSimilarWordIds = Array.isArray(similarWord.manualSimilarWordIds) ? similarWord.manualSimilarWordIds.map(String) : [];
+      similarWord.hiddenSimilarWordIds = Array.isArray(similarWord.hiddenSimilarWordIds) ? similarWord.hiddenSimilarWordIds.map(String) : [];
+      if (nextIdSet.has(similarId)) {
+        if (!similarWord.manualSimilarWordIds.includes(targetId)) similarWord.manualSimilarWordIds.push(targetId);
+        similarWord.hiddenSimilarWordIds = similarWord.hiddenSimilarWordIds.filter(id => id !== targetId);
+      } else {
+        similarWord.manualSimilarWordIds = similarWord.manualSimilarWordIds.filter(id => id !== targetId);
+        if (!targetWord.hiddenSimilarWordIds.includes(similarId)) targetWord.hiddenSimilarWordIds.push(similarId);
+        if (!similarWord.hiddenSimilarWordIds.includes(targetId)) similarWord.hiddenSimilarWordIds.push(targetId);
+      }
+      similarWord.updatedAt = updatedAt;
+    });
+    return nextIds;
+  }
+
   saveWordFromForm() {
     const wordIdInput = document.getElementById('wordId');
     const wordInput = document.getElementById('inputWord');
@@ -21088,10 +21117,11 @@ class KrVocabApp {
     }
 
     const existingWord = id ? this.words.find(w => w.id === id) : null;
-    const tags = existingWord && Array.isArray(existingWord.tags) ? [...existingWord.tags] : [...(this.editingModalTags || [])];
-    const draftRating = existingWord ? this.normalizeRating(existingWord.rating) : this.normalizeRating(this.editingModalRating);
-    const draftMastered = existingWord ? Boolean(existingWord.mastered) : Boolean(this.editingModalMastered);
-    const draftSimilarWordIds = existingWord ? [] : [...new Set((this.editingModalSimilarWordIds || []).map(String))].filter(similarId => this.words.some(word => String(word.id) === similarId));
+    const tags = [...(this.editingModalTags || [])];
+    const draftRating = this.normalizeRating(this.editingModalRating);
+    const draftMastered = Boolean(this.editingModalMastered);
+    const previousSimilarWordIds = existingWord ? this.getSimilarWords(existingWord).map(similarWord => String(similarWord.id)) : [];
+    const draftSimilarWordIds = [...new Set((this.editingModalSimilarWordIds || []).map(String))].filter(similarId => similarId !== String(id || '') && this.words.some(word => String(word.id) === similarId));
     const examples = examplePairs.map(pair => ({ example: pair.example, trans: pair.trans }));
     const example = examples.map(pair => pair.example).join('\n');
     const exampleTrans = examples.map(pair => pair.trans).join('\n');
@@ -21114,9 +21144,13 @@ class KrVocabApp {
         examples,
         tags,
         userNote,
+        mastered: draftMastered,
+        rating: draftRating,
+        manualSimilarWordIds: [...draftSimilarWordIds],
         userEditedAt: userEditTime,
         updatedAt: userEditTime
       };
+      this.syncModalManualSimilarRelations(this.words[index], previousSimilarWordIds, draftSimilarWordIds, userEditTime);
       saveSuccessMessage = '✅ 修改保存成功';
     } else {
       const newWord = {

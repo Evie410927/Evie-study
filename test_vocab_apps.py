@@ -543,12 +543,12 @@ class VocabAppTester:
         inline_tag_methods = 'showInlineTagInput(' in content and 'handleInlineTagKeydown(' in content and 'saveInlineTag(' in content and 'addQuickTag(' in content
         self.assert_true(inline_tag_methods, f"[{lang_name}] 交互-行内打字加标签 API 方法集 (showInlineTagInput/saveInlineTag/addQuickTag) 健全", "类中缺少 showInlineTagInput / handleInlineTagKeydown / saveInlineTag / addQuickTag 方法")
 
-        add_only_modal_tag_editor = all(token in content for token in (
+        shared_modal_tag_editor = all(token in content for token in (
             'id="addWordTagsGroup"',
             'id="modalTagsContainer"',
             '>卡片标签</label>',
-            'this.editingModalTags = [];',
-            "addWordTagsGroup.style.display = word ? 'none' : 'block';",
+            'this.editingModalTags = word && Array.isArray(word.tags) ? [...word.tags] : [];',
+            "addWordTagsGroup.style.display = 'block';",
             'renderModalTags(',
             'showModalInlineTagInput(',
             'editModalTag(',
@@ -557,51 +557,52 @@ class VocabAppTester:
             'addModalQuickTag(',
             'removeModalTag(',
             'const existingWord = id ? this.words.find(w => w.id === id) : null;',
-            'const tags = existingWord && Array.isArray(existingWord.tags) ? [...existingWord.tags] : [...(this.editingModalTags || [])];',
+            'const tags = [...(this.editingModalTags || [])];',
         )) and "const tags = existingWord && Array.isArray(existingWord.tags) ? [...existingWord.tags] : ['名词'];" not in content
-        self.assert_true(add_only_modal_tag_editor, f"[{lang_name}] 新增弹窗-空白 Tag 编辑器支持增改删且编辑旧词时隐藏", "新增弹窗缺少零默认 Tag 编辑器、增改删方法，或编辑旧词时没有隐藏标签字段/保留原 Tag")
+        self.assert_true(shared_modal_tag_editor, f"[{lang_name}] 新建/编辑弹窗-共用可增改删 Tag 字段并回填旧值", "新建与编辑弹窗的 Tag 字段没有统一显示、回填或保存")
 
-        add_modal_rating_editor = all(token in content for token in (
+        shared_modal_rating_editor = all(token in content for token in (
             'id="addWordRatingGroup"',
             'id="modalDraftRating"',
-            'this.editingModalRating = 0;',
-            "addWordRatingGroup.style.display = word ? 'none' : 'block';",
+            'this.editingModalRating = word ? this.normalizeRating(word.rating) : 0;',
+            "addWordRatingGroup.style.display = 'block';",
             'renderModalDraftRating()',
             'setModalDraftRatingFromPointer(event)',
             'handleModalDraftRatingKeydown(event)',
             'rating: draftRating,',
         ))
-        self.assert_true(add_modal_rating_editor, f"[{lang_name}] 新增弹窗-可点击与键盘编辑星级并随新词保存", "新增弹窗缺少草稿星级控件、交互方法或保存字段")
+        self.assert_true(shared_modal_rating_editor, f"[{lang_name}] 新建/编辑弹窗-共用星级字段并允许修改保存", "新建与编辑弹窗的星级字段没有统一显示、回填或保存")
 
-        add_modal_mastered_editor = all(token in content for token in (
+        shared_modal_mastered_editor = all(token in content for token in (
             'id="addWordMasteredGroup"',
             'id="modalDraftMasteredBtn"',
             '>学习状态</label>',
-            'this.editingModalMastered = false;',
-            "addWordMasteredGroup.style.display = word ? 'none' : 'block';",
+            'this.editingModalMastered = word ? Boolean(word.mastered) : false;',
+            "addWordMasteredGroup.style.display = 'block';",
             'renderModalDraftMastered()',
             'toggleModalDraftMastered()',
-            'const draftMastered = existingWord ? Boolean(existingWord.mastered) : Boolean(this.editingModalMastered);',
+            'const draftMastered = Boolean(this.editingModalMastered);',
             'mastered: draftMastered,',
         )) and 'mastered: false,' not in content[content.find('const newWord = {'):content.find('const newWord = {') + 1000]
-        self.assert_true(add_modal_mastered_editor, f"[{lang_name}] 新增弹窗-学习中/已掌握 Label 可直接切换并随新词保存", "新增弹窗缺少学习状态草稿控件、切换方法或仍将新词状态硬编码为学习中")
+        self.assert_true(shared_modal_mastered_editor, f"[{lang_name}] 新建/编辑弹窗-共用学习状态字段并允许切换保存", "新建与编辑弹窗的学习状态没有统一显示、回填或保存")
 
-        add_modal_similar_picker = all(token in content for token in (
+        shared_modal_similar_picker = all(token in content for token in (
             'id="addWordSimilarGroup"',
             'id="modalSimilarSearchInput"',
             'id="modalSimilarSearchResults"',
             'id="modalSelectedSimilarWords"',
-            'this.editingModalSimilarWordIds = [];',
-            "addWordSimilarGroup.style.display = word ? 'none' : 'block';",
+            'this.editingModalSimilarWordIds = word ? this.getSimilarWords(word).map(similarWord => String(similarWord.id)) : [];',
+            "addWordSimilarGroup.style.display = 'block';",
             'renderModalSelectedSimilarWords()',
             'searchModalSimilarWordOptions(input)',
             'addModalSimilarWord(similarWordId)',
             'removeModalSimilarWord(similarWordId)',
+            'syncModalManualSimilarRelations(',
             'manualSimilarWordIds: [...draftSimilarWordIds],',
             'newWord.autoSimilarWordIds = [];',
             'similarWord.manualSimilarWordIds.push(String(newWord.id))',
         ))
-        self.assert_true(add_modal_similar_picker, f"[{lang_name}] 新增弹窗-相近词面板支持库内搜索、增删与双向持久关联", "新增弹窗缺少相近词搜索面板、草稿选择方法、空自动快照或保存后的反向关联")
+        self.assert_true(shared_modal_similar_picker, f"[{lang_name}] 新建/编辑弹窗-共用相近词字段并双向保存增删关系", "新建与编辑弹窗的相近词字段没有统一显示、回填或双向保存")
 
         protected_word_modal_draft = all(token in content for token in (
             '<div id="wordModal" class="modal-overlay">',
@@ -2442,6 +2443,97 @@ class VocabAppTester:
                 f"新增弹窗星级、学习状态、读音规范化或相近词交互失败: {manual_add_rating_similar}",
             )
 
+            shared_add_edit_modal = driver.execute_script("""
+                const app = window.app;
+                const target = app.words.find(word => app.getParsedExamples(word).length >= 3);
+                const candidate = app.words.find(word => target && String(word.id) !== String(target.id));
+                if (!target || !candidate) return null;
+                const originalWords = JSON.stringify(app.words);
+                const originalState = {
+                  currentFilter: app.currentFilter,
+                  searchQuery: app.searchQuery,
+                  currentPage: app.currentPage,
+                  ratingSort: app.ratingSort
+                };
+                const sharedGroupIds = ['addWordTagsGroup', 'addWordRatingGroup', 'addWordMasteredGroup', 'addWordSimilarGroup'];
+                const form = document.getElementById('wordForm');
+
+                app.openWordModal();
+                const addTitle = document.getElementById('modalTitle')?.textContent || '';
+                const addSignature = Array.from(form?.children || []).map(node => `${node.tagName}:${node.id || node.className}`).join('|');
+                const addGroupsVisible = sharedGroupIds.every(id => getComputedStyle(document.getElementById(id)).display !== 'none');
+                app.closeWordModal();
+
+                app.openWordModal(target);
+                const editTitle = document.getElementById('modalTitle')?.textContent || '';
+                const editSignature = Array.from(form?.children || []).map(node => `${node.tagName}:${node.id || node.className}`).join('|');
+                const editGroupsVisible = sharedGroupIds.every(id => getComputedStyle(document.getElementById(id)).display !== 'none');
+                const expectedSimilarIds = app.getSimilarWords(target).map(word => String(word.id));
+                const existingValuesLoaded = document.getElementById('inputWord')?.value === String(target.word || '')
+                  && document.getElementById('inputReading')?.value === app.normalizeBracketedReading(target.reading)
+                  && document.getElementById('inputMeaning')?.value === String(target.meaning || '')
+                  && JSON.stringify(app.editingModalTags) === JSON.stringify(target.tags || [])
+                  && app.editingModalRating === app.normalizeRating(target.rating)
+                  && app.editingModalMastered === Boolean(target.mastered)
+                  && JSON.stringify(app.editingModalSimilarWordIds) === JSON.stringify(expectedSimilarIds);
+                const onlyTitleChanges = addSignature === editSignature
+                  && addTitle !== editTitle
+                  && addTitle.startsWith('添加')
+                  && editTitle.startsWith('编辑');
+
+                const editedTags = ['编辑字段测试'];
+                const editedRating = app.normalizeRating(target.rating) === 5 ? 4 : 5;
+                const editedMastered = !Boolean(target.mastered);
+                app.editingModalTags = [...editedTags];
+                app.editingModalRating = editedRating;
+                app.editingModalMastered = editedMastered;
+                app.editingModalSimilarWordIds = [String(candidate.id)];
+                app.renderModalTags();
+                app.renderModalDraftRating();
+                app.renderModalDraftMastered();
+                app.renderModalSelectedSimilarWords();
+                document.getElementById('inputUserNote').value = '编辑弹窗共用字段测试';
+
+                const similarSearch = document.getElementById('modalSimilarSearchInput');
+                similarSearch.value = target.word;
+                similarSearch.dispatchEvent(new Event('input', { bubbles: true }));
+                const selfExcludedFromSearch = !Array.from(document.querySelectorAll('#modalSimilarSearchResults .similar-word-search-result strong'))
+                  .some(element => element.textContent === target.word);
+                document.getElementById('saveWordBtn')?.click();
+
+                const savedTarget = app.words.find(word => String(word.id) === String(target.id));
+                const savedCandidate = app.words.find(word => String(word.id) === String(candidate.id));
+                const sharedFieldsSaved = JSON.stringify(savedTarget?.tags || []) === JSON.stringify(editedTags)
+                  && savedTarget?.rating === editedRating
+                  && Boolean(savedTarget?.mastered) === editedMastered
+                  && savedTarget?.userNote === '编辑弹窗共用字段测试'
+                  && JSON.stringify((savedTarget?.manualSimilarWordIds || []).map(String)) === JSON.stringify([String(candidate.id)]);
+                const reverseRelationSaved = (savedCandidate?.manualSimilarWordIds || []).map(String).includes(String(target.id));
+                const storedTarget = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(target.id));
+                const persisted = storedTarget?.rating === editedRating
+                  && Boolean(storedTarget?.mastered) === editedMastered
+                  && JSON.stringify(storedTarget?.tags || []) === JSON.stringify(editedTags)
+                  && (storedTarget?.manualSimilarWordIds || []).map(String).includes(String(candidate.id));
+
+                app.words = JSON.parse(originalWords);
+                app.currentFilter = originalState.currentFilter;
+                app.searchQuery = originalState.searchQuery;
+                app.currentPage = originalState.currentPage;
+                app.ratingSort = originalState.ratingSort;
+                app.saveData();
+                app.renderWordList();
+                app.closeWordModal();
+                return {
+                  addGroupsVisible, editGroupsVisible, onlyTitleChanges, existingValuesLoaded,
+                  selfExcludedFromSearch, sharedFieldsSaved, reverseRelationSaved, persisted
+                };
+            """)
+            self.assert_true(
+                bool(shared_add_edit_modal and all(shared_add_edit_modal.values())),
+                f"[{lang_name}] 浏览器新建/编辑弹窗-除标题外字段结构一致且旧值可编辑保存",
+                f"新建/编辑弹窗字段镜像、回填或保存失败: {shared_add_edit_modal}",
+            )
+
             status_rating_persistence = driver.execute_script("""
                 const app = window.app;
                 const target = app.words.find(word => word && !word.mastered);
@@ -2620,10 +2712,14 @@ class VocabAppTester:
                 const editModalOpened = modal?.classList.contains('active') === true;
                 const detailHiddenWhileEditing = detailModal?.classList.contains('active') === false;
                 const returnContextCaptured = String(app.wordModalReturnContext?.wordId) === String(currentId);
-                const addOnlyControlsHidden = ['addWordTagsGroup', 'addWordRatingGroup', 'addWordMasteredGroup', 'addWordSimilarGroup'].every(id => {
+                const sharedControlsVisible = ['addWordTagsGroup', 'addWordRatingGroup', 'addWordMasteredGroup', 'addWordSimilarGroup'].every(id => {
                   const element = document.getElementById(id);
-                  return !!element && getComputedStyle(element).display === 'none';
+                  return !!element && getComputedStyle(element).display !== 'none';
                 });
+                const sharedValuesLoaded = JSON.stringify(app.editingModalTags) === JSON.stringify(originalWord.tags || [])
+                  && app.editingModalRating === app.normalizeRating(originalWord.rating)
+                  && app.editingModalMastered === Boolean(originalWord.mastered)
+                  && JSON.stringify(app.editingModalSimilarWordIds) === JSON.stringify(app.getSimilarWords(app.words[wordIndex]).map(word => String(word.id)));
                 const exactlyThreeRows = rows.length === 3;
                 const existingPairsLoaded = expectedPairs.length === 3 && rows.every((row, index) =>
                   row.querySelector('.example-source-input')?.value === expectedPairs[index].example &&
@@ -2718,7 +2814,7 @@ class VocabAppTester:
                 app.closeDetailModal();
                 return {
                   editModalOpened, detailHiddenWhileEditing, returnContextCaptured, cancelReturnedToDetail,
-                  reopenedFromDetail, addOnlyControlsHidden, exactlyThreeRows, existingPairsLoaded, incompleteRejected,
+                  reopenedFromDetail, sharedControlsVisible, sharedValuesLoaded, exactlyThreeRows, existingPairsLoaded, incompleteRejected,
                   failedSaveKeptDraft, failedSaveReported, structuredSaved, tagsPreserved, legacySaved,
                   userEditProtected, modalClosedAfterSave, persisted,
                   saveReturnedToDetail, listPreviewUpdated, detailShowsThreePairs, reviewShowsThreePairs
