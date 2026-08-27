@@ -1055,11 +1055,25 @@ class VocabAppTester:
         # ---------------------------------------------------------------------
         detail_navigation_scroll_reset = all(token in content for token in (
             'shouldResetDetailScroll',
-            "modalEl.querySelector('.detail-body')",
-            'detailBody.scrollTop = 0',
-            'requestAnimationFrame(() =>',
+            "this.resetModalScrollToTop(modalEl, '.detail-body')",
+            'resetModalScrollToTop(modal, scrollSelector',
+            'target.scrollTop = 0',
         ))
         self.assert_true(detail_navigation_scroll_reset, f"[{lang_name}] 交互-详情弹窗点击相近表达或返回上一词条后正文自动置顶", "showDetailModal 切换词条后未把复用的 .detail-body 滚动位置重置为顶部")
+
+        # ---------------------------------------------------------------------
+        # 测试点 34B: 所有可滚动弹窗每次重新打开均从顶部开始
+        # ---------------------------------------------------------------------
+        reusable_modal_scroll_reset = all(token in content for token in (
+            "resetModalScrollToTop(modal, scrollSelector = '.modal-sheet')",
+            'const scrollTargets = Array.from(modal.querySelectorAll(scrollSelector));',
+            'target.scrollTop = 0;',
+            'target.scrollLeft = 0;',
+            'requestAnimationFrame(resetScroll);',
+            "this.resetModalScrollToTop(modal);",
+            "this.resetModalScrollToTop(modal, '[data-modal-scroll]');",
+        ))
+        self.assert_true(reusable_modal_scroll_reset, f"[{lang_name}] 交互-新增、编辑、详情与云登录弹窗重复打开时强制回到顶部", "可复用弹窗缺少统一双帧置顶方法，关闭后再次打开仍可能停留在上次底部位置")
 
         # ---------------------------------------------------------------------
         # 测试点 35: 详情弹窗添加/删除标签实时刷新防护 (Detail Modal Inline Tag Refresh)
@@ -2288,6 +2302,39 @@ class VocabAppTester:
                 f"[{lang_name}] 浏览器真实点击-加词按钮打开编辑弹窗",
                 "点击 #quickAddBtn 后 #wordModal 未进入 active 状态",
             )
+            word_modal_scroll_reset = driver.execute_async_script("""
+                const done = arguments[arguments.length - 1];
+                const app = window.app;
+                const modal = document.getElementById('wordModal');
+                const sheet = modal?.querySelector('.modal-sheet');
+                const targetWord = app?.words?.find(word => word && word.id);
+                if (!app || !modal || !sheet || !targetWord) { done(null); return; }
+                const afterDoubleFrame = callback => requestAnimationFrame(() => requestAnimationFrame(callback));
+                sheet.scrollTop = sheet.scrollHeight;
+                const newModalReachedBottom = sheet.scrollTop > 0;
+                app.closeWordModal();
+                app.openWordModal(targetWord);
+                afterDoubleFrame(() => {
+                  const editModalAtTop = sheet.scrollTop === 0;
+                  sheet.scrollTop = sheet.scrollHeight;
+                  const editModalReachedBottom = sheet.scrollTop > 0;
+                  app.closeWordModal();
+                  app.openWordModal();
+                  afterDoubleFrame(() => done({
+                    newModalReachedBottom,
+                    editModalAtTop,
+                    editModalReachedBottom,
+                    reopenedNewModalAtTop: sheet.scrollTop === 0,
+                    leftEdgeReset: sheet.scrollLeft === 0,
+                    stillOpen: modal.classList.contains('active')
+                  }));
+                });
+            """)
+            self.assert_true(
+                bool(word_modal_scroll_reset and all(word_modal_scroll_reset.values())),
+                f"[{lang_name}] 浏览器新增/编辑弹窗-滚到底部后重复打开均自动回到顶部",
+                f"新增或编辑弹窗复用旧滚动位置: {word_modal_scroll_reset}",
+            )
             blank_example_pair_editor = driver.execute_script("""
                 const rows = Array.from(document.querySelectorAll('#examplePairsEditor .example-pair-row'));
                 return {
@@ -2784,6 +2831,36 @@ class VocabAppTester:
                 detail_modal_active,
                 f"[{lang_name}] 浏览器真实点击-单词卡片打开详情弹窗",
                 "点击第一张 .word-card 后 #detailModal 未进入 active 状态",
+            )
+            detail_modal_scroll_reset = driver.execute_async_script("""
+                const done = arguments[arguments.length - 1];
+                const app = window.app;
+                const modal = document.getElementById('detailModal');
+                const body = modal?.querySelector('.detail-body');
+                const wordId = app?.currentDetailWordId;
+                if (!app || !modal || !body || !wordId) { done(null); return; }
+                const scrollProbe = document.createElement('div');
+                scrollProbe.style.cssText = 'height:2000px;min-height:2000px;flex:none;';
+                scrollProbe.setAttribute('data-scroll-reset-probe', '');
+                body.appendChild(scrollProbe);
+                body.scrollTop = body.scrollHeight;
+                const reachedBottom = body.scrollTop > 0;
+                app.closeDetailModal();
+                app.showDetailModal(wordId);
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                  const result = {
+                    reachedBottom,
+                    reopenedAtTop: body.scrollTop === 0,
+                    stillOpen: modal.classList.contains('active')
+                  };
+                  scrollProbe.remove();
+                  done(result);
+                }));
+            """)
+            self.assert_true(
+                bool(detail_modal_scroll_reset and all(detail_modal_scroll_reset.values())),
+                f"[{lang_name}] 浏览器详情弹窗-滚到底部后重新打开自动回到顶部",
+                f"详情弹窗重新打开仍沿用旧滚动位置: {detail_modal_scroll_reset}",
             )
 
             detail_header_status_toggle = driver.execute_script("""
