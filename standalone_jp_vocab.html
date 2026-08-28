@@ -2356,7 +2356,7 @@ body::-webkit-scrollbar,
         <span>卡欧每天学JP💪</span>
       </div>
       <div class="header-actions">
-        <button id="cloudSyncBtn" class="icon-btn" title="手动云端同步" style="font-size:16px;" onclick="if(window.app) window.app.fetchFromCloud(true)">☁️</button>
+        <button id="cloudSyncBtn" class="icon-btn" title="选择云端同步方式" style="font-size:16px;" onclick="if(window.app) window.app.openCloudSyncOptionsModal()">☁️</button>
         <button id="themeToggleBtn" class="icon-btn" title="切换主题" onclick="if(window.app) window.app.toggleTheme()">🌙</button>
         <button id="quickAddBtn" class="icon-btn" title="添加日语单词" onclick="if(window.app) window.app.openWordModal()">➕</button>
       </div>
@@ -5967,6 +5967,70 @@ function createSupabaseSyncMethods(language) {
       }
     },
 
+    openCloudSyncOptionsModal() {
+      let modal = document.getElementById('cloudSyncOptionsModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'cloudSyncOptionsModal';
+        modal.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(5,10,24,.78);display:none;align-items:center;justify-content:center;padding:20px;';
+        modal.innerHTML = `<div data-modal-scroll style="width:min(430px,100%);max-height:calc(100vh - 40px);overflow-y:auto;background:var(--bg-secondary,#1e293b);border:1px solid var(--border-color,#334155);border-radius:18px;padding:22px;color:var(--text-primary,#f8fafc);box-shadow:0 20px 55px rgba(0,0,0,.45);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><strong style="font-size:18px;">☁️ 选择云同步方式</strong><button type="button" aria-label="关闭" onclick="if(window.app) window.app.closeCloudSyncOptionsModal()" style="border:0;background:transparent;color:inherit;font-size:22px;cursor:pointer;">×</button></div>
+          <p style="margin:0 0 16px;color:var(--text-secondary,#94a3b8);font-size:13px;line-height:1.6;">请选择这一次要执行的操作。两个都勾选时才会双向同步。</p>
+          <label style="display:flex;gap:12px;align-items:flex-start;margin-bottom:10px;padding:13px;border:1px solid var(--border-color,#475569);border-radius:12px;cursor:pointer;background:rgba(15,23,42,.3);"><input id="cloudUploadLocalCheckbox" type="checkbox" onchange="if(window.app) window.app.updateCloudSyncOptionState()" style="width:18px;height:18px;margin-top:1px;accent-color:var(--accent-primary,#ec4899);"><span><strong style="display:block;margin-bottom:3px;">上传本处修改事项</strong><small style="color:var(--text-secondary,#94a3b8);line-height:1.5;">把这个浏览器新增、编辑或删除的内容上传到云端。</small></span></label>
+          <label style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;padding:13px;border:1px solid var(--border-color,#475569);border-radius:12px;cursor:pointer;background:rgba(15,23,42,.3);"><input id="cloudDownloadLatestCheckbox" type="checkbox" onchange="if(window.app) window.app.updateCloudSyncOptionState()" style="width:18px;height:18px;margin-top:1px;accent-color:var(--accent-primary,#ec4899);"><span><strong style="display:block;margin-bottom:3px;">同步云端最新内容</strong><small style="color:var(--text-secondary,#94a3b8);line-height:1.5;">获取当前账号在云端保存的最新词库。</small></span></label>
+          <div id="cloudDownloadDiscardWarning" role="alert" style="display:none;margin:0 0 12px;padding:11px 12px;border:1px solid rgba(251,113,133,.65);border-radius:10px;background:rgba(190,24,93,.16);color:#fda4af;font-size:13px;line-height:1.55;">⚠️ 只同步云端将永久丢弃本浏览器未上传的修改、本地新增词和本地删除记录，并以云端数据完全覆盖本处。</div>
+          <div id="cloudUploadOnlyNotice" style="display:none;margin:0 0 12px;padding:10px 12px;border-radius:10px;background:rgba(59,130,246,.12);color:var(--text-secondary,#cbd5e1);font-size:13px;line-height:1.5;">仅上传不会获取其他设备的最新修改。</div>
+          <button id="cloudSyncExecuteBtn" type="button" disabled onclick="if(window.app) window.app.runSelectedCloudSync()" style="width:100%;padding:11px;border:0;border-radius:11px;background:linear-gradient(135deg,var(--accent-primary,#ec4899),#8b5cf6);color:white;font-weight:700;cursor:pointer;">开始执行</button>
+        </div>`;
+        document.body.appendChild(modal);
+      }
+      const uploadCheckbox = document.getElementById('cloudUploadLocalCheckbox');
+      const downloadCheckbox = document.getElementById('cloudDownloadLatestCheckbox');
+      if (uploadCheckbox) uploadCheckbox.checked = false;
+      if (downloadCheckbox) downloadCheckbox.checked = false;
+      this.updateCloudSyncOptionState();
+      modal.style.display = 'flex';
+      this.resetModalScrollToTop(modal, '[data-modal-scroll]');
+    },
+
+    closeCloudSyncOptionsModal() {
+      const modal = document.getElementById('cloudSyncOptionsModal');
+      if (modal) modal.style.display = 'none';
+    },
+
+    updateCloudSyncOptionState() {
+      const uploadCheckbox = document.getElementById('cloudUploadLocalCheckbox');
+      const downloadCheckbox = document.getElementById('cloudDownloadLatestCheckbox');
+      const executeButton = document.getElementById('cloudSyncExecuteBtn');
+      const discardWarning = document.getElementById('cloudDownloadDiscardWarning');
+      const uploadOnlyNotice = document.getElementById('cloudUploadOnlyNotice');
+      const uploadLocal = Boolean(uploadCheckbox && uploadCheckbox.checked);
+      const downloadCloud = Boolean(downloadCheckbox && downloadCheckbox.checked);
+      if (executeButton) {
+        executeButton.disabled = !uploadLocal && !downloadCloud;
+        executeButton.style.opacity = executeButton.disabled ? '.45' : '1';
+        executeButton.style.cursor = executeButton.disabled ? 'not-allowed' : 'pointer';
+      }
+      if (discardWarning) discardWarning.style.display = !uploadLocal && downloadCloud ? 'block' : 'none';
+      if (uploadOnlyNotice) uploadOnlyNotice.style.display = uploadLocal && !downloadCloud ? 'block' : 'none';
+    },
+
+    async runSelectedCloudSync() {
+      const uploadCheckbox = document.getElementById('cloudUploadLocalCheckbox');
+      const downloadCheckbox = document.getElementById('cloudDownloadLatestCheckbox');
+      const syncOptions = {
+        uploadLocal: Boolean(uploadCheckbox && uploadCheckbox.checked),
+        downloadCloud: Boolean(downloadCheckbox && downloadCheckbox.checked)
+      };
+      if (!syncOptions.uploadLocal && !syncOptions.downloadCloud) {
+        this.showToast('⚠️ 请至少选择一项云同步操作');
+        return false;
+      }
+      this.pendingCloudSyncSelection = syncOptions;
+      this.closeCloudSyncOptionsModal();
+      return await this.syncWithSupabase(true, syncOptions);
+    },
+
     openCloudAuthModal() {
       let modal = document.getElementById('cloudAuthModal');
       if (!modal) {
@@ -6025,7 +6089,9 @@ function createSupabaseSyncMethods(language) {
         this.setCloudAuthStatus('✅ 登录成功，正在同步词库…', 'success');
         this.closeCloudAuthModal();
         this.showToast('✅ 云同步登录成功');
-        return await this.syncWithSupabase(true);
+        const syncOptions = this.pendingCloudSyncSelection || { uploadLocal: true, downloadCloud: true };
+        this.pendingCloudSyncSelection = null;
+        return await this.syncWithSupabase(true, syncOptions);
       } catch (e) {
         this.setCloudAuthStatus(`⚠️ ${e.message || (mode === 'signup' ? '注册失败' : '登录失败')}`, 'error');
         return false;
@@ -6457,24 +6523,58 @@ function createSupabaseSyncMethods(language) {
       return rows;
     },
 
-    async syncWithSupabase(showToastNotification = true) {
+    async syncWithSupabase(showToastNotification = true, syncOptions = {}) {
+      const uploadLocal = syncOptions.uploadLocal !== false;
+      const downloadCloud = syncOptions.downloadCloud !== false;
+      if (!uploadLocal && !downloadCloud) {
+        if (showToastNotification) this.showToast('⚠️ 请至少选择一项云同步操作');
+        return false;
+      }
       if (this._cloudSyncing) {
         this._cloudSyncPending = true;
+        this._cloudSyncPendingOptions = { uploadLocal, downloadCloud };
         if (showToastNotification) this.showToast('☁️ 正在同步，请稍候...');
         return false;
       }
       this._cloudSyncing = true;
       const syncBtn = document.getElementById('cloudSyncBtn');
       if (syncBtn) syncBtn.classList.add('syncing-active');
-      if (showToastNotification) this.showToast('☁️ 正在双向同步所有编辑...');
+      if (showToastNotification) {
+        this.showToast(uploadLocal && downloadCloud
+          ? '☁️ 正在双向同步所有编辑...'
+          : uploadLocal ? '☁️ 正在上传本处修改...' : '☁️ 正在获取云端最新内容...');
+      }
       try {
         const session = await this.getValidCloudSession(showToastNotification);
         if (!session) return false;
+        this.pendingCloudSyncSelection = null;
         const jwtUser = this.decodeCloudUser(session.access_token);
         const userId = session.user && session.user.id || jwtUser && jwtUser.sub;
         if (!userId) throw new Error('无法识别云同步账号，请重新登录');
         const cloudRows = await this.fetchCloudRows(session.access_token);
         const { metaRow, dataRows, revision: cloudRevision } = this.splitCloudRows(cloudRows);
+
+        if (!uploadLocal && downloadCloud) {
+          this.replaceLocalWithCloudRows(dataRows);
+          this.saveCloudBaselineRevision(cloudRevision);
+          this.renderWordList();
+          this.updateStats();
+          if (showToastNotification) this.showToast('✅ 同步完成');
+          return true;
+        }
+
+        if (uploadLocal && !downloadCloud) {
+          const forceAll = !metaRow;
+          const uploadedRows = await this.upsertCloudRows(session.access_token, userId, dataRows, forceAll);
+          if (uploadedRows.length > 0 || forceAll) {
+            const nextRevision = cloudRevision + 1;
+            await this.upsertCloudMeta(session.access_token, userId, nextRevision);
+            this.clearUploadedCloudChanges(uploadedRows);
+          }
+          if (showToastNotification) this.showToast('✅ 上传完成');
+          return true;
+        }
+
         const localRevision = this.getCloudBaselineRevision();
         const pending = this.getPendingCloudChanges();
         const pendingIds = Object.keys(pending).filter(id => this.getPendingCloudMeta(pending[id]).changedAt > 0);
@@ -6537,7 +6637,9 @@ function createSupabaseSyncMethods(language) {
         if (syncBtn) setTimeout(() => syncBtn.classList.remove('syncing-active'), 500);
         if (this._cloudSyncPending) {
           this._cloudSyncPending = false;
-          setTimeout(() => this.syncWithSupabase(false), 50);
+          const pendingOptions = this._cloudSyncPendingOptions || { uploadLocal, downloadCloud };
+          this._cloudSyncPendingOptions = null;
+          setTimeout(() => this.syncWithSupabase(false, pendingOptions), 50);
         }
       }
     },

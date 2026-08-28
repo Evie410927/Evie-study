@@ -56,13 +56,13 @@ class VocabAppTester:
         # ---------------------------------------------------------------------
         # 测试点 1: Header 顶部 3 个图标按钮点击兜底测试 (Header Actions Buttons)
         # ---------------------------------------------------------------------
-        btn_cloud_sync = bool(re.search(r'id="cloudSyncBtn"[^>]*onclick="[^"]*fetchFromCloud', content))
-        self.assert_true(btn_cloud_sync, f"[{lang_name}] Header-☁️云端同步按钮兜底点击", "cloudSyncBtn 缺少行内 fetchFromCloud 兜底绑定")
+        btn_cloud_sync = bool(re.search(r'id="cloudSyncBtn"[^>]*onclick="[^"]*openCloudSyncOptionsModal', content))
+        self.assert_true(btn_cloud_sync, f"[{lang_name}] Header-☁️云端同步按钮兜底点击", "cloudSyncBtn 缺少行内同步方向选择窗口兜底绑定")
 
         init_body = re.search(r'\n\s*init\(\)\s*\{(.*?)\n\s*\}\n\s*\n\s*loadData\(', content, re.S)
         save_data_body = re.search(r'\n\s*saveData\(\)\s*\{(.*?)\n\s*\}\n\s*\n\s*loadTheme\(', content, re.S)
         strict_manual_upload = (
-            'title="手动云端同步"' in content
+            'title="选择云端同步方式"' in content
             and bool(init_body) and 'fetchFromCloud(' not in init_body.group(1)
             and bool(init_body) and 'scheduleCloudSync(' not in init_body.group(1)
             and bool(save_data_body) and 'this.scheduleCloudSync()' not in save_data_body.group(1)
@@ -91,6 +91,17 @@ class VocabAppTester:
             "邮箱确认完成，已登录云同步",
         ))
         self.assert_true(cloud_auth, f"[{lang_name}] 云同步-同账号登录注册、弹窗内可见状态与过期令牌刷新", "缺少登录注册、弹窗内状态反馈、按钮恢复或 refresh token 续期逻辑")
+
+        directional_sync_options = all(token in content for token in (
+            "openCloudSyncOptionsModal()", "cloudSyncOptionsModal",
+            "cloudUploadLocalCheckbox", "cloudDownloadLatestCheckbox",
+            "cloudSyncExecuteBtn", "cloudDownloadDiscardWarning",
+            "两个都勾选时才会双向同步", "只同步云端将永久丢弃本浏览器未上传的修改",
+            "async syncWithSupabase(showToastNotification = true, syncOptions = {})",
+            "if (!uploadLocal && downloadCloud)", "if (uploadLocal && !downloadCloud)",
+            "this.pendingCloudSyncSelection = syncOptions",
+        ))
+        self.assert_true(directional_sync_options, f"[{lang_name}] 云同步-点击云朵先明确选择上传、下载或双向同步", "缺少双 Checkbox 方向选择、下载覆盖警告或三种同步分支")
 
         per_word_sync = all(token in content for token in (
             "word_id", "payload", "updated_at", "deleted_at",
@@ -144,12 +155,17 @@ class VocabAppTester:
         ))
         self.assert_true(lossless_conflict_gate, f"[{lang_name}] 云同步-版本变化或本地缺词时统一无损合并并补传本机数据", "残缺快照修复仍可能整库覆盖本机新增词，或没有把本地独有卡片补传为下一版本")
 
-        destructive_replace_removed = "this.replaceLocalWithCloudRows(dataRows)" not in content
-        self.assert_true(destructive_replace_removed, f"[{lang_name}] 云同步-主流程彻底禁用破坏性整库替换", "同步主流程仍调用 replaceLocalWithCloudRows，可能清空待上传队列并删除本地新增词")
+        explicit_download_replace = all(token in content for token in (
+            "if (!uploadLocal && downloadCloud)",
+            "this.replaceLocalWithCloudRows(dataRows)",
+            "this.savePendingCloudChanges({})",
+        ))
+        self.assert_true(explicit_download_replace, f"[{lang_name}] 云同步-仅勾选下载时以云端整库覆盖并清空本机待上传项", "只下载模式没有明确丢弃本机修改，可能在之后重新误上传")
 
         simple_sync_success_notice = (
             "this.showToast('✅ 上传完成，同步完成')" in content
             and "this.showToast('✅ 同步完成')" in content
+            and "this.showToast('✅ 上传完成')" in content
             and all(message not in content for message in (
                 '当前已是云端最新版本 ${cloudRevision}',
                 '生成云端版本 ${nextRevision}',
@@ -1667,16 +1683,51 @@ class VocabAppTester:
             driver.find_element(By.ID, 'cloudSyncBtn').click()
             WebDriverWait(driver, 5).until(
                 lambda active_driver: active_driver.execute_script(
+                    "const m=document.getElementById('cloudSyncOptionsModal'); return !!m && m.style.display==='flex';"
+                )
+            )
+            cloud_option_defaults = driver.execute_script("""
+                const upload = document.getElementById('cloudUploadLocalCheckbox');
+                const download = document.getElementById('cloudDownloadLatestCheckbox');
+                const execute = document.getElementById('cloudSyncExecuteBtn');
+                const warning = document.getElementById('cloudDownloadDiscardWarning');
+                return !!upload && !!download && !!execute && !!warning
+                  && !upload.checked && !download.checked && execute.disabled
+                  && warning.style.display === 'none';
+            """)
+            self.assert_true(
+                bool(cloud_option_defaults),
+                f"[{lang_name}] 浏览器真实点击-云同步两项默认均不勾选以防误上传",
+                "打开云同步选择窗口后有选项被默认勾选，仍可能误传或误覆盖",
+            )
+
+            driver.find_element(By.ID, 'cloudDownloadLatestCheckbox').click()
+            download_only_warning = driver.execute_script("""
+                const execute = document.getElementById('cloudSyncExecuteBtn');
+                const warning = document.getElementById('cloudDownloadDiscardWarning');
+                return !!execute && !execute.disabled && !!warning && warning.style.display === 'block'
+                  && warning.textContent.includes('永久丢弃本浏览器未上传的修改');
+            """)
+            self.assert_true(
+                bool(download_only_warning),
+                f"[{lang_name}] 浏览器云同步-只勾选同步云端时显示本地修改丢弃警告",
+                "下载覆盖模式未显示醒目的不可逆丢弃提醒",
+            )
+
+            driver.find_element(By.ID, 'cloudUploadLocalCheckbox').click()
+            driver.find_element(By.ID, 'cloudSyncExecuteBtn').click()
+            WebDriverWait(driver, 5).until(
+                lambda active_driver: active_driver.execute_script(
                     "const m=document.getElementById('cloudAuthModal'); return !!m && m.style.display==='flex';"
                 )
             )
             cloud_auth_visible = driver.execute_script(
-                "return !!document.getElementById('cloudAuthEmail') && !!document.getElementById('cloudAuthPassword');"
+                "const o=window.app.pendingCloudSyncSelection; return !!document.getElementById('cloudAuthEmail') && !!document.getElementById('cloudAuthPassword') && !!o && o.uploadLocal===true && o.downloadCloud===true;"
             )
             self.assert_true(
                 cloud_auth_visible,
-                f"[{lang_name}] 浏览器真实点击-云朵打开账号登录而非静默假同步",
-                "未登录时点击 #cloudSyncBtn 没有展示可操作的云同步登录界面",
+                f"[{lang_name}] 浏览器真实点击-选择同步方向后打开登录并保留所选模式",
+                "未登录时执行云同步没有展示登录界面，或登录前丢失了所选同步方向",
             )
 
             driver.execute_script("""
@@ -2079,6 +2130,138 @@ class VocabAppTester:
                 bool(strict_sync_flow_result and strict_sync_flow_result.get('safeUploadAfterPull')),
                 f"[{lang_name}] 浏览器真实同步门禁-无损合并后后续修改仍可上传下一版本",
                 f"完成远端同步并重新修改后仍不能安全上传：{strict_sync_flow_result}",
+            )
+
+            directional_sync_result = driver.execute_async_script("""
+                const done = arguments[0];
+                const app = window.app;
+                const originalWords = app.words;
+                const originalDeleted = app.getDeletedRecords();
+                const originalPending = app.getPendingCloudChanges();
+                const originalBaseline = SafeStorage.getItem(app.CLOUD_BASE_REVISION_KEY);
+                const originals = {
+                  getValidCloudSession:app.getValidCloudSession,
+                  fetchCloudRows:app.fetchCloudRows,
+                  upsertCloudRows:app.upsertCloudRows,
+                  upsertCloudMeta:app.upsertCloudMeta,
+                  showToast:app.showToast
+                };
+                const prefix = originalWords[0] && String(originalWords[0].id).startsWith('jp_') ? 'jp' : 'kr';
+                const sharedId = prefix + '_direction_shared';
+                const localOnlyId = prefix + '_direction_local_only';
+                const cloudOnlyId = prefix + '_direction_cloud_only';
+                const cloudRows = [
+                  {word_id:'__sync_meta__', updated_at:7000, deleted_at:null, payload:{schema:1, revision:7, updatedBy:'other-browser'}},
+                  {word_id:sharedId, updated_at:7001, deleted_at:null, payload:{id:sharedId, word:'云端保留词', meaning:'云端最新释义', rating:5, mastered:true, tags:[]}},
+                  {word_id:cloudOnlyId, updated_at:7002, deleted_at:null, payload:{id:cloudOnlyId, word:'云端独有词', meaning:'只存在于云端', rating:2, mastered:false, tags:[]}}
+                ];
+                (async () => {
+                  let rowUploadCalls = 0;
+                  let metaUploadCalls = 0;
+                  let sessionCalls = 0;
+                  let uploadedRows = [];
+                  const toasts = [];
+                  app.getValidCloudSession = async () => {
+                    sessionCalls += 1;
+                    return {access_token:'direction-token', user:{id:'00000000-0000-0000-0000-000000000000'}};
+                  };
+                  app.fetchCloudRows = async () => cloudRows;
+                  app.upsertCloudRows = async (token, userId, rows, forceAll) => {
+                    rowUploadCalls += 1;
+                    uploadedRows = app.buildCloudRows(userId, rows, forceAll);
+                    return uploadedRows;
+                  };
+                  app.upsertCloudMeta = async () => { metaUploadCalls += 1; return true; };
+                  app.showToast = message => toasts.push(String(message));
+
+                  app.words = [
+                    {id:sharedId, word:'本机旧词', meaning:'本机未上传修改', rating:1, mastered:false, tags:[], updatedAt:9001},
+                    {id:localOnlyId, word:'本机独有词', meaning:'本机新加内容', rating:0, mastered:false, tags:[], updatedAt:9002}
+                  ];
+                  app.saveDeletedRecords({[prefix + '_local_deleted']:{id:prefix + '_local_deleted', word:'本机删除项', deletedAt:9003}});
+                  app.savePendingCloudChanges({
+                    [sharedId]:{changedAt:9001, source:'user', fields:['meaning']},
+                    [localOnlyId]:{changedAt:9002, source:'user', fields:['word','meaning']}
+                  });
+                  app.saveCloudBaselineRevision(2);
+                  const downloadStart = toasts.length;
+                  const downloadOk = await app.syncWithSupabase(true, {uploadLocal:false, downloadCloud:true});
+                  const downloadToasts = toasts.slice(downloadStart);
+                  const downloadOnlyReplacedLocal = downloadOk
+                    && rowUploadCalls === 0 && metaUploadCalls === 0
+                    && app.words.length === 2
+                    && app.words.some(word => word.id === sharedId && word.meaning === '云端最新释义')
+                    && app.words.some(word => word.id === cloudOnlyId)
+                    && !app.words.some(word => word.id === localOnlyId)
+                    && Object.keys(app.getPendingCloudChanges()).length === 0
+                    && Object.keys(app.getDeletedRecords()).length === 0
+                    && app.getCloudBaselineRevision() === 7
+                    && downloadToasts.includes('✅ 同步完成');
+
+                  rowUploadCalls = 0;
+                  metaUploadCalls = 0;
+                  uploadedRows = [];
+                  app.words = [
+                    {id:sharedId, word:'本机上传词', meaning:'只上传本处修改', rating:3, mastered:false, tags:[], updatedAt:9101},
+                    {id:localOnlyId, word:'本机上传新增词', meaning:'仍只在本机', rating:0, mastered:false, tags:[], updatedAt:9102}
+                  ];
+                  app.saveDeletedRecords({});
+                  app.savePendingCloudChanges({
+                    [sharedId]:{changedAt:9101, source:'user', fields:['meaning']},
+                    [localOnlyId]:{changedAt:9102, source:'user', fields:['word','meaning']}
+                  });
+                  app.saveCloudBaselineRevision(3);
+                  const uploadStart = toasts.length;
+                  const uploadOk = await app.syncWithSupabase(true, {uploadLocal:true, downloadCloud:false});
+                  const uploadToasts = toasts.slice(uploadStart);
+                  const uploadOnlyKeptLocal = uploadOk
+                    && rowUploadCalls === 1 && metaUploadCalls === 1
+                    && uploadedRows.some(row => row.word_id === sharedId && row.payload.meaning === '只上传本处修改')
+                    && uploadedRows.some(row => row.word_id === localOnlyId)
+                    && app.words.length === 2 && !app.words.some(word => word.id === cloudOnlyId)
+                    && app.words.some(word => word.id === sharedId && word.meaning === '只上传本处修改')
+                    && Object.keys(app.getPendingCloudChanges()).length === 0
+                    && app.getCloudBaselineRevision() === 3
+                    && uploadToasts.includes('✅ 上传完成');
+
+                  const callsBeforeEmptySelection = sessionCalls;
+                  const emptySelectionRejected = !(await app.syncWithSupabase(true, {uploadLocal:false, downloadCloud:false}))
+                    && sessionCalls === callsBeforeEmptySelection
+                    && toasts.includes('⚠️ 请至少选择一项云同步操作');
+                  done({downloadOnlyReplacedLocal, uploadOnlyKeptLocal, emptySelectionRejected});
+                })().catch(error => done({error:String(error && error.message || error)})).finally(() => {
+                  app.getValidCloudSession = originals.getValidCloudSession;
+                  app.fetchCloudRows = originals.fetchCloudRows;
+                  app.upsertCloudRows = originals.upsertCloudRows;
+                  app.upsertCloudMeta = originals.upsertCloudMeta;
+                  app.showToast = originals.showToast;
+                  app.words = originalWords;
+                  app.saveDeletedRecords(originalDeleted);
+                  app.savePendingCloudChanges(originalPending);
+                  if (originalBaseline === null) SafeStorage.removeItem(app.CLOUD_BASE_REVISION_KEY);
+                  else SafeStorage.setItem(app.CLOUD_BASE_REVISION_KEY, originalBaseline);
+                  app._cloudSyncing = false;
+                  app._cloudSyncPending = false;
+                  app._cloudSyncPendingOptions = null;
+                  app.persistSyncedData();
+                  app.renderWordList();
+                  app.updateStats();
+                });
+            """)
+            self.assert_true(
+                bool(directional_sync_result and directional_sync_result.get('downloadOnlyReplacedLocal')),
+                f"[{lang_name}] 浏览器云同步-只同步云端时不上传并完整丢弃本处修改",
+                f"下载覆盖仍发生上传、保留了本地独有内容或未清空待上传队列：{directional_sync_result}",
+            )
+            self.assert_true(
+                bool(directional_sync_result and directional_sync_result.get('uploadOnlyKeptLocal')),
+                f"[{lang_name}] 浏览器云同步-只上传本处修改时不把云端内容合入本机",
+                f"仅上传模式错误下载了云端词、未上传本机待修改或改写了本地基线：{directional_sync_result}",
+            )
+            self.assert_true(
+                bool(directional_sync_result and directional_sync_result.get('emptySelectionRejected')),
+                f"[{lang_name}] 浏览器云同步-两项均未选择时禁止执行",
+                f"空选择仍连接了云端或执行了同步：{directional_sync_result}",
             )
 
             paginated_fetch_result = driver.execute_async_script("""
