@@ -97,8 +97,11 @@ class VocabAppTester:
             "cloudUploadLocalCheckbox", "cloudDownloadLatestCheckbox",
             "cloudSyncExecuteBtn", "cloudDownloadDiscardWarning",
             "两个都勾选时才会双向同步", "只同步云端将永久丢弃本浏览器未上传的修改",
+            "上传当前本地版本", "只上传会以本浏览器完整词库覆盖云端",
             "async syncWithSupabase(showToastNotification = true, syncOptions = {})",
             "if (!uploadLocal && downloadCloud)", "if (uploadLocal && !downloadCloud)",
+            "this.upsertCloudRows(session.access_token, userId, dataRows, true, true)",
+            "const cloudOnlyTombstones = authoritative",
             "this.pendingCloudSyncSelection = syncOptions",
         ))
         self.assert_true(directional_sync_options, f"[{lang_name}] 云同步-点击云朵先明确选择上传、下载或双向同步", "缺少双 Checkbox 方向选择、下载覆盖警告或三种同步分支")
@@ -1715,6 +1718,20 @@ class VocabAppTester:
             )
 
             driver.find_element(By.ID, 'cloudUploadLocalCheckbox').click()
+            driver.find_element(By.ID, 'cloudDownloadLatestCheckbox').click()
+            upload_only_warning = driver.execute_script("""
+                const warning = document.getElementById('cloudUploadOnlyNotice');
+                return !!warning && warning.style.display === 'block'
+                  && warning.textContent.includes('完整词库覆盖云端')
+                  && warning.textContent.includes('云端独有');
+            """)
+            self.assert_true(
+                bool(upload_only_warning),
+                f"[{lang_name}] 浏览器云同步-只上传时明确提示本地整库成为云端最新版本",
+                "只上传模式未说明会覆盖云端并删除云端独有内容",
+            )
+
+            driver.find_element(By.ID, 'cloudDownloadLatestCheckbox').click()
             driver.find_element(By.ID, 'cloudSyncExecuteBtn').click()
             WebDriverWait(driver, 5).until(
                 lambda active_driver: active_driver.execute_script(
@@ -2149,6 +2166,7 @@ class VocabAppTester:
                 const prefix = originalWords[0] && String(originalWords[0].id).startsWith('jp_') ? 'jp' : 'kr';
                 const sharedId = prefix + '_direction_shared';
                 const localOnlyId = prefix + '_direction_local_only';
+                const localUnchangedId = prefix + '_direction_local_unchanged';
                 const cloudOnlyId = prefix + '_direction_cloud_only';
                 const cloudRows = [
                   {word_id:'__sync_meta__', updated_at:7000, deleted_at:null, payload:{schema:1, revision:7, updatedBy:'other-browser'}},
@@ -2160,18 +2178,23 @@ class VocabAppTester:
                   let metaUploadCalls = 0;
                   let sessionCalls = 0;
                   let uploadedRows = [];
+                  let uploadedRevision = null;
                   const toasts = [];
                   app.getValidCloudSession = async () => {
                     sessionCalls += 1;
                     return {access_token:'direction-token', user:{id:'00000000-0000-0000-0000-000000000000'}};
                   };
                   app.fetchCloudRows = async () => cloudRows;
-                  app.upsertCloudRows = async (token, userId, rows, forceAll) => {
+                  app.upsertCloudRows = async (token, userId, rows, forceAll, authoritative) => {
                     rowUploadCalls += 1;
-                    uploadedRows = app.buildCloudRows(userId, rows, forceAll);
+                    uploadedRows = app.buildCloudRows(userId, rows, forceAll, authoritative);
                     return uploadedRows;
                   };
-                  app.upsertCloudMeta = async () => { metaUploadCalls += 1; return true; };
+                  app.upsertCloudMeta = async (token, userId, revision) => {
+                    metaUploadCalls += 1;
+                    uploadedRevision = revision;
+                    return true;
+                  };
                   app.showToast = message => toasts.push(String(message));
 
                   app.words = [
@@ -2202,8 +2225,9 @@ class VocabAppTester:
                   metaUploadCalls = 0;
                   uploadedRows = [];
                   app.words = [
-                    {id:sharedId, word:'本机上传词', meaning:'只上传本处修改', rating:3, mastered:false, tags:[], updatedAt:9101},
-                    {id:localOnlyId, word:'本机上传新增词', meaning:'仍只在本机', rating:0, mastered:false, tags:[], updatedAt:9102}
+                    {id:sharedId, word:'本机上传词', meaning:'当前本地版本', rating:3, mastered:false, tags:[], updatedAt:9101},
+                    {id:localOnlyId, word:'本机上传新增词', meaning:'本地版本中的新增词', rating:0, mastered:false, tags:[], updatedAt:9102},
+                    {id:localUnchangedId, word:'本机未改词', meaning:'没有待上传标记也必须进入整库', rating:1, mastered:true, tags:[], updatedAt:8000}
                   ];
                   app.saveDeletedRecords({});
                   app.savePendingCloudChanges({
@@ -2214,21 +2238,24 @@ class VocabAppTester:
                   const uploadStart = toasts.length;
                   const uploadOk = await app.syncWithSupabase(true, {uploadLocal:true, downloadCloud:false});
                   const uploadToasts = toasts.slice(uploadStart);
-                  const uploadOnlyKeptLocal = uploadOk
-                    && rowUploadCalls === 1 && metaUploadCalls === 1
-                    && uploadedRows.some(row => row.word_id === sharedId && row.payload.meaning === '只上传本处修改')
-                    && uploadedRows.some(row => row.word_id === localOnlyId)
-                    && app.words.length === 2 && !app.words.some(word => word.id === cloudOnlyId)
-                    && app.words.some(word => word.id === sharedId && word.meaning === '只上传本处修改')
+                  const cloudOnlyTombstone = uploadedRows.find(row => row.word_id === cloudOnlyId);
+                  const uploadOnlyPublishedLocalVersion = uploadOk
+                    && rowUploadCalls === 1 && metaUploadCalls === 1 && uploadedRevision === 8
+                    && uploadedRows.some(row => row.word_id === sharedId && row.payload.meaning === '当前本地版本' && !row.deleted_at)
+                    && uploadedRows.some(row => row.word_id === localOnlyId && !row.deleted_at)
+                    && uploadedRows.some(row => row.word_id === localUnchangedId && !row.deleted_at)
+                    && !!cloudOnlyTombstone && cloudOnlyTombstone.deleted_at > 0
+                    && app.words.length === 3 && !app.words.some(word => word.id === cloudOnlyId)
+                    && app.words.some(word => word.id === sharedId && word.meaning === '当前本地版本')
                     && Object.keys(app.getPendingCloudChanges()).length === 0
-                    && app.getCloudBaselineRevision() === 3
+                    && app.getCloudBaselineRevision() === 8
                     && uploadToasts.includes('✅ 上传完成');
 
                   const callsBeforeEmptySelection = sessionCalls;
                   const emptySelectionRejected = !(await app.syncWithSupabase(true, {uploadLocal:false, downloadCloud:false}))
                     && sessionCalls === callsBeforeEmptySelection
                     && toasts.includes('⚠️ 请至少选择一项云同步操作');
-                  done({downloadOnlyReplacedLocal, uploadOnlyKeptLocal, emptySelectionRejected});
+                  done({downloadOnlyReplacedLocal, uploadOnlyPublishedLocalVersion, emptySelectionRejected});
                 })().catch(error => done({error:String(error && error.message || error)})).finally(() => {
                   app.getValidCloudSession = originals.getValidCloudSession;
                   app.fetchCloudRows = originals.fetchCloudRows;
@@ -2254,9 +2281,9 @@ class VocabAppTester:
                 f"下载覆盖仍发生上传、保留了本地独有内容或未清空待上传队列：{directional_sync_result}",
             )
             self.assert_true(
-                bool(directional_sync_result and directional_sync_result.get('uploadOnlyKeptLocal')),
-                f"[{lang_name}] 浏览器云同步-只上传本处修改时不把云端内容合入本机",
-                f"仅上传模式错误下载了云端词、未上传本机待修改或改写了本地基线：{directional_sync_result}",
+                bool(directional_sync_result and directional_sync_result.get('uploadOnlyPublishedLocalVersion')),
+                f"[{lang_name}] 浏览器云同步-只上传时以本地完整词库发布云端最新版本",
+                f"仅上传没有上传本地全量、未删除云端独有词或没有更新本机云端基线：{directional_sync_result}",
             )
             self.assert_true(
                 bool(directional_sync_result and directional_sync_result.get('emptySelectionRejected')),

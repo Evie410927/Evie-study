@@ -19167,10 +19167,10 @@ function createSupabaseSyncMethods(language) {
         modal.innerHTML = `<div data-modal-scroll style="width:min(430px,100%);max-height:calc(100vh - 40px);overflow-y:auto;background:var(--bg-secondary,#1e293b);border:1px solid var(--border-color,#334155);border-radius:18px;padding:22px;color:var(--text-primary,#f8fafc);box-shadow:0 20px 55px rgba(0,0,0,.45);">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><strong style="font-size:18px;">☁️ 选择云同步方式</strong><button type="button" aria-label="关闭" onclick="if(window.app) window.app.closeCloudSyncOptionsModal()" style="border:0;background:transparent;color:inherit;font-size:22px;cursor:pointer;">×</button></div>
           <p style="margin:0 0 16px;color:var(--text-secondary,#94a3b8);font-size:13px;line-height:1.6;">请选择这一次要执行的操作。两个都勾选时才会双向同步。</p>
-          <label style="display:flex;gap:12px;align-items:flex-start;margin-bottom:10px;padding:13px;border:1px solid var(--border-color,#475569);border-radius:12px;cursor:pointer;background:rgba(15,23,42,.3);"><input id="cloudUploadLocalCheckbox" type="checkbox" onchange="if(window.app) window.app.updateCloudSyncOptionState()" style="width:18px;height:18px;margin-top:1px;accent-color:var(--accent-primary,#ec4899);"><span><strong style="display:block;margin-bottom:3px;">上传本处修改事项</strong><small style="color:var(--text-secondary,#94a3b8);line-height:1.5;">把这个浏览器新增、编辑或删除的内容上传到云端。</small></span></label>
+          <label style="display:flex;gap:12px;align-items:flex-start;margin-bottom:10px;padding:13px;border:1px solid var(--border-color,#475569);border-radius:12px;cursor:pointer;background:rgba(15,23,42,.3);"><input id="cloudUploadLocalCheckbox" type="checkbox" onchange="if(window.app) window.app.updateCloudSyncOptionState()" style="width:18px;height:18px;margin-top:1px;accent-color:var(--accent-primary,#ec4899);"><span><strong style="display:block;margin-bottom:3px;">上传当前本地版本</strong><small style="color:var(--text-secondary,#94a3b8);line-height:1.5;">把这个浏览器当前的完整词库作为新的云端最新版本。</small></span></label>
           <label style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;padding:13px;border:1px solid var(--border-color,#475569);border-radius:12px;cursor:pointer;background:rgba(15,23,42,.3);"><input id="cloudDownloadLatestCheckbox" type="checkbox" onchange="if(window.app) window.app.updateCloudSyncOptionState()" style="width:18px;height:18px;margin-top:1px;accent-color:var(--accent-primary,#ec4899);"><span><strong style="display:block;margin-bottom:3px;">同步云端最新内容</strong><small style="color:var(--text-secondary,#94a3b8);line-height:1.5;">获取当前账号在云端保存的最新词库。</small></span></label>
           <div id="cloudDownloadDiscardWarning" role="alert" style="display:none;margin:0 0 12px;padding:11px 12px;border:1px solid rgba(251,113,133,.65);border-radius:10px;background:rgba(190,24,93,.16);color:#fda4af;font-size:13px;line-height:1.55;">⚠️ 只同步云端将永久丢弃本浏览器未上传的修改、本地新增词和本地删除记录，并以云端数据完全覆盖本处。</div>
-          <div id="cloudUploadOnlyNotice" style="display:none;margin:0 0 12px;padding:10px 12px;border-radius:10px;background:rgba(59,130,246,.12);color:var(--text-secondary,#cbd5e1);font-size:13px;line-height:1.5;">仅上传不会获取其他设备的最新修改。</div>
+          <div id="cloudUploadOnlyNotice" role="alert" style="display:none;margin:0 0 12px;padding:11px 12px;border:1px solid rgba(251,113,133,.65);border-radius:10px;background:rgba(190,24,93,.16);color:#fda4af;font-size:13px;line-height:1.55;">⚠️ 只上传会以本浏览器完整词库覆盖云端；云端独有、但本地不存在的词将从云端最新版本中删除。</div>
           <button id="cloudSyncExecuteBtn" type="button" disabled onclick="if(window.app) window.app.runSelectedCloudSync()" style="width:100%;padding:11px;border:0;border-radius:11px;background:linear-gradient(135deg,var(--accent-primary,#ec4899),#8b5cf6);color:white;font-weight:700;cursor:pointer;">开始执行</button>
         </div>`;
         document.body.appendChild(modal);
@@ -19686,19 +19686,34 @@ function createSupabaseSyncMethods(language) {
       return changedCount;
     },
 
-    buildCloudRows(userId, cloudRows = [], forceAll = false) {
+    buildCloudRows(userId, cloudRows = [], forceAll = false, authoritative = false) {
       const pending = this.getPendingCloudChanges();
       const cloudIds = new Set((cloudRows || []).map(row => String(row && row.word_id || '')).filter(id => id && id !== '__sync_meta__'));
+      const localIds = new Set((this.words || []).filter(word => word && word.id).map(word => String(word.id)));
+      const deletedRecords = this.getDeletedRecords();
+      const deletedIds = new Set(Object.values(deletedRecords).filter(item => item && item.id).map(item => String(item.id)));
       const activeRows = (this.words || []).filter(w => w && w.id && (forceAll || this.getPendingCloudMeta(pending[String(w.id)]).changedAt > 0 || !cloudIds.has(String(w.id)))).map(word => {
         const payload = { ...word, tags: Array.isArray(word.tags) ? word.tags.filter(tag => tag !== '\u6613\u6df7') : [] };
         return { user_id: userId, language, word_id: String(word.id), payload, updated_at: Number(word.updatedAt || word.createdAt || 1), deleted_at: null };
       });
-      const deletedRows = Object.values(this.getDeletedRecords()).filter(item => item && item.id).map(item => ({ user_id: userId, language, word_id: String(item.id), payload: { id: String(item.id), word: item.word || '' }, updated_at: Number(item.deletedAt || 1), deleted_at: Number(item.deletedAt || 1) }));
-      return activeRows.concat(deletedRows);
+      const deletedRows = Object.values(deletedRecords).filter(item => item && item.id).map(item => ({ user_id: userId, language, word_id: String(item.id), payload: { id: String(item.id), word: item.word || '' }, updated_at: Number(item.deletedAt || 1), deleted_at: Number(item.deletedAt || 1) }));
+      const authoritativeDeletedAt = Date.now();
+      const cloudOnlyTombstones = authoritative ? (cloudRows || []).filter(row => {
+        const id = String(row && row.word_id || '');
+        return id && id !== '__sync_meta__' && !row.deleted_at && !localIds.has(id) && !deletedIds.has(id);
+      }).map(row => ({
+        user_id: userId,
+        language,
+        word_id: String(row.word_id),
+        payload: { id: String(row.word_id), word: row && row.payload && row.payload.word || '' },
+        updated_at: authoritativeDeletedAt,
+        deleted_at: authoritativeDeletedAt
+      })) : [];
+      return activeRows.concat(deletedRows, cloudOnlyTombstones);
     },
 
-    async upsertCloudRows(accessToken, userId, cloudRows = [], forceAll = false) {
-      const rows = this.buildCloudRows(userId, cloudRows, forceAll);
+    async upsertCloudRows(accessToken, userId, cloudRows = [], forceAll = false, authoritative = false) {
+      const rows = this.buildCloudRows(userId, cloudRows, forceAll, authoritative);
       for (let index = 0; index < rows.length; index += 50) {
         const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/vocab_items?on_conflict=user_id,language,word_id`, {
           method: 'POST',
@@ -19733,7 +19748,7 @@ function createSupabaseSyncMethods(language) {
       if (showToastNotification) {
         this.showToast(uploadLocal && downloadCloud
           ? '☁️ 正在双向同步所有编辑...'
-          : uploadLocal ? '☁️ 正在上传本处修改...' : '☁️ 正在获取云端最新内容...');
+          : uploadLocal ? '☁️ 正在上传当前本地完整版本...' : '☁️ 正在获取云端最新内容...');
       }
       try {
         const session = await this.getValidCloudSession(showToastNotification);
@@ -19755,13 +19770,11 @@ function createSupabaseSyncMethods(language) {
         }
 
         if (uploadLocal && !downloadCloud) {
-          const forceAll = !metaRow;
-          const uploadedRows = await this.upsertCloudRows(session.access_token, userId, dataRows, forceAll);
-          if (uploadedRows.length > 0 || forceAll) {
-            const nextRevision = cloudRevision + 1;
-            await this.upsertCloudMeta(session.access_token, userId, nextRevision);
-            this.clearUploadedCloudChanges(uploadedRows);
-          }
+          const uploadedRows = await this.upsertCloudRows(session.access_token, userId, dataRows, true, true);
+          const nextRevision = cloudRevision + 1;
+          await this.upsertCloudMeta(session.access_token, userId, nextRevision);
+          this.clearUploadedCloudChanges(uploadedRows);
+          this.saveCloudBaselineRevision(nextRevision);
           if (showToastNotification) this.showToast('✅ 上传完成');
           return true;
         }
