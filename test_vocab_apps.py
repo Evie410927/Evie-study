@@ -434,13 +434,14 @@ class VocabAppTester:
         tag_methods_exist = 'toggleTagDropdown(' in content and 'toggleTagFilter(' in content and 'clearAllTagFilters(' in content and 'updateTagBadge(' in content and 'renderTagDropdownItems(' in content
         self.assert_true(tag_methods_exist, f"[{lang_name}] 标签筛选-多选切换与清空方法集健全", "类中缺少 toggleTagFilter/clearAllTagFilters/updateTagBadge/renderTagDropdownItems 方法")
 
-        required_system_pos_tags = ('动词', '形容词', '名词', '副词', '短语', '惯用句', '接续词', '连体词', '形容动词', '语法', '句型', '词汇', '助词', '助动词')
-        custom_tag_only_filter = (
-            'posTags' in content
-            and '!posTags.has(' in content
-            and all(f"'{tag}'" in content for tag in required_system_pos_tags)
-        )
-        self.assert_true(custom_tag_only_filter, f"[{lang_name}] 标签筛选-下拉菜单仅显示自定义 Tag，完整排除 KR/JP 系统词性 Tag", "getAllAvailableTags 的系统词性集合不完整，词汇/接续词/连体词/形容动词等可能混入顶部标签列表")
+        all_used_tags_filter = all(token in content for token in (
+            'getAllAvailableTags() {',
+            'const datasetTags = new Set();',
+            "const clean = String(t).replace(/^#/, '').trim();",
+            'if (clean) datasetTags.add(clean);',
+            'return Array.from(datasetTags).sort(',
+        )) and 'const posTags = new Set(' not in content
+        self.assert_true(all_used_tags_filter, f"[{lang_name}] 标签筛选-下拉菜单显示当前词库全部 Tag（包含词性）", "getAllAvailableTags 仍在排除词性标签，或没有对全部已用 Tag 做清洗、去重与排序")
 
         similar_ex_trans_clarity = ('.similar-word-chip .similar-ex-trans {' in content and 'color: var(--text-secondary)' in content) or ('similar-ex-trans' in content and 'color:var(--text-secondary)' in content)
         self.assert_true(similar_ex_trans_clarity, f"[{lang_name}] 相近表达-例句原文高亮与例句中文翻译层次色配置", ".similar-ex-trans 缺少 color: var(--text-secondary) 层次色配置，导致与例句原文难以区分")
@@ -1458,9 +1459,10 @@ class VocabAppTester:
 
         tag_normalization_safe = (
             "String(t).replace(/^#/, '').trim()" in content
-            and ('!posTags.has(clean)' in content or '!posTags.has(cleanTag)' in content)
+            and 'if (clean) datasetTags.add(clean);' in content
+            and 'const posTags = new Set(' not in content
         )
-        self.assert_true(tag_normalization_safe, f"[{lang_name}] 基线差异-自定义 Tag 去井号归一化并排除词性标签", "getAllAvailableTags 缺少稳定的 Tag 归一化/词性排除")
+        self.assert_true(tag_normalization_safe, f"[{lang_name}] 基线差异-全部 Tag 去井号归一化且不再排除词性标签", "getAllAvailableTags 缺少稳定归一化，或仍把词性标签排除在顶部筛选之外")
 
         detached_pagination_exact = (
             'class="pagination-bar word-list-inline-pagination"' in content
@@ -1611,7 +1613,7 @@ class VocabAppTester:
                 "window.app 未正确实例化，或 toggleTheme/openWordModal/showDetailModal/switchTab 缺失",
             )
 
-            custom_tag_dropdown_result = driver.execute_script("""
+            all_tag_dropdown_result = driver.execute_script("""
                 const app = window.app;
                 const originalWords = app.words;
                 try {
@@ -1631,13 +1633,10 @@ class VocabAppTester:
                   return {
                     available,
                     rendered,
-                    onlyCustom: available.length === 2
-                      && available.includes('我的自定义标签')
-                      && available.includes('第二个自定义标签')
-                      && rendered.length === 2
-                      && rendered.includes('我的自定义标签')
-                      && rendered.includes('第二个自定义标签')
-                      && !systemTags.some(tag => available.includes(tag) || rendered.includes(tag))
+                    allTagsVisible: available.length === systemTags.length + 2
+                      && rendered.length === systemTags.length + 2
+                      && [...systemTags, '我的自定义标签', '第二个自定义标签']
+                        .every(tag => available.includes(tag) && rendered.includes(tag))
                   };
                 } finally {
                   app.words = originalWords;
@@ -1647,9 +1646,9 @@ class VocabAppTester:
                 }
             """)
             self.assert_true(
-                bool(custom_tag_dropdown_result and custom_tag_dropdown_result.get('onlyCustom')),
-                f"[{lang_name}] 浏览器标签下拉-只渲染用户自定义 Tag，系统词性全部排除",
-                f"标签列表错误：{custom_tag_dropdown_result}",
+                bool(all_tag_dropdown_result and all_tag_dropdown_result.get('allTagsVisible')),
+                f"[{lang_name}] 浏览器标签下拉-词性与其他手动标签全部渲染且无遗漏",
+                f"标签列表错误：{all_tag_dropdown_result}",
             )
 
             driver.find_element(By.ID, 'cloudSyncBtn').click()

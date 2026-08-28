@@ -8208,7 +8208,7 @@ class JpVocabApp {
     const listEls = document.querySelectorAll('.tag-dropdown-list, #tagDropdownList, #searchBoxTagDropdownList');
     if (!listEls || listEls.length === 0) return;
 
-    // 顶部筛选只展示用户自定义 Tag；系统词性 Tag 继续保留在卡片底部。
+    // 顶部筛选展示当前词库实际使用过的全部 Tag，包括词性标签。
     const sortedTags = this.getAllAvailableTags();
     if (sortedTags.length === 0) {
       listEls.forEach(el => {
@@ -8350,14 +8350,11 @@ class JpVocabApp {
 
   getAllAvailableTags() {
     const datasetTags = new Set();
-    const posTags = new Set(['动词', '形容词', '名词', '副词', '短语', '惯用句', '接续词', '连体词', '形容动词', '感叹词', '代词', '数词', '语法', '句型', '词汇', '助词', '助动词', '俗语', '成语', '冠词', '介词', '连词']);
     (this.words || []).forEach(w => {
       if (w.tags && Array.isArray(w.tags)) {
         w.tags.forEach(t => {
           const clean = String(t).replace(/^#/, '').trim();
-          if (clean && !posTags.has(clean)) {
-            datasetTags.add(clean);
-          }
+          if (clean) datasetTags.add(clean);
         });
       }
     });
