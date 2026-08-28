@@ -1,4 +1,5 @@
 -- Evie-study 词库双端同步表。
+-- 每个账号、语言、word_id 仅保留一行最新状态；同步 revision 也只覆盖唯一元数据行，不保存历史快照。
 -- 在 Supabase Dashboard -> SQL Editor 中完整执行一次。
 
 create table if not exists public.vocab_items (

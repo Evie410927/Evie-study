@@ -140,25 +140,38 @@ class VocabAppTester:
             "const localOnlyAfterMergeIds = this.getLocalOnlyCloudWordIds(dataRows)",
             "const protectedLocalIds = [...new Set([...pendingAfterMergeIds, ...localOnlyAfterMergeIds])]",
             "await this.upsertCloudRows(session.access_token, userId, dataRows, false)",
-            "保留并上传本机", "return true;",
+            "protectedLocalIds.length > 0", "return true;",
         ))
         self.assert_true(lossless_conflict_gate, f"[{lang_name}] 云同步-版本变化或本地缺词时统一无损合并并补传本机数据", "残缺快照修复仍可能整库覆盖本机新增词，或没有把本地独有卡片补传为下一版本")
 
         destructive_replace_removed = "this.replaceLocalWithCloudRows(dataRows)" not in content
         self.assert_true(destructive_replace_removed, f"[{lang_name}] 云同步-主流程彻底禁用破坏性整库替换", "同步主流程仍调用 replaceLocalWithCloudRows，可能清空待上传队列并删除本地新增词")
 
-        preserved_edit_notice = all(token in content for token in (
-            "const pendingIds = Object.keys(pending)",
-            "const pendingAfterMergeIds = Object.keys(pendingAfterMerge)",
-            "保留并上传本机 ${protectedLocalIds.length} 项数据",
-        ))
-        self.assert_true(preserved_edit_notice, f"[{lang_name}] 云同步-明确提示已保留并上传的本机修改数量", "冲突合并成功后没有向用户反馈本机修改已被保护并上传")
+        simple_sync_success_notice = (
+            "this.showToast('✅ 上传完成，同步完成')" in content
+            and "this.showToast('✅ 同步完成')" in content
+            and all(message not in content for message in (
+                '当前已是云端最新版本 ${cloudRevision}',
+                '生成云端版本 ${nextRevision}',
+                '生成版本 ${nextRevision}',
+                '保留并上传本机 ${protectedLocalIds.length} 项数据',
+            ))
+        )
+        self.assert_true(simple_sync_success_notice, f"[{lang_name}] 云同步-成功提示仅显示上传完成或同步完成，不暴露版本号与数量", "点击云朵后的成功 Toast 仍包含云端版本号、词条数量或冗长同步细节")
+
+        current_only_cloud_storage = all(token in content for token in (
+            "word_id: '__sync_meta__'",
+            'payload: { schema: 1, revision,',
+            'on_conflict=user_id,language,word_id',
+            '唯一 __sync_meta__ 行会被覆盖，不会保存历次整库快照',
+        )) and all(token not in content for token in ('vocab_history', 'revision_history', 'cloud_snapshots'))
+        self.assert_true(current_only_cloud_storage, f"[{lang_name}] 云存储-revision 仅覆盖唯一元数据行且不创建历史快照", "同步版本可能被误存为多份历史快照，导致云端容量随点击次数持续增长")
 
         truncated_snapshot_repair = all(token in content for token in (
             "countUnexplainedMissingCloudWords(rows)",
             "const missingCloudWordCount = this.countUnexplainedMissingCloudWords(dataRows)",
             "missingCloudWordCount > 0",
-            "已无损合并云端版本",
+            "this.mergeCloudRows(dataRows)",
         ))
         self.assert_true(truncated_snapshot_repair, f"[{lang_name}] 云同步-版本相同但本机缺词时无损补全而不覆盖本地新增词", "旧手机快照缺词时仍提前退出，或修复方式会破坏本地独有卡片")
 
@@ -1998,8 +2011,8 @@ class VocabAppTester:
                     && newWordAfterConflict?.word === '삐걱거리다'
                     && Object.keys(app.getPendingCloudChanges()).length === 0
                     && app.getCloudBaselineRevision() === 3;
-                  const firstConflictPreservedNotice = firstSyncToasts.some(message => message.includes('保留并上传本机 2 项数据'))
-                    && firstSyncToasts.every(message => !message.includes('放弃本机'));
+                  const firstSuccessNoticeSimple = firstSyncToasts.includes('✅ 上传完成，同步完成')
+                    && firstSyncToasts.every(message => !message.includes('版本') && !message.includes('项数据'));
 
                   // 模拟另一设备基于版本 3 又上传了版本 4；本机此时没有修改，应只接收完整云端快照。
                   cloudRows = [
@@ -2017,8 +2030,8 @@ class VocabAppTester:
                     && app.words.some(word => word.id === newId && word.word === '삐걱거리다')
                     && Object.keys(app.getPendingCloudChanges()).length === 0
                     && app.getCloudBaselineRevision() === 4
-                    && secondSyncToasts.some(message => message.includes('已无损合并云端版本 4'))
-                    && secondSyncToasts.every(message => !message.includes('放弃本机'));
+                    && secondSyncToasts.includes('✅ 同步完成')
+                    && secondSyncToasts.every(message => !message.includes('版本') && !message.includes('项数据'));
 
                   afterSecondPull.rating = 4;
                   afterSecondPull.updatedAt = Date.now();
@@ -2028,7 +2041,7 @@ class VocabAppTester:
                   const safeUploadAfterPull = uploadSyncOk
                     && rowUploadCalls === 2 && metaUploadCalls === 2
                     && uploadedRevision === 5 && app.getCloudBaselineRevision() === 5;
-                  done({conflictMergedAndUploaded, firstConflictPreservedNotice, secondRemoteSyncedWithoutRepeatedDiscard, safeUploadAfterPull});
+                  done({conflictMergedAndUploaded, firstSuccessNoticeSimple, secondRemoteSyncedWithoutRepeatedDiscard, safeUploadAfterPull});
                 })().catch(error => done({error:String(error && error.message || error)})).finally(() => {
                   app.getValidCloudSession = originals.getValidCloudSession;
                   app.fetchCloudRows = originals.fetchCloudRows;
@@ -2053,9 +2066,9 @@ class VocabAppTester:
                 f"同步主流程仍吞掉本机新增词或没有将合并结果上传：{strict_sync_flow_result}",
             )
             self.assert_true(
-                bool(strict_sync_flow_result and strict_sync_flow_result.get('firstConflictPreservedNotice')),
-                f"[{lang_name}] 浏览器连续同步-首次冲突明确提示本机修改已保留上传",
-                f"首次冲突没有准确提示本机修改已受保护，或仍显示丢弃警告：{strict_sync_flow_result}",
+                bool(strict_sync_flow_result and strict_sync_flow_result.get('firstSuccessNoticeSimple')),
+                f"[{lang_name}] 浏览器连续同步-上传成功提示简洁且不显示版本号或数量",
+                f"首次冲突上传后的提示仍包含版本号、数量或冗长细节：{strict_sync_flow_result}",
             )
             self.assert_true(
                 bool(strict_sync_flow_result and strict_sync_flow_result.get('secondRemoteSyncedWithoutRepeatedDiscard')),

@@ -6324,6 +6324,7 @@ function createSupabaseSyncMethods(language) {
 
     async upsertCloudMeta(accessToken, userId, revision) {
       const now = Date.now();
+      // revision 仅用于同步并发门禁；唯一 __sync_meta__ 行会被覆盖，不会保存历次整库快照。
       const row = {
         user_id: userId,
         language,
@@ -6498,17 +6499,17 @@ function createSupabaseSyncMethods(language) {
             this.saveCloudBaselineRevision(nextRevision);
             this.renderWordList();
             this.updateStats();
-            if (showToastNotification) this.showToast(`✅ 已无损合并云端版本 ${cloudRevision}，保留并上传本机 ${protectedLocalIds.length} 项数据，生成版本 ${nextRevision}`);
+            if (showToastNotification) this.showToast('✅ 上传完成，同步完成');
             return true;
           }
           this.renderWordList();
           this.updateStats();
-          if (showToastNotification) this.showToast(`✅ 已无损合并云端版本 ${cloudRevision}，本机与云端数据已一致`);
+          if (showToastNotification) this.showToast('✅ 同步完成');
           return true;
         }
 
         if (metaRow && pendingCount === 0 && localOnlyCloudWordIds.length === 0) {
-          if (showToastNotification) this.showToast(`✅ 当前已是云端最新版本 ${cloudRevision}，没有待上传修改`);
+          if (showToastNotification) this.showToast('✅ 同步完成');
           return true;
         }
 
@@ -6519,12 +6520,9 @@ function createSupabaseSyncMethods(language) {
         await this.upsertCloudMeta(session.access_token, userId, nextRevision);
         this.clearUploadedCloudChanges(uploadedRows);
         this.saveCloudBaselineRevision(nextRevision);
-        const uploadedCount = uploadedRows.length;
         this.renderWordList();
         this.updateStats();
-        if (showToastNotification) this.showToast(forceAll
-          ? `✅ 已用本设备建立云端基准版本 ${nextRevision}，上传 ${uploadedCount} 个词条`
-          : `✅ 已上传本机修改并生成云端版本 ${nextRevision}，更新 ${uploadedCount} 项`);
+        if (showToastNotification) this.showToast('✅ 上传完成，同步完成');
         return true;
       } catch (err) {
         console.warn('Supabase sync error:', err);
