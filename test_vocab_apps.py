@@ -594,6 +594,10 @@ class VocabAppTester:
             and 'position: absolute;' in existing_dropdown_css_m.group(1)
             and 'top: calc(100% + 5px);' in existing_dropdown_css_m.group(1)
             and 'z-index: 1300;' in existing_dropdown_css_m.group(1)
+            and '.word-card.tag-dropdown-open {' in content
+            and 'z-index: 2000;' in content
+            and "option.addEventListener('pointerdown'" in content
+            and "hostCard.classList.add('tag-dropdown-open')" in content
             and '.inline-existing-tags-header' not in content
             and '选择词库已有 Tag' not in content
         )
@@ -1766,11 +1770,26 @@ class VocabAppTester:
                   input.dispatchEvent(new Event('input', {bubbles:true}));
                   const reusableOption = [...editor.querySelectorAll('.inline-existing-tag-option')]
                     .find(option => option.textContent.trim() === '#自定义甲');
-                  reusableOption?.click();
+                  const reusableRect = reusableOption ? reusableOption.getBoundingClientRect() : null;
+                  const hitTarget = reusableRect
+                    ? document.elementFromPoint(reusableRect.left + reusableRect.width / 2, reusableRect.top + reusableRect.height / 2)
+                    : null;
+                  const hitOption = hitTarget && hitTarget.closest('.inline-existing-tag-option');
+                  const pointerHitIsOption = hitOption === reusableOption;
+                  if (hitOption) {
+                    hitOption.dispatchEvent(new PointerEvent('pointerdown', {
+                      bubbles:true,
+                      cancelable:true,
+                      pointerType:'mouse',
+                      clientX:reusableRect.left + reusableRect.width / 2,
+                      clientY:reusableRect.top + reusableRect.height / 2
+                    }));
+                  }
                   const selectedExistingTag = app.words.find(word => word.id === targetId)?.tags.includes('自定义甲') === true;
                   return {
                     startsWithReusableDropdown,
                     floatsOverFollowingCard,
+                    pointerHitIsOption,
                     filtersExistingTags: visibleAfterFilter.length === 1 && visibleAfterFilter[0] === '#自定义乙',
                     selectedExistingTag
                   };
@@ -1802,9 +1821,14 @@ class VocabAppTester:
                 f"输入筛选没有只保留匹配 Tag：{inline_existing_tag_result}",
             )
             self.assert_true(
+                bool(inline_existing_tag_result and inline_existing_tag_result.get('pointerHitIsOption')),
+                f"[{lang_name}] 浏览器卡片加 Tag-浮层选项实际命中不被下方卡片抢走点击",
+                f"elementFromPoint 命中的不是 Tag 选项，说明下方卡片仍覆盖点击层：{inline_existing_tag_result}",
+            )
+            self.assert_true(
                 bool(inline_existing_tag_result and inline_existing_tag_result.get('selectedExistingTag')),
-                f"[{lang_name}] 浏览器卡片加 Tag-点击已有 Tag 直接添加并持久化",
-                f"点击已有 Tag 后没有加入目标卡片：{inline_existing_tag_result}",
+                f"[{lang_name}] 浏览器卡片加 Tag-pointerdown 在 blur 重绘前完成选择并持久化",
+                f"真实指针按下已有 Tag 后没有加入目标卡片：{inline_existing_tag_result}",
             )
 
             driver.find_element(By.ID, 'cloudSyncBtn').click()

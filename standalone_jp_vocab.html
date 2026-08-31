@@ -805,6 +805,10 @@ body::-webkit-scrollbar,
   transform: scale(0.98);
 }
 
+.word-card.tag-dropdown-open {
+  z-index: 2000;
+}
+
 .word-header {
   display: flex;
   justify-content: space-between;
@@ -1044,6 +1048,7 @@ body::-webkit-scrollbar,
   border-radius: 8px;
   box-shadow: var(--shadow-lg, 0 12px 28px rgba(0, 0, 0, 0.4));
   scrollbar-width: thin;
+  pointer-events: auto;
 }
 
 .inline-existing-tag-option {
@@ -1062,6 +1067,7 @@ body::-webkit-scrollbar,
   text-align: left;
   transition: all 0.2s ease;
   user-select: none;
+  pointer-events: auto;
 }
 
 .inline-existing-tag-option:hover,
@@ -7550,8 +7556,21 @@ class JpVocabApp {
       option.setAttribute('role', 'option');
       option.dataset.tagSearch = tag.toLocaleLowerCase();
       option.textContent = `#${tag}`;
-      option.addEventListener('mousedown', event => event.preventDefault());
-      option.addEventListener('click', event => onSelect(event, tag));
+      option.addEventListener('pointerdown', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        option.dataset.selectedByPointer = 'true';
+        onSelect(event, tag);
+      });
+      option.addEventListener('click', event => {
+        if (option.dataset.selectedByPointer === 'true') {
+          option.dataset.selectedByPointer = '';
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        onSelect(event, tag);
+      });
       dropdown.appendChild(option);
     });
 
@@ -8833,6 +8852,8 @@ class JpVocabApp {
 
     const btn = event.currentTarget;
     if (!btn) return;
+    const hostCard = btn.closest('.word-card');
+    if (hostCard) hostCard.classList.add('tag-dropdown-open');
 
     const editorDiv = document.createElement('div');
     editorDiv.className = 'inline-tag-editor';
@@ -8925,6 +8946,7 @@ class JpVocabApp {
     if (activeEditor) {
       activeEditor.remove();
     }
+    document.querySelectorAll('.word-card.tag-dropdown-open').forEach(card => card.classList.remove('tag-dropdown-open'));
   }
 
   removeCustomTag(wordId, tagName) {
