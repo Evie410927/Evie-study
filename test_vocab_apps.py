@@ -578,11 +578,18 @@ class VocabAppTester:
         # ---------------------------------------------------------------------
         # 测试点 20: 卡片底部 Tag 行内打字加标签交互组件防护 (Inline Tag Input Component Test)
         # ---------------------------------------------------------------------
-        inline_tag_css = '.inline-tag-editor {' in content and '.inline-tag-input {' in content and '.inline-quick-tag-chip {' in content
-        self.assert_true(inline_tag_css, f"[{lang_name}] 交互-卡片底部 Tag 行内打字编辑器 CSS 规则健全", "CSS 中缺少 .inline-tag-editor / .inline-tag-input / .inline-quick-tag-chip 规则")
+        inline_tag_css = all(token in content for token in (
+            '.inline-tag-editor {', '.inline-tag-input {', '.inline-existing-tags-dropdown {',
+            '.inline-existing-tag-option {', '.inline-existing-tags-empty {',
+        ))
+        self.assert_true(inline_tag_css, f"[{lang_name}] 交互-卡片底部 Tag 行内输入与已有 Tag 下拉框 CSS 健全", "CSS 中缺少行内输入框或已有 Tag 下拉列表规则")
 
-        inline_tag_methods = 'showInlineTagInput(' in content and 'handleInlineTagKeydown(' in content and 'saveInlineTag(' in content and 'addQuickTag(' in content
-        self.assert_true(inline_tag_methods, f"[{lang_name}] 交互-行内打字加标签 API 方法集 (showInlineTagInput/saveInlineTag/addQuickTag) 健全", "类中缺少 showInlineTagInput / handleInlineTagKeydown / saveInlineTag / addQuickTag 方法")
+        inline_tag_methods = all(token in content for token in (
+            'showInlineTagInput(', 'handleInlineTagKeydown(', 'saveInlineTag(', 'addQuickTag(',
+            'getExistingTagOptions(', 'mountExistingTagDropdown(', 'filterExistingTagDropdown(',
+            "header.textContent = '选择词库已有 Tag'",
+        ))
+        self.assert_true(inline_tag_methods, f"[{lang_name}] 交互-行内输入、已有 Tag 复用选择与搜索过滤方法集健全", "类中缺少行内加 Tag、动态已有 Tag 列表或输入过滤方法")
 
         shared_modal_tag_editor = all(token in content for token in (
             'id="addWordTagsGroup"',
@@ -752,12 +759,12 @@ class VocabAppTester:
 
         custom_tag_css_m = re.search(r'\.tag-badge\.custom-tag\s*\{([^}]*)\}', content, re.DOTALL)
         active_tag_css_m = re.search(r'\.active-tag-chip\s*\{([^}]*)\}', content, re.DOTALL)
-        quick_tag_css_m = re.search(r'\.inline-quick-tag-chip\s*\{([^}]*)\}', content, re.DOTALL)
+        reusable_tag_css_m = re.search(r'\.inline-existing-tag-option\s*\{([^}]*)\}', content, re.DOTALL)
         selected_tag_css_m = re.search(r'\.tag-dropdown-item\.selected\s*\{([^}]*)\}', content, re.DOTALL)
         neutral_tag_blocks = [
             custom_tag_css_m.group(1) if custom_tag_css_m else '',
             active_tag_css_m.group(1) if active_tag_css_m else '',
-            quick_tag_css_m.group(1) if quick_tag_css_m else '',
+            reusable_tag_css_m.group(1) if reusable_tag_css_m else '',
         ]
         all_tags_neutral_gray = (
             all('rgba(255, 255, 255, 0.06)' in block and 'var(--text-secondary)' in block for block in neutral_tag_blocks)
@@ -765,9 +772,9 @@ class VocabAppTester:
             and 'rgba(255, 255, 255, 0.12)' in selected_tag_css_m.group(1)
             and '#a5b4fc' not in (custom_tag_css_m.group(1) if custom_tag_css_m else '')
             and 'var(--accent-gradient)' not in (active_tag_css_m.group(1) if active_tag_css_m else '')
-            and 'var(--accent-primary' not in (quick_tag_css_m.group(1) if quick_tag_css_m else '')
+            and 'var(--accent-primary' not in (reusable_tag_css_m.group(1) if reusable_tag_css_m else '')
         )
-        self.assert_true(all_tags_neutral_gray, f"[{lang_name}] 样式-系统、自定义、已选与快捷 Tag 全部统一为中性灰色", "Tag 仍保留蓝紫、粉色、渐变等特殊配色，或未采用与词性 Tag 一致的灰色")
+        self.assert_true(all_tags_neutral_gray, f"[{lang_name}] 样式-系统、自定义、已选与已有 Tag 选项全部统一为中性灰色", "Tag 仍保留蓝紫、粉色、渐变等特殊配色，或未采用与词性 Tag 一致的灰色")
 
         # ---------------------------------------------------------------------
         # 测试点 25: 卡片点击 showDetailModal 触发事件与 card-actions stopPropagation 事件隔离
@@ -1121,19 +1128,23 @@ class VocabAppTester:
         self.assert_true(detail_back_btn, f"[{lang_name}] 交互-详情弹窗极简返回图标按钮 #detailBackBtn 显隐切换与对称布局防护", "缺少 #detailBackBtn 节点或 backBtn.style.display 控制逻辑")
 
         # ---------------------------------------------------------------------
-        # 测试点 37: 仅保留 📌易忘快捷标签，并彻底移除旧的易混卡片概念
+        # 测试点 37: 加 Tag 不再硬编码易忘，改为展示当前词库已有 Tag；旧易混概念继续禁用
         # ---------------------------------------------------------------------
-        easy_forget_only = all(token in content for token in (
-            'class="inline-quick-tag-chip"',
-            "addQuickTag(event, '${wordId}', '易忘')",
+        reusable_tags_without_default_easy_forget = all(token in content for token in (
+            "const options = this.getExistingTagOptions(excludedTags)",
+            "option.className = 'inline-existing-tag-option'",
+            "this.mountExistingTagDropdown(editorDiv",
             'grid-template-columns: 1fr 1fr;',
             "tag !== '\\u6613\\u6df7'",
         )) and all(token not in content for token in (
+            'class="inline-quick-tag-chip"',
+            "addQuickTag(event, '${wordId}', '易忘')",
+            '<span class="inline-quick-tag-chip">📌易忘</span>',
             'btnEasyConfuse',
             'easy-confuse',
             "addQuickTag(event, '${wordId}', '易混')",
         ))
-        self.assert_true(easy_forget_only, f"[{lang_name}] 交互-仅保留📌易忘标签与两枚复习按钮，旧易混标签自动清理且无法重新添加", "仍存在易混按钮/标签/逻辑，或缺少旧数据清理及两列复习按钮布局")
+        self.assert_true(reusable_tags_without_default_easy_forget, f"[{lang_name}] 交互-加 Tag 不默认显示易忘并动态复用词库已有 Tag", "仍硬编码显示📌易忘，或没有从当前词库动态生成可选 Tag 下拉列表")
 
         # ---------------------------------------------------------------------
         # 测试点 38: .word-list 使用极小底边距，把空间留给单词卡片
@@ -1681,6 +1692,86 @@ class VocabAppTester:
                 bool(all_tag_dropdown_result and all_tag_dropdown_result.get('allTagsVisible')),
                 f"[{lang_name}] 浏览器标签下拉-词性与其他手动标签全部渲染且无遗漏",
                 f"标签列表错误：{all_tag_dropdown_result}",
+            )
+
+            inline_existing_tag_result = driver.execute_script("""
+                const app = window.app;
+                const originalWords = app.words;
+                const originalPending = app.getPendingCloudChanges();
+                const originalState = {
+                  currentFilter: app.currentFilter,
+                  subFilter: app.subFilter,
+                  searchTerm: app.searchTerm,
+                  currentPage: app.currentPage
+                };
+                const prefix = originalWords[0] && String(originalWords[0].id).startsWith('jp_') ? 'jp' : 'kr';
+                const targetId = prefix + '_inline_existing_target';
+                try {
+                  app.words = [
+                    {id:targetId, word:'Tag目标词', meaning:'测试已有标签选择', tags:['名词'], rating:0, mastered:false, examples:[], updatedAt:1001},
+                    {id:prefix + '_inline_existing_source_a', word:'来源甲', meaning:'来源', tags:['自定义甲','易忘'], rating:0, mastered:false, examples:[], updatedAt:1002},
+                    {id:prefix + '_inline_existing_source_b', word:'来源乙', meaning:'来源', tags:['动词','自定义乙'], rating:0, mastered:false, examples:[], updatedAt:1003}
+                  ];
+                  app.currentFilter = 'all';
+                  app.subFilter = 'all';
+                  app.searchTerm = '';
+                  app.currentPage = 1;
+                  app.refreshWordFingerprints();
+                  app.renderWordList();
+                  const card = document.querySelector(`.word-card[data-id="${targetId}"]`);
+                  const addButton = card && card.querySelector('.add-tag-btn');
+                  if (!addButton) return {error:'未找到卡片加 Tag 按钮'};
+                  addButton.click();
+                  const editor = document.getElementById('activeInlineTagEditor');
+                  const input = editor && editor.querySelector('.inline-tag-input');
+                  const optionTexts = editor ? [...editor.querySelectorAll('.inline-existing-tag-option')].map(option => option.textContent.trim()) : [];
+                  const startsWithReusableDropdown = !!editor && !!input
+                    && !editor.querySelector('.inline-quick-tag-chip')
+                    && optionTexts.includes('#自定义甲') && optionTexts.includes('#自定义乙')
+                    && optionTexts.includes('#动词') && optionTexts.includes('#易忘')
+                    && !optionTexts.includes('#名词');
+                  input.value = '自定义乙';
+                  input.dispatchEvent(new Event('input', {bubbles:true}));
+                  const visibleAfterFilter = [...editor.querySelectorAll('.inline-existing-tag-option')]
+                    .filter(option => option.style.display !== 'none')
+                    .map(option => option.textContent.trim());
+                  input.value = '';
+                  input.dispatchEvent(new Event('input', {bubbles:true}));
+                  const reusableOption = [...editor.querySelectorAll('.inline-existing-tag-option')]
+                    .find(option => option.textContent.trim() === '#自定义甲');
+                  reusableOption?.click();
+                  const selectedExistingTag = app.words.find(word => word.id === targetId)?.tags.includes('自定义甲') === true;
+                  return {
+                    startsWithReusableDropdown,
+                    filtersExistingTags: visibleAfterFilter.length === 1 && visibleAfterFilter[0] === '#自定义乙',
+                    selectedExistingTag
+                  };
+                } finally {
+                  app.words = originalWords;
+                  app.currentFilter = originalState.currentFilter;
+                  app.subFilter = originalState.subFilter;
+                  app.searchTerm = originalState.searchTerm;
+                  app.currentPage = originalState.currentPage;
+                  app.savePendingCloudChanges(originalPending);
+                  app.persistSyncedData();
+                  app.refreshWordFingerprints();
+                  app.renderWordList();
+                }
+            """)
+            self.assert_true(
+                bool(inline_existing_tag_result and inline_existing_tag_result.get('startsWithReusableDropdown')),
+                f"[{lang_name}] 浏览器卡片加 Tag-不再固定显示易忘并列出词库已有 Tag",
+                f"已有 Tag 下拉内容错误、未排除当前卡片 Tag，或仍存在固定易忘快捷项：{inline_existing_tag_result}",
+            )
+            self.assert_true(
+                bool(inline_existing_tag_result and inline_existing_tag_result.get('filtersExistingTags')),
+                f"[{lang_name}] 浏览器卡片加 Tag-输入文字实时筛选已有 Tag 下拉框",
+                f"输入筛选没有只保留匹配 Tag：{inline_existing_tag_result}",
+            )
+            self.assert_true(
+                bool(inline_existing_tag_result and inline_existing_tag_result.get('selectedExistingTag')),
+                f"[{lang_name}] 浏览器卡片加 Tag-点击已有 Tag 直接添加并持久化",
+                f"点击已有 Tag 后没有加入目标卡片：{inline_existing_tag_result}",
             )
 
             driver.find_element(By.ID, 'cloudSyncBtn').click()

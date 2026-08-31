@@ -987,15 +987,19 @@ body::-webkit-scrollbar,
   transform: scale(1.1);
 }
 
-/* 卡片行内 Tag 增加组件 (彻底替代丑陋的 Pop 下拉框) */
+/* 卡片行内 Tag 增加组件：输入框下方复用当前词库已有 Tag */
 .inline-tag-editor {
   display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  position: relative;
+  width: min(180px, 100%);
+  min-width: 140px;
   background: var(--bg-card-solid, #1e2030);
   border: 1.5px solid var(--accent-primary, #ec4899);
-  border-radius: var(--radius-full, 9999px);
-  padding: 1px 6px;
+  border-radius: 10px;
+  padding: 4px 6px;
   box-shadow: 0 0 10px rgba(236, 72, 153, 0.35);
   animation: inlineTagFadeIn 0.15s ease-out;
   vertical-align: middle;
@@ -1013,8 +1017,9 @@ body::-webkit-scrollbar,
   color: var(--text-primary, #ffffff);
   font-size: 11px;
   font-weight: 500;
-  width: 68px;
-  padding: 1px 2px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 2px 2px 5px;
 }
 
 .inline-tag-input::placeholder {
@@ -1022,27 +1027,56 @@ body::-webkit-scrollbar,
   font-size: 10px;
 }
 
-.inline-quick-tag-chip {
-  display: inline-flex;
+.inline-existing-tags-dropdown {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 132px;
+  overflow-y: auto;
+  margin-top: 2px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-color);
+  scrollbar-width: thin;
+}
+
+.inline-existing-tags-header {
+  padding: 2px 4px 3px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.inline-existing-tag-option {
+  display: flex;
   align-items: center;
+  width: 100%;
   font-size: 10px;
   font-weight: 600;
   color: var(--text-secondary);
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--border-color);
-  border-radius: 9999px;
-  padding: 1px 5px;
+  border-radius: 6px;
+  padding: 4px 6px;
   cursor: pointer;
   white-space: nowrap;
+  text-align: left;
   transition: all 0.2s ease;
   user-select: none;
 }
 
-.inline-quick-tag-chip:hover {
+.inline-existing-tag-option:hover,
+.inline-existing-tag-option:focus-visible {
   background: rgba(255, 255, 255, 0.12);
   color: var(--text-primary);
-  transform: scale(1.05);
   box-shadow: none;
+  outline: none;
+}
+
+.inline-existing-tags-empty {
+  padding: 5px 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.35;
 }
 
 /* Tag Dropdown Menu */
@@ -20683,23 +20717,85 @@ class KrVocabApp {
     container.innerHTML = tagsHtml + `<button type="button" class="add-tag-btn" onclick="event.stopPropagation(); (window.app||window.vocabApp).showModalInlineTagInput(event)" title="添加标签">+</button>`;
   }
 
+  getExistingTagOptions(excludedTags = []) {
+    const excluded = new Set((excludedTags || []).map(tag => String(tag || '').replace(/^#/, '').trim()).filter(Boolean));
+    const usage = new Map();
+    (this.words || []).forEach(word => {
+      (Array.isArray(word && word.tags) ? word.tags : []).forEach(tag => {
+        const cleanTag = String(tag || '').replace(/^#/, '').trim();
+        if (!cleanTag || cleanTag === '\u6613\u6df7' || excluded.has(cleanTag)) return;
+        usage.set(cleanTag, (usage.get(cleanTag) || 0) + 1);
+      });
+    });
+    return [...usage.keys()].sort((a, b) => (usage.get(b) || 0) - (usage.get(a) || 0) || a.localeCompare(b, 'zh-CN'));
+  }
+
+  mountExistingTagDropdown(editor, excludedTags = [], onSelect) {
+    if (!editor || typeof onSelect !== 'function') return;
+    const dropdown = document.createElement('div');
+    dropdown.className = 'inline-existing-tags-dropdown';
+    dropdown.setAttribute('role', 'listbox');
+    dropdown.setAttribute('aria-label', '选择已有标签');
+
+    const header = document.createElement('div');
+    header.className = 'inline-existing-tags-header';
+    header.textContent = '选择词库已有 Tag';
+    dropdown.appendChild(header);
+
+    const options = this.getExistingTagOptions(excludedTags);
+    options.forEach(tag => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'inline-existing-tag-option';
+      option.setAttribute('role', 'option');
+      option.dataset.tagSearch = tag.toLocaleLowerCase();
+      option.textContent = `#${tag}`;
+      option.addEventListener('mousedown', event => event.preventDefault());
+      option.addEventListener('click', event => onSelect(event, tag));
+      dropdown.appendChild(option);
+    });
+
+    const empty = document.createElement('div');
+    empty.className = 'inline-existing-tags-empty';
+    empty.textContent = options.length ? '没有匹配的已有 Tag' : '暂无可选 Tag，可直接输入新标签';
+    empty.style.display = options.length ? 'none' : 'block';
+    dropdown.appendChild(empty);
+    editor.appendChild(dropdown);
+  }
+
+  filterExistingTagDropdown(editor, query = '') {
+    if (!editor) return;
+    const normalizedQuery = String(query || '').replace(/^#/, '').trim().toLocaleLowerCase();
+    const options = [...editor.querySelectorAll('.inline-existing-tag-option')];
+    let visibleCount = 0;
+    options.forEach(option => {
+      const matches = !normalizedQuery || String(option.dataset.tagSearch || '').includes(normalizedQuery);
+      option.style.display = matches ? 'flex' : 'none';
+      if (matches) visibleCount += 1;
+    });
+    const empty = editor.querySelector('.inline-existing-tags-empty');
+    if (empty) {
+      empty.textContent = options.length ? '没有匹配的已有 Tag' : '暂无可选 Tag，可直接输入新标签';
+      empty.style.display = visibleCount > 0 ? 'none' : 'block';
+    }
+  }
+
   openModalTagEditor(target, originalTag = '') {
     if (!target) return;
     const editor = document.createElement('div');
     editor.className = 'inline-tag-editor';
     editor.id = 'activeModalInlineTagEditor';
     editor.onclick = event => event.stopPropagation();
-    editor.innerHTML = `<input type="text" class="inline-tag-input" placeholder="+ 标签" aria-label="输入卡片标签">${originalTag ? '' : '<span class="inline-quick-tag-chip">📌易忘</span>'}`;
+    editor.innerHTML = '<input type="text" class="inline-tag-input" placeholder="+ 标签" aria-label="输入卡片标签">';
     target.replaceWith(editor);
     const input = editor.querySelector('.inline-tag-input');
-    const quickTag = editor.querySelector('.inline-quick-tag-chip');
     if (!input) return;
     input.value = originalTag;
     input.addEventListener('keydown', event => this.handleModalInlineTagKeydown(event, originalTag));
     input.addEventListener('blur', () => this.saveModalInlineTag(input, originalTag), { once: true });
-    if (quickTag) {
-      quickTag.addEventListener('mousedown', event => event.preventDefault());
-      quickTag.addEventListener('click', event => this.addModalQuickTag(event, '易忘'));
+    if (!originalTag) {
+      this.mountExistingTagDropdown(editor, this.editingModalTags || [], (event, tag) => this.addModalQuickTag(event, tag));
+      input.addEventListener('input', () => this.filterExistingTagDropdown(editor, input.value));
     }
     setTimeout(() => {
       input.focus();
@@ -21654,13 +21750,15 @@ class KrVocabApp {
              placeholder="+ 标签" 
              onkeydown="(window.app||window.vocabApp).handleInlineTagKeydown(event, '${wordId}')" 
              onblur="(window.app||window.vocabApp).saveInlineTag(this, '${wordId}')" />
-      <span class="inline-quick-tag-chip" onmousedown="event.preventDefault()" onclick="(window.app||window.vocabApp).addQuickTag(event, '${wordId}', '易忘')">📌易忘</span>
     `;
 
     btn.replaceWith(editorDiv);
 
     const input = editorDiv.querySelector('.inline-tag-input');
+    const word = this.words.find(item => item && item.id === wordId);
+    this.mountExistingTagDropdown(editorDiv, word && Array.isArray(word.tags) ? word.tags : [], (optionEvent, tag) => this.addQuickTag(optionEvent, wordId, tag));
     if (input) {
+      input.addEventListener('input', () => this.filterExistingTagDropdown(editorDiv, input.value));
       setTimeout(() => input.focus(), 10);
     }
   }
