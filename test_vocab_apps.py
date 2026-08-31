@@ -584,10 +584,25 @@ class VocabAppTester:
         ))
         self.assert_true(inline_tag_css, f"[{lang_name}] 交互-卡片底部 Tag 行内输入与已有 Tag 下拉框 CSS 健全", "CSS 中缺少行内输入框或已有 Tag 下拉列表规则")
 
+        inline_editor_css_m = re.search(r'\.inline-tag-editor\s*\{([^}]*)\}', content, re.DOTALL)
+        existing_dropdown_css_m = re.search(r'\.inline-existing-tags-dropdown\s*\{([^}]*)\}', content, re.DOTALL)
+        floating_existing_tags = (
+            inline_editor_css_m is not None
+            and 'position: relative;' in inline_editor_css_m.group(1)
+            and 'z-index: 1200;' in inline_editor_css_m.group(1)
+            and existing_dropdown_css_m is not None
+            and 'position: absolute;' in existing_dropdown_css_m.group(1)
+            and 'top: calc(100% + 5px);' in existing_dropdown_css_m.group(1)
+            and 'z-index: 1300;' in existing_dropdown_css_m.group(1)
+            and '.inline-existing-tags-header' not in content
+            and '选择词库已有 Tag' not in content
+        )
+        self.assert_true(floating_existing_tags, f"[{lang_name}] 交互-已有 Tag 下拉采用高层浮窗且不撑高卡片、不显示多余标题", "已有 Tag 列表仍参与卡片布局、层级不足或保留了占空间的标题文字")
+
         inline_tag_methods = all(token in content for token in (
             'showInlineTagInput(', 'handleInlineTagKeydown(', 'saveInlineTag(', 'addQuickTag(',
             'getExistingTagOptions(', 'mountExistingTagDropdown(', 'filterExistingTagDropdown(',
-            "header.textContent = '选择词库已有 Tag'",
+            "dropdown.setAttribute('role', 'listbox')",
         ))
         self.assert_true(inline_tag_methods, f"[{lang_name}] 交互-行内输入、已有 Tag 复用选择与搜索过滤方法集健全", "类中缺少行内加 Tag、动态已有 Tag 列表或输入过滤方法")
 
@@ -1719,17 +1734,29 @@ class VocabAppTester:
                   app.refreshWordFingerprints();
                   app.renderWordList();
                   const card = document.querySelector(`.word-card[data-id="${targetId}"]`);
+                  const nextCard = card && card.nextElementSibling && card.nextElementSibling.classList.contains('word-card') ? card.nextElementSibling : null;
+                  const cardHeightBefore = card ? card.getBoundingClientRect().height : 0;
                   const addButton = card && card.querySelector('.add-tag-btn');
                   if (!addButton) return {error:'未找到卡片加 Tag 按钮'};
                   addButton.click();
                   const editor = document.getElementById('activeInlineTagEditor');
                   const input = editor && editor.querySelector('.inline-tag-input');
+                  const dropdown = editor && editor.querySelector('.inline-existing-tags-dropdown');
+                  const cardHeightAfter = card ? card.getBoundingClientRect().height : 0;
+                  const dropdownRect = dropdown ? dropdown.getBoundingClientRect() : null;
+                  const nextCardRect = nextCard ? nextCard.getBoundingClientRect() : null;
                   const optionTexts = editor ? [...editor.querySelectorAll('.inline-existing-tag-option')].map(option => option.textContent.trim()) : [];
                   const startsWithReusableDropdown = !!editor && !!input
                     && !editor.querySelector('.inline-quick-tag-chip')
+                    && !editor.querySelector('.inline-existing-tags-header')
+                    && !editor.textContent.includes('选择词库已有 Tag')
                     && optionTexts.includes('#自定义甲') && optionTexts.includes('#自定义乙')
                     && optionTexts.includes('#动词') && optionTexts.includes('#易忘')
                     && !optionTexts.includes('#名词');
+                  const floatsOverFollowingCard = !!dropdown && getComputedStyle(dropdown).position === 'absolute'
+                    && cardHeightAfter <= cardHeightBefore + 8
+                    && (!nextCardRect || (dropdownRect && dropdownRect.bottom > nextCardRect.top))
+                    && Number.parseInt(getComputedStyle(dropdown).zIndex || '0', 10) >= 1300;
                   input.value = '自定义乙';
                   input.dispatchEvent(new Event('input', {bubbles:true}));
                   const visibleAfterFilter = [...editor.querySelectorAll('.inline-existing-tag-option')]
@@ -1743,6 +1770,7 @@ class VocabAppTester:
                   const selectedExistingTag = app.words.find(word => word.id === targetId)?.tags.includes('自定义甲') === true;
                   return {
                     startsWithReusableDropdown,
+                    floatsOverFollowingCard,
                     filtersExistingTags: visibleAfterFilter.length === 1 && visibleAfterFilter[0] === '#自定义乙',
                     selectedExistingTag
                   };
@@ -1760,8 +1788,13 @@ class VocabAppTester:
             """)
             self.assert_true(
                 bool(inline_existing_tag_result and inline_existing_tag_result.get('startsWithReusableDropdown')),
-                f"[{lang_name}] 浏览器卡片加 Tag-不再固定显示易忘并列出词库已有 Tag",
-                f"已有 Tag 下拉内容错误、未排除当前卡片 Tag，或仍存在固定易忘快捷项：{inline_existing_tag_result}",
+                f"[{lang_name}] 浏览器卡片加 Tag-不显示固定易忘或多余标题并列出已有 Tag",
+                f"已有 Tag 下拉内容错误、未排除当前卡片 Tag，或仍存在固定易忘/标题文字：{inline_existing_tag_result}",
+            )
+            self.assert_true(
+                bool(inline_existing_tag_result and inline_existing_tag_result.get('floatsOverFollowingCard')),
+                f"[{lang_name}] 浏览器卡片加 Tag-下拉浮层覆盖后续卡片且不撑高当前卡片",
+                f"下拉框仍扩大卡片高度、没有覆盖后续卡片或浮层层级不足：{inline_existing_tag_result}",
             )
             self.assert_true(
                 bool(inline_existing_tag_result and inline_existing_tag_result.get('filtersExistingTags')),
