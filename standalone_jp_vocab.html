@@ -2174,10 +2174,6 @@ body::-webkit-scrollbar,
   border-color: var(--accent-primary);
   color: var(--accent-primary);
 }
-.example-pair-remove-btn.is-required-row {
-  visibility: hidden;
-  pointer-events: none;
-}
 .add-example-pair-btn {
   align-self: flex-start;
   padding: 7px 12px;
@@ -3060,24 +3056,6 @@ body::-webkit-scrollbar,
             <label class="form-label">例句</label>
             <div id="examplePairsEditor" class="example-pairs-editor">
               <div class="example-pair-columns" aria-hidden="true"><span></span><span>日语原句</span><span>中文翻译</span><span></span></div>
-              <div class="example-pair-row" data-example-index="0">
-                <button type="button" class="example-drag-handle" aria-label="拖动例句 1 排序" title="按住拖动排序" onpointerdown="(window.app||window.vocabApp).startExampleSort(event, 'editor')" onkeydown="(window.app||window.vocabApp).handleExampleSortKey(event, 'editor')">≡</button>
-                <input type="text" class="form-input example-pair-input example-source-input" placeholder="日语例句 1" aria-label="日语例句 1" autocomplete="off" required>
-                <input type="text" class="form-input example-pair-input example-translation-input" placeholder="中文翻译 1" aria-label="例句中文翻译 1" autocomplete="off" required>
-                <button type="button" class="example-pair-remove-btn is-required-row" aria-label="删除例句 1" disabled>×</button>
-              </div>
-              <div class="example-pair-row" data-example-index="1">
-                <button type="button" class="example-drag-handle" aria-label="拖动例句 2 排序" title="按住拖动排序" onpointerdown="(window.app||window.vocabApp).startExampleSort(event, 'editor')" onkeydown="(window.app||window.vocabApp).handleExampleSortKey(event, 'editor')">≡</button>
-                <input type="text" class="form-input example-pair-input example-source-input" placeholder="日语例句 2" aria-label="日语例句 2" autocomplete="off" required>
-                <input type="text" class="form-input example-pair-input example-translation-input" placeholder="中文翻译 2" aria-label="例句中文翻译 2" autocomplete="off" required>
-                <button type="button" class="example-pair-remove-btn is-required-row" aria-label="删除例句 2" disabled>×</button>
-              </div>
-              <div class="example-pair-row" data-example-index="2">
-                <button type="button" class="example-drag-handle" aria-label="拖动例句 3 排序" title="按住拖动排序" onpointerdown="(window.app||window.vocabApp).startExampleSort(event, 'editor')" onkeydown="(window.app||window.vocabApp).handleExampleSortKey(event, 'editor')">≡</button>
-                <input type="text" class="form-input example-pair-input example-source-input" placeholder="日语例句 3" aria-label="日语例句 3" autocomplete="off" required>
-                <input type="text" class="form-input example-pair-input example-translation-input" placeholder="中文翻译 3" aria-label="例句中文翻译 3" autocomplete="off" required>
-                <button type="button" class="example-pair-remove-btn is-required-row" aria-label="删除例句 3" disabled>×</button>
-              </div>
               <button id="addExamplePairBtn" type="button" class="add-example-pair-btn" onclick="(window.app||window.vocabApp).addExamplePairRow()">＋ 添加例句</button>
             </div>
           </div>
@@ -7865,7 +7843,7 @@ class JpVocabApp {
     if (!editor) return;
     const parsedExamples = word ? this.getParsedExamples(word) : [];
     editor.querySelectorAll('.example-pair-row').forEach(row => row.remove());
-    const rowCount = Math.max(3, parsedExamples.length);
+    const rowCount = parsedExamples.length;
     for (let index = 0; index < rowCount; index++) {
       this.addExamplePairRow(parsedExamples[index] || { example: '', trans: '' }, false);
     }
@@ -7900,8 +7878,6 @@ class JpVocabApp {
     const editor = document.getElementById('examplePairsEditor');
     const row = button && typeof button.closest === 'function' ? button.closest('.example-pair-row') : null;
     if (!editor || !row || !editor.contains(row)) return false;
-    const rows = Array.from(editor.querySelectorAll('.example-pair-row'));
-    if (rows.length <= 3 || rows.indexOf(row) < 3) return false;
     row.remove();
     this.renumberExamplePairRows();
     return true;
@@ -7926,11 +7902,9 @@ class JpVocabApp {
         translationInput.setAttribute('aria-label', `例句中文翻译 ${displayIndex}`);
       }
       if (removeButton) {
-        const requiredRow = index < 3;
-        removeButton.classList.toggle('is-required-row', requiredRow);
-        removeButton.disabled = requiredRow;
+        removeButton.disabled = false;
         removeButton.setAttribute('aria-label', `删除例句 ${displayIndex}`);
-        removeButton.title = requiredRow ? '至少保留三组例句' : `删除例句 ${displayIndex}`;
+        removeButton.title = `删除例句 ${displayIndex}`;
       }
       if (dragHandle) dragHandle.setAttribute('aria-label', `拖动例句 ${displayIndex} 排序`);
     });
@@ -8427,17 +8401,18 @@ class JpVocabApp {
     const meaning = meaningInput.value.trim();
     const krMeaning = krMeaningInput.value.trim();
     const userNote = userNoteInput.value.trim();
-    const examplePairs = this.collectExamplePairsFromEditor();
+    const collectedExamplePairs = this.collectExamplePairsFromEditor();
 
     if (!wordText || !meaning) {
       this.showToast('请填写日语单词与释义');
       return;
     }
 
-    if (examplePairs.length < 3 || examplePairs.some(pair => !pair.example || !pair.trans)) {
-      this.showToast('请至少完整填写三组日语例句及对应中文翻译；多余空行可点击 × 删除');
+    if (collectedExamplePairs.some(pair => Boolean(pair.example) !== Boolean(pair.trans))) {
+      this.showToast('每条例句都需要同时填写日语原句与中文翻译');
       return;
     }
+    const examplePairs = collectedExamplePairs.filter(pair => pair.example && pair.trans);
 
     const existingWord = id ? this.words.find(w => w.id === id) : null;
     const tags = [...(this.editingModalTags || [])];

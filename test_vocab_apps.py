@@ -1038,14 +1038,11 @@ class VocabAppTester:
         self.assert_true(user_note_readable_color, f"[{lang_name}] 自定义说明-文字颜色与中文释义使用同一灰色", "自定义说明仍使用过暗的 text-muted，阅读对比度不足")
 
         # ---------------------------------------------------------------------
-        # 测试点 31C: 编辑弹窗至少三行且可无限追加的双栏对照例句编辑器
+        # 测试点 31C: 编辑弹窗例句数量无限制且每一行均可自由删除
         # ---------------------------------------------------------------------
         example_pair_editor = all(token in content for token in (
             'id="examplePairsEditor"',
             'class="example-pair-columns"',
-            'data-example-index="0"',
-            'data-example-index="1"',
-            'data-example-index="2"',
             'example-source-input',
             'example-translation-input',
             'fillExamplePairsEditor(word = null)',
@@ -1054,9 +1051,16 @@ class VocabAppTester:
             'addExamplePairRow(pair = null, focusNewRow = true)',
             'removeExamplePairRow(button)',
             'renumberExamplePairRows()',
-            'const rowCount = Math.max(3, parsedExamples.length)',
+            'const rowCount = parsedExamples.length',
+            'removeExamplePairRow(button)',
+        )) and all(token not in content for token in (
+            'Math.max(3, parsedExamples.length)',
+            'rows.length <= 3',
+            'rows.indexOf(row) < 3',
+            'const requiredRow = index < 3',
+            '.example-pair-remove-btn.is-required-row',
         )) and '.slice(0, 3)' not in content
-        self.assert_true(example_pair_editor, f"[{lang_name}] 编辑弹窗-例句至少三组且可通过＋无限动态添加删除", "编辑弹窗仍截断到三组，或缺少动态添加、删除、重编号与全量回填方法")
+        self.assert_true(example_pair_editor, f"[{lang_name}] 编辑弹窗-例句数量不限且任意一行均可自由删除至零条", "编辑弹窗仍存在最低三条限制、受保护删除行或缺少动态增删与全量回填")
 
         legacy_example_inputs_removed = all(token not in content for token in (
             'id="inputExample"',
@@ -1067,13 +1071,14 @@ class VocabAppTester:
         self.assert_true(legacy_example_inputs_removed, f"[{lang_name}] 编辑弹窗-旧原句大文本框与独立翻译框已完全移除", "旧 inputExample/inputExampleTrans 控件或读写逻辑仍残留，可能与三行编辑器冲突")
 
         example_pair_persistence = all(token in content for token in (
-            'examplePairs.length < 3',
-            'examplePairs.some(pair => !pair.example || !pair.trans)',
+            'const collectedExamplePairs = this.collectExamplePairsFromEditor()',
+            'collectedExamplePairs.some(pair => Boolean(pair.example) !== Boolean(pair.trans))',
+            'const examplePairs = collectedExamplePairs.filter(pair => pair.example && pair.trans)',
             'const examples = examplePairs.map(pair => ({ example: pair.example, trans: pair.trans }))',
             "const example = examples.map(pair => pair.example).join('\\n')",
             "const exampleTrans = examples.map(pair => pair.trans).join('\\n')",
-        ))
-        self.assert_true(example_pair_persistence, f"[{lang_name}] 编辑弹窗-至少三组且全部动态例句成对校验并完整持久化", "动态例句仍被限制为恰好三组，或保存时没有同步全部 examples/example/exampleTrans")
+        )) and 'examplePairs.length < 3' not in content
+        self.assert_true(example_pair_persistence, f"[{lang_name}] 编辑弹窗-零条例句可保存且非空例句仍成对校验并完整持久化", "保存逻辑仍强制最低三组，或未正确过滤全空行、校验半填写行及同步例句字段")
 
         example_pair_layout = all(token in content for token in (
             '.example-pairs-editor {',
@@ -2730,25 +2735,14 @@ class VocabAppTester:
             blank_example_pair_editor = driver.execute_script("""
                 const rows = Array.from(document.querySelectorAll('#examplePairsEditor .example-pair-row'));
                 return {
-                  threeRows: rows.length === 3,
-                  twoInputsPerRow: rows.every(row => row.querySelectorAll('input').length === 2),
-                  allBlank: rows.every(row => Array.from(row.querySelectorAll('input')).every(input => input.value === '')),
-                  allRequired: rows.every(row => Array.from(row.querySelectorAll('input')).every(input => input.required)),
-                  pairedColumns: rows.every(row => {
-                    const source = row.querySelector('.example-source-input');
-                    const translation = row.querySelector('.example-translation-input');
-                    if (!source || !translation) return false;
-                    const sourceRect = source.getBoundingClientRect();
-                    const translationRect = translation.getBoundingClientRect();
-                    return sourceRect.right <= translationRect.left && Math.abs(sourceRect.width - translationRect.width) < 2;
-                  }),
+                  startsEmpty: rows.length === 0,
+                  columnHeadersVisible: document.querySelector('#examplePairsEditor .example-pair-columns')?.offsetParent !== null,
                   addButtonVisible: document.getElementById('addExamplePairBtn')?.offsetParent !== null,
-                  minimumRowsProtected: rows.every(row => row.querySelector('.example-pair-remove-btn')?.disabled === true)
                 };
             """)
             self.assert_true(
                 bool(blank_example_pair_editor and all(blank_example_pair_editor.values())),
-                f"[{lang_name}] 浏览器新增弹窗-例句区默认三行双栏、＋按钮可见且最低三组受保护",
+                f"[{lang_name}] 浏览器新增弹窗-例句区默认零行且可按需自由添加",
                 f"新增弹窗例句双栏结构异常: {blank_example_pair_editor}",
             )
             dynamic_example_pair_editor = driver.execute_script("""
@@ -2757,26 +2751,25 @@ class VocabAppTester:
                 if (!app || !addButton) return null;
                 for (let index = 0; index < 9; index++) addButton.click();
                 let rows = Array.from(document.querySelectorAll('#examplePairsEditor .example-pair-row'));
-                const addedWithoutFixedMaximum = rows.length === 12;
+                const addedWithoutFixedMaximum = rows.length === 9;
                 const sequentialLabels = rows.every((row, index) =>
                   row.dataset.exampleIndex === String(index)
                   && row.querySelector('.example-source-input')?.getAttribute('aria-label')?.endsWith(String(index + 1))
                   && row.querySelector('.example-translation-input')?.getAttribute('aria-label')?.endsWith(String(index + 1))
                 );
-                const extraRowsRemovable = rows.slice(3).every(row => row.querySelector('.example-pair-remove-btn')?.disabled === false);
-                while (rows.length > 3) {
+                const everyRowRemovable = rows.every(row => row.querySelector('.example-pair-remove-btn')?.disabled === false);
+                while (rows.length > 0) {
                   const removeButton = rows[rows.length - 1].querySelector('.example-pair-remove-btn');
                   if (!removeButton || !app.removeExamplePairRow(removeButton)) break;
                   rows = Array.from(document.querySelectorAll('#examplePairsEditor .example-pair-row'));
                 }
-                const restoredToMinimum = rows.length === 3
-                  && rows.every(row => row.querySelector('.example-pair-remove-btn')?.disabled === true);
-                return {addedWithoutFixedMaximum, sequentialLabels, extraRowsRemovable, restoredToMinimum};
+                const removedFreelyToZero = rows.length === 0;
+                return {addedWithoutFixedMaximum, sequentialLabels, everyRowRemovable, removedFreelyToZero};
             """)
             self.assert_true(
                 bool(dynamic_example_pair_editor and all(dynamic_example_pair_editor.values())),
-                f"[{lang_name}] 浏览器新增弹窗-＋可连续追加任意例句并删除多余行",
-                f"动态例句添加、重编号、删除或最低三组保护异常: {dynamic_example_pair_editor}",
+                f"[{lang_name}] 浏览器新增弹窗-＋可连续追加且每条例句均可删除至零条",
+                f"动态例句添加、重编号或自由删除异常: {dynamic_example_pair_editor}",
             )
             protected_modal_draft = driver.execute_script("""
                 const app = window.app;
@@ -3317,7 +3310,7 @@ class VocabAppTester:
                   && app.editingModalRating === app.normalizeRating(originalWord.rating)
                   && app.editingModalMastered === Boolean(originalWord.mastered)
                   && JSON.stringify(app.editingModalSimilarWordIds) === JSON.stringify(app.getSimilarWords(app.words[wordIndex]).map(word => String(word.id)));
-                const allExistingRowsLoaded = rows.length === Math.max(3, expectedPairs.length);
+                const allExistingRowsLoaded = rows.length === expectedPairs.length;
                 const existingPairsLoaded = expectedPairs.every((pair, index) =>
                   rows[index]?.querySelector('.example-source-input')?.value === pair.example &&
                   rows[index]?.querySelector('.example-translation-input')?.value === pair.trans
@@ -3514,6 +3507,62 @@ class VocabAppTester:
                 bool(example_drag_sort_lifecycle and all(example_drag_sort_lifecycle.values())),
                 f"[{lang_name}] 浏览器例句排序-详情/复习即时持久化且编辑区保存后持久化",
                 f"例句拖动排序三视图全流程失败: {example_drag_sort_lifecycle}",
+            )
+
+            zero_example_save_lifecycle = driver.execute_script("""
+                const app = window.app;
+                const wordIndex = app.words.findIndex(word => app.getParsedExamples(word).length >= 3);
+                if (wordIndex < 0) return null;
+                const originalWord = JSON.parse(JSON.stringify(app.words[wordIndex]));
+                const originalState = {
+                  currentFilter: app.currentFilter,
+                  searchQuery: app.searchQuery,
+                  currentPage: app.currentPage,
+                  reviewList: app.reviewList,
+                  currentReviewIndex: app.currentReviewIndex
+                };
+                const targetId = app.words[wordIndex].id;
+                app.showDetailModal(targetId);
+                document.getElementById('detailEditBtn')?.click();
+                let rows = Array.from(document.querySelectorAll('#examplePairsEditor .example-pair-row'));
+                const everyExistingRowRemovable = rows.length >= 3
+                  && rows.every(row => row.querySelector('.example-pair-remove-btn')?.disabled === false);
+                while (rows.length > 0) {
+                  const removeButton = rows[rows.length - 1].querySelector('.example-pair-remove-btn');
+                  if (!removeButton || !app.removeExamplePairRow(removeButton)) break;
+                  rows = Array.from(document.querySelectorAll('#examplePairsEditor .example-pair-row'));
+                }
+                const deletedAllRows = rows.length === 0;
+                document.getElementById('saveWordBtn')?.click();
+                const savedWord = app.words[wordIndex];
+                const zeroExamplesSaved = Array.isArray(savedWord.examples)
+                  && savedWord.examples.length === 0
+                  && savedWord.example === ''
+                  && savedWord.exampleTrans === '';
+                const detailShowsEmptyState = document.querySelectorAll('#detailExamplesList .detail-example-item').length === 0
+                  && document.getElementById('detailExamplesList')?.textContent.includes('暂无例句');
+                const storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(targetId));
+                const zeroExamplesPersisted = Array.isArray(storedWord?.examples)
+                  && storedWord.examples.length === 0
+                  && storedWord.example === ''
+                  && storedWord.exampleTrans === '';
+
+                app.words[wordIndex] = originalWord;
+                app.currentFilter = originalState.currentFilter;
+                app.searchQuery = originalState.searchQuery;
+                app.currentPage = originalState.currentPage;
+                app.reviewList = originalState.reviewList;
+                app.currentReviewIndex = originalState.currentReviewIndex;
+                app.saveData();
+                app.renderWordList();
+                app.closeWordModal();
+                app.closeDetailModal();
+                return {everyExistingRowRemovable, deletedAllRows, zeroExamplesSaved, detailShowsEmptyState, zeroExamplesPersisted};
+            """)
+            self.assert_true(
+                bool(zero_example_save_lifecycle and all(zero_example_save_lifecycle.values())),
+                f"[{lang_name}] 浏览器例句删除-任意行可删除至零条并完整持久化",
+                f"解除最低三条例句限制全流程失败: {zero_example_save_lifecycle}",
             )
 
             if lang_name == "日语":
