@@ -1581,10 +1581,50 @@ body::-webkit-scrollbar,
   border: 1px solid var(--border-color);
   border-left: 3px solid var(--accent-primary);
   border-radius: var(--radius-md);
-  padding: 12px;
+  padding: 12px 44px 12px 12px;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  position: relative;
+}
+
+.example-drag-handle {
+  width: 28px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  font-size: 17px;
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.example-drag-handle:hover,
+.example-drag-handle:focus-visible {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  outline: none;
+}
+.example-drag-handle:active { cursor: grabbing; }
+.detail-example-item > .example-drag-handle,
+.word-example-item > .example-drag-handle {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+}
+.word-example-item {
+  position: relative;
+  padding-right: 40px;
+}
+.example-sort-dragging {
+  opacity: 0.72;
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+  z-index: 3;
 }
 
 .detail-example-num {
@@ -2102,7 +2142,7 @@ body::-webkit-scrollbar,
 .example-pair-columns,
 .example-pair-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 28px;
+  grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr) 28px;
   gap: 8px;
   width: 100%;
 }
@@ -3019,18 +3059,21 @@ body::-webkit-scrollbar,
           <div class="form-group">
             <label class="form-label">例句</label>
             <div id="examplePairsEditor" class="example-pairs-editor">
-              <div class="example-pair-columns" aria-hidden="true"><span>日语原句</span><span>中文翻译</span><span></span></div>
+              <div class="example-pair-columns" aria-hidden="true"><span></span><span>日语原句</span><span>中文翻译</span><span></span></div>
               <div class="example-pair-row" data-example-index="0">
+                <button type="button" class="example-drag-handle" aria-label="拖动例句 1 排序" title="按住拖动排序" onpointerdown="(window.app||window.vocabApp).startExampleSort(event, 'editor')" onkeydown="(window.app||window.vocabApp).handleExampleSortKey(event, 'editor')">≡</button>
                 <input type="text" class="form-input example-pair-input example-source-input" placeholder="日语例句 1" aria-label="日语例句 1" autocomplete="off" required>
                 <input type="text" class="form-input example-pair-input example-translation-input" placeholder="中文翻译 1" aria-label="例句中文翻译 1" autocomplete="off" required>
                 <button type="button" class="example-pair-remove-btn is-required-row" aria-label="删除例句 1" disabled>×</button>
               </div>
               <div class="example-pair-row" data-example-index="1">
+                <button type="button" class="example-drag-handle" aria-label="拖动例句 2 排序" title="按住拖动排序" onpointerdown="(window.app||window.vocabApp).startExampleSort(event, 'editor')" onkeydown="(window.app||window.vocabApp).handleExampleSortKey(event, 'editor')">≡</button>
                 <input type="text" class="form-input example-pair-input example-source-input" placeholder="日语例句 2" aria-label="日语例句 2" autocomplete="off" required>
                 <input type="text" class="form-input example-pair-input example-translation-input" placeholder="中文翻译 2" aria-label="例句中文翻译 2" autocomplete="off" required>
                 <button type="button" class="example-pair-remove-btn is-required-row" aria-label="删除例句 2" disabled>×</button>
               </div>
               <div class="example-pair-row" data-example-index="2">
+                <button type="button" class="example-drag-handle" aria-label="拖动例句 3 排序" title="按住拖动排序" onpointerdown="(window.app||window.vocabApp).startExampleSort(event, 'editor')" onkeydown="(window.app||window.vocabApp).handleExampleSortKey(event, 'editor')">≡</button>
                 <input type="text" class="form-input example-pair-input example-source-input" placeholder="日语例句 3" aria-label="日语例句 3" autocomplete="off" required>
                 <input type="text" class="form-input example-pair-input example-translation-input" placeholder="中文翻译 3" aria-label="例句中文翻译 3" autocomplete="off" required>
                 <button type="button" class="example-pair-remove-btn is-required-row" aria-label="删除例句 3" disabled>×</button>
@@ -7836,6 +7879,7 @@ class JpVocabApp {
     row.className = 'example-pair-row';
     row.dataset.exampleIndex = String(index);
     row.innerHTML = `
+      <button type="button" class="example-drag-handle" aria-label="拖动例句 ${index + 1} 排序" title="按住拖动排序" onpointerdown="(window.app||window.vocabApp).startExampleSort(event, 'editor')" onkeydown="(window.app||window.vocabApp).handleExampleSortKey(event, 'editor')">≡</button>
       <input type="text" class="form-input example-pair-input example-source-input" autocomplete="off" required>
       <input type="text" class="form-input example-pair-input example-translation-input" autocomplete="off" required>
       <button type="button" class="example-pair-remove-btn" onclick="(window.app||window.vocabApp).removeExamplePairRow(this)">×</button>
@@ -7872,6 +7916,7 @@ class JpVocabApp {
       const sourceInput = row.querySelector('.example-source-input');
       const translationInput = row.querySelector('.example-translation-input');
       const removeButton = row.querySelector('.example-pair-remove-btn');
+      const dragHandle = row.querySelector('.example-drag-handle');
       if (sourceInput) {
         sourceInput.placeholder = `日语例句 ${displayIndex}`;
         sourceInput.setAttribute('aria-label', `日语例句 ${displayIndex}`);
@@ -7887,7 +7932,135 @@ class JpVocabApp {
         removeButton.setAttribute('aria-label', `删除例句 ${displayIndex}`);
         removeButton.title = requiredRow ? '至少保留三组例句' : `删除例句 ${displayIndex}`;
       }
+      if (dragHandle) dragHandle.setAttribute('aria-label', `拖动例句 ${displayIndex} 排序`);
     });
+  }
+
+  getExampleSortConfig(mode) {
+    const configs = {
+      editor: { containerId: 'examplePairsEditor', itemSelector: '.example-pair-row' },
+      detail: { containerId: 'detailExamplesList', itemSelector: '.detail-example-item' },
+      review: { containerId: 'cardBackExampleBlock', itemSelector: '.word-example-item' }
+    };
+    return configs[mode] || null;
+  }
+
+  startExampleSort(event, mode) {
+    if (!event || (typeof event.button === 'number' && event.button !== 0)) return false;
+    const config = this.getExampleSortConfig(mode);
+    const handle = event.currentTarget || event.target;
+    const container = config ? document.getElementById(config.containerId) : null;
+    const item = handle && typeof handle.closest === 'function' ? handle.closest(config?.itemSelector || '') : null;
+    if (!config || !container || !item || !container.contains(item)) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    if (this._exampleSortState) this.finishExampleSort();
+    const moveHandler = moveEvent => this.moveExampleSort(moveEvent);
+    const endHandler = endEvent => this.finishExampleSort(endEvent);
+    this._exampleSortState = { mode, config, container, item, handle, pointerId: event.pointerId, moveHandler, endHandler };
+    item.classList.add('example-sort-dragging');
+    if (handle.setPointerCapture && event.pointerId !== undefined) {
+      try { handle.setPointerCapture(event.pointerId); } catch (error) { console.warn('例句拖动指针捕获失败:', error); }
+    }
+    window.addEventListener('pointermove', moveHandler, { passive: false });
+    window.addEventListener('pointerup', endHandler);
+    window.addEventListener('pointercancel', endHandler);
+    return true;
+  }
+
+  moveExampleSort(event) {
+    const state = this._exampleSortState;
+    if (!state || (state.pointerId !== undefined && event.pointerId !== undefined && state.pointerId !== event.pointerId)) return false;
+    event.preventDefault();
+    const hovered = document.elementFromPoint ? document.elementFromPoint(event.clientX, event.clientY) : null;
+    const target = hovered && typeof hovered.closest === 'function' ? hovered.closest(state.config.itemSelector) : null;
+    if (!target || target === state.item || !state.container.contains(target)) return false;
+    const rect = target.getBoundingClientRect();
+    const insertAfter = event.clientY > rect.top + rect.height / 2;
+    state.container.insertBefore(state.item, insertAfter ? target.nextSibling : target);
+    this.updateExampleSortLabels(state.mode);
+    return true;
+  }
+
+  finishExampleSort(event = null) {
+    const state = this._exampleSortState;
+    if (!state) return false;
+    if (event && state.pointerId !== undefined && event.pointerId !== undefined && state.pointerId !== event.pointerId) return false;
+    window.removeEventListener('pointermove', state.moveHandler);
+    window.removeEventListener('pointerup', state.endHandler);
+    window.removeEventListener('pointercancel', state.endHandler);
+    state.item.classList.remove('example-sort-dragging');
+    this._exampleSortState = null;
+    if (state.mode === 'editor') {
+      this.renumberExamplePairRows();
+      return true;
+    }
+    return this.persistDisplayedExampleOrder(state.mode);
+  }
+
+  handleExampleSortKey(event, mode) {
+    if (!event || !['ArrowUp', 'ArrowDown'].includes(event.key)) return false;
+    const config = this.getExampleSortConfig(mode);
+    const container = config ? document.getElementById(config.containerId) : null;
+    const item = event.currentTarget?.closest(config?.itemSelector || '');
+    if (!config || !container || !item) return false;
+    const items = Array.from(container.querySelectorAll(config.itemSelector));
+    const currentIndex = items.indexOf(item);
+    const nextIndex = event.key === 'ArrowUp' ? currentIndex - 1 : currentIndex + 1;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= items.length) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === 'ArrowUp') container.insertBefore(item, items[nextIndex]);
+    else container.insertBefore(items[nextIndex], item);
+    if (mode === 'editor') this.renumberExamplePairRows();
+    else this.persistDisplayedExampleOrder(mode);
+    item.querySelector('.example-drag-handle')?.focus();
+    return true;
+  }
+
+  updateExampleSortLabels(mode) {
+    if (mode === 'editor') {
+      this.renumberExamplePairRows();
+      return;
+    }
+    const config = this.getExampleSortConfig(mode);
+    const container = config ? document.getElementById(config.containerId) : null;
+    if (!config || !container) return;
+    container.querySelectorAll(config.itemSelector).forEach((item, index) => {
+      const numberLabel = item.querySelector('.detail-example-num, .example-sort-number');
+      const dragHandle = item.querySelector('.example-drag-handle');
+      if (numberLabel) numberLabel.textContent = `例句 ${index + 1}`;
+      if (dragHandle) dragHandle.setAttribute('aria-label', `拖动例句 ${index + 1} 排序`);
+    });
+  }
+
+  persistDisplayedExampleOrder(mode) {
+    const config = this.getExampleSortConfig(mode);
+    const container = config ? document.getElementById(config.containerId) : null;
+    const word = mode === 'detail'
+      ? this.words.find(item => String(item.id) === String(this.currentDetailWordId))
+      : this.reviewList[this.currentReviewIndex];
+    if (!config || !container || !word) return false;
+    const previous = this.getParsedExamples(word);
+    const ordered = Array.from(container.querySelectorAll(config.itemSelector)).map(item => previous[Number(item.dataset.exampleIndex)]).filter(Boolean);
+    if (ordered.length !== previous.length) return false;
+    const changed = ordered.some((pair, index) => pair.example !== previous[index]?.example || pair.trans !== previous[index]?.trans);
+    if (!changed) {
+      this.updateExampleSortLabels(mode);
+      return true;
+    }
+    word.examples = ordered.map(pair => ({ example: pair.example, trans: pair.trans }));
+    word.example = ordered.map(pair => pair.example).join('\n');
+    word.exampleTrans = ordered.map(pair => pair.trans).join('\n');
+    const editTime = Math.max(Date.now(), Number(word.updatedAt || 0) + 1);
+    word.userEditedAt = editTime;
+    word.updatedAt = editTime;
+    const persisted = this.saveData();
+    container.querySelectorAll(config.itemSelector).forEach((item, index) => { item.dataset.exampleIndex = String(index); });
+    this.updateExampleSortLabels(mode);
+    this.renderWordList();
+    if (persisted) this.showToast('✅ 例句顺序已保存');
+    return persisted;
   }
 
   collectExamplePairsFromEditor() {
@@ -8169,7 +8342,8 @@ class JpVocabApp {
     const listContainer = document.getElementById('detailExamplesList');
     if (parsedExamples.length > 0) {
       listContainer.innerHTML = parsedExamples.map((exObj, idx) => `
-        <div class="detail-example-item">
+        <div class="detail-example-item" data-example-index="${idx}">
+          <button type="button" class="example-drag-handle" aria-label="拖动例句 ${idx + 1} 排序" title="按住拖动排序" onpointerdown="(window.app||window.vocabApp).startExampleSort(event, 'detail')" onkeydown="(window.app||window.vocabApp).handleExampleSortKey(event, 'detail')" onclick="event.stopPropagation()">≡</button>
           <div class="detail-example-num">例句 ${idx + 1}</div>
           <div class="detail-example-text">${this.escapeHtml(exObj.example)}</div>
           ${exObj.trans ? `<div class="detail-example-trans">${this.escapeHtml(exObj.trans)}</div>` : ''}
@@ -9238,8 +9412,9 @@ class JpVocabApp {
     if (parsedExamples.length > 0) {
       exBlock.style.display = 'block';
       exBlock.innerHTML = parsedExamples.map((exObj, idx) => `
-        <div class="word-example-item" style="${idx > 0 ? 'margin-top:8px; padding-top:8px; border-top:1px dashed rgba(255,255,255,0.15);' : ''}">
-          <div style="font-size:11px; color:var(--accent-color); font-weight:700; margin-bottom:2px;">例句 ${idx + 1}</div>
+        <div class="word-example-item" data-example-index="${idx}" style="${idx > 0 ? 'margin-top:8px; padding-top:8px; border-top:1px dashed rgba(255,255,255,0.15);' : ''}">
+          <button type="button" class="example-drag-handle" aria-label="拖动例句 ${idx + 1} 排序" title="按住拖动排序" onpointerdown="(window.app||window.vocabApp).startExampleSort(event, 'review')" onkeydown="(window.app||window.vocabApp).handleExampleSortKey(event, 'review')" onclick="event.stopPropagation()">≡</button>
+          <div class="example-sort-number" style="font-size:11px; color:var(--accent-color); font-weight:700; margin-bottom:2px;">例句 ${idx + 1}</div>
           <div class="word-example" style="font-size:14px; font-weight:600;">${this.escapeHtml(exObj.example)}</div>
           ${exObj.trans ? `<div class="word-example-trans" style="font-size:13px;">${this.escapeHtml(exObj.trans)}</div>` : ''}
         </div>

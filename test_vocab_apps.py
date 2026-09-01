@@ -1078,12 +1078,34 @@ class VocabAppTester:
         example_pair_layout = all(token in content for token in (
             '.example-pairs-editor {',
             '.example-pair-row {',
-            'grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 28px;',
+            'grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr) 28px;',
             '.example-pair-input {',
             '.example-pair-remove-btn {',
             '.add-example-pair-btn {',
         ))
         self.assert_true(example_pair_layout, f"[{lang_name}] 编辑弹窗-动态例句双等分布局及添加删除控件完整", "例句双栏缺少稳定等分网格、动态按钮样式或手机端适配")
+
+        # ---------------------------------------------------------------------
+        # 测试点 31D: 详情、复习与编辑区例句支持鼠标/触屏拖动排序并持久化
+        # ---------------------------------------------------------------------
+        example_drag_sort = all(token in content for token in (
+            '.example-drag-handle {',
+            'touch-action: none;',
+            "startExampleSort(event, mode)",
+            'moveExampleSort(event)',
+            'finishExampleSort(event = null)',
+            'handleExampleSortKey(event, mode)',
+            'persistDisplayedExampleOrder(mode)',
+            "window.addEventListener('pointermove', moveHandler, { passive: false })",
+            "window.addEventListener('pointerup', endHandler)",
+            "startExampleSort(event, 'editor')",
+            "startExampleSort(event, 'detail')",
+            "startExampleSort(event, 'review')",
+            'word.examples = ordered.map(pair => ({ example: pair.example, trans: pair.trans }))',
+            "word.example = ordered.map(pair => pair.example).join('\\n')",
+            "word.exampleTrans = ordered.map(pair => pair.trans).join('\\n')",
+        ))
+        self.assert_true(example_drag_sort, f"[{lang_name}] 例句排序-详情/复习展示与编辑区均支持鼠标触屏拖动及持久化", "例句三视图缺少拖动手柄、Pointer Events、键盘兜底或完整顺序持久化")
 
         # ---------------------------------------------------------------------
         # 测试点 32: 复习卡片语义与 Tag 聚类出词算法防护 (clusterBySimilarity)
@@ -3404,6 +3426,94 @@ class VocabAppTester:
                 bool(example_pair_edit_lifecycle and all(example_pair_edit_lifecycle.values())),
                 f"[{lang_name}] 浏览器编辑弹窗-无限例句全量回填、追加、校验、持久化及各视图展示",
                 f"编辑弹窗动态双栏例句全流程失败: {example_pair_edit_lifecycle}",
+            )
+
+            example_drag_sort_lifecycle = driver.execute_script("""
+                const app = window.app;
+                const wordIndex = app.words.findIndex(word => app.getParsedExamples(word).length >= 3);
+                if (wordIndex < 0) return null;
+                const originalWord = JSON.parse(JSON.stringify(app.words[wordIndex]));
+                const originalPairs = app.getParsedExamples(originalWord);
+                const originalState = {
+                  currentFilter: app.currentFilter,
+                  searchQuery: app.searchQuery,
+                  currentPage: app.currentPage,
+                  reviewList: app.reviewList,
+                  currentReviewIndex: app.currentReviewIndex
+                };
+                const targetId = app.words[wordIndex].id;
+                const pressArrow = (handle, key) => {
+                  if (!handle) return false;
+                  handle.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true}));
+                  return true;
+                };
+
+                app.showDetailModal(targetId);
+                let detailItems = Array.from(document.querySelectorAll('#detailExamplesList .detail-example-item'));
+                const detailHandlesComplete = detailItems.length === originalPairs.length
+                  && detailItems.every(item => item.querySelector('.example-drag-handle'));
+                const detailMoved = pressArrow(detailItems[0]?.querySelector('.example-drag-handle'), 'ArrowDown');
+                const detailPairs = app.getParsedExamples(app.words[wordIndex]);
+                const detailOrderSaved = detailMoved
+                  && detailPairs[0]?.example === originalPairs[1]?.example
+                  && detailPairs[1]?.example === originalPairs[0]?.example
+                  && JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(targetId))?.examples?.[0]?.example === originalPairs[1]?.example;
+                detailItems = Array.from(document.querySelectorAll('#detailExamplesList .detail-example-item'));
+                const detailRenumbered = detailItems.every((item, index) =>
+                  item.dataset.exampleIndex === String(index)
+                  && item.querySelector('.detail-example-num')?.textContent === `例句 ${index + 1}`
+                );
+
+                document.getElementById('detailEditBtn')?.click();
+                let editorRows = Array.from(document.querySelectorAll('#examplePairsEditor .example-pair-row'));
+                const editorHandlesComplete = editorRows.length === originalPairs.length
+                  && editorRows.every(row => row.querySelector('.example-drag-handle'));
+                const storedBeforeEditorMove = app.getParsedExamples(app.words[wordIndex])[0]?.example;
+                const editorMoved = pressArrow(editorRows[0]?.querySelector('.example-drag-handle'), 'ArrowDown');
+                editorRows = Array.from(document.querySelectorAll('#examplePairsEditor .example-pair-row'));
+                const editorDomReordered = editorMoved
+                  && editorRows[0]?.querySelector('.example-source-input')?.value === originalPairs[0]?.example
+                  && editorRows.every((row, index) => row.dataset.exampleIndex === String(index));
+                const editorDeferredPersistence = app.getParsedExamples(app.words[wordIndex])[0]?.example === storedBeforeEditorMove;
+                document.getElementById('saveWordBtn')?.click();
+                const editorOrderSaved = app.getParsedExamples(app.words[wordIndex])[0]?.example === originalPairs[0]?.example
+                  && JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(targetId))?.examples?.[0]?.example === originalPairs[0]?.example;
+
+                app.closeDetailModal();
+                app.reviewList = [app.words[wordIndex]];
+                app.currentReviewIndex = 0;
+                app.renderCurrentCard();
+                let reviewItems = Array.from(document.querySelectorAll('#cardBackExampleBlock .word-example-item'));
+                const reviewHandlesComplete = reviewItems.length === originalPairs.length
+                  && reviewItems.every(item => item.querySelector('.example-drag-handle'));
+                const reviewMoved = pressArrow(reviewItems[0]?.querySelector('.example-drag-handle'), 'ArrowDown');
+                const reviewPairs = app.getParsedExamples(app.words[wordIndex]);
+                reviewItems = Array.from(document.querySelectorAll('#cardBackExampleBlock .word-example-item'));
+                const reviewOrderSaved = reviewMoved
+                  && reviewPairs[0]?.example === originalPairs[1]?.example
+                  && reviewItems[0]?.querySelector('.word-example')?.textContent === originalPairs[1]?.example
+                  && JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(targetId))?.examples?.[0]?.example === originalPairs[1]?.example;
+
+                app.words[wordIndex] = originalWord;
+                app.currentFilter = originalState.currentFilter;
+                app.searchQuery = originalState.searchQuery;
+                app.currentPage = originalState.currentPage;
+                app.reviewList = originalState.reviewList;
+                app.currentReviewIndex = originalState.currentReviewIndex;
+                app.saveData();
+                app.renderWordList();
+                app.closeWordModal();
+                app.closeDetailModal();
+                return {
+                  detailHandlesComplete, detailOrderSaved, detailRenumbered,
+                  editorHandlesComplete, editorDomReordered, editorDeferredPersistence, editorOrderSaved,
+                  reviewHandlesComplete, reviewOrderSaved
+                };
+            """)
+            self.assert_true(
+                bool(example_drag_sort_lifecycle and all(example_drag_sort_lifecycle.values())),
+                f"[{lang_name}] 浏览器例句排序-详情/复习即时持久化且编辑区保存后持久化",
+                f"例句拖动排序三视图全流程失败: {example_drag_sort_lifecycle}",
             )
 
             if lang_name == "日语":
