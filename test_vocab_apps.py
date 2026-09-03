@@ -406,6 +406,17 @@ class VocabAppTester:
         )) and content.count('word.updatedAt = Math.max(Date.now(), Number(word.updatedAt || 0) + 1);') >= 2 and content.count('this.markPendingCloudChanges([String(word.id)], word.updatedAt)') >= 2
         self.assert_true(status_rating_commit_chain, f"[{lang_name}] 状态与星级-显式更新时间、持久化后重绘并刷新统计", "学习状态或星级仍依赖隐式指纹更新，可能出现提示成功但数据/统计/卡片未更新")
 
+        rating_tag_preservation = all(token in content for token in (
+            'const preservedTags = Array.isArray(options.preservedTags)',
+            'const preservedTags = Array.isArray(word.tags) ? [...word.tags] : [];',
+            'word.tags = [...preservedTags];',
+            'this.setWordRating(wordId, previewRating, { preservedTags });',
+            'refreshRatingTagViews(wordId)',
+            'renderDetailTags(word)',
+            "cardBackTags.innerHTML = this.renderWordTagsHtml(word)",
+        ))
+        self.assert_true(rating_tag_preservation, f"[{lang_name}] 星级调整-锁定原 Tag 快照并刷新详情/复习标签视图", "星级拖动期间未保护 tags，或保存后未主动恢复详情与复习 Tag DOM")
+
         # ---------------------------------------------------------------------
         # 测试点 11: bindEvents 事件绑定初始化与语法声明校验 (Event Binding Initialization)
         # ---------------------------------------------------------------------
@@ -3277,6 +3288,54 @@ class VocabAppTester:
                 bool(detail_header_status_toggle and all(detail_header_status_toggle.values())),
                 f"[{lang_name}] 浏览器详情弹窗-星级左侧状态 Label 可点击切换并持久化同步",
                 f"详情标题栏状态切换失败: {detail_header_status_toggle}",
+            )
+
+            detail_rating_tag_preservation = driver.execute_script("""
+                const app = window.app;
+                const wordId = app.currentDetailWordId;
+                const wordIndex = app.words.findIndex(item => String(item.id) === String(wordId));
+                const ratingWidget = document.querySelector('#detailRating .star-rating');
+                if (wordIndex < 0 || !ratingWidget) return null;
+                const originalWord = JSON.parse(JSON.stringify(app.words[wordIndex]));
+                const originalPending = JSON.parse(JSON.stringify(app.getPendingCloudChanges()));
+                const word = app.words[wordIndex];
+                const expectedTags = ['短语', '星级保留测试'];
+                word.tags = [...expectedTags];
+                word.rating = 2;
+                app.refreshWordFingerprints();
+                app.showDetailModal(word.id, true);
+                const activeRatingWidget = document.querySelector('#detailRating .star-rating');
+                const beforeTagTexts = Array.from(document.querySelectorAll('#detailTags .tag-badge')).map(tag => tag.childNodes[0]?.textContent?.trim());
+                const rect = activeRatingWidget.getBoundingClientRect();
+                const clientX = rect.left + rect.width * 0.7;
+                activeRatingWidget.dispatchEvent(new PointerEvent('pointerdown', {
+                  bubbles: true, pointerId: 93, button: 0, buttons: 1,
+                  clientX, clientY: rect.top + rect.height / 2
+                }));
+                // 模拟星级手势期间由失焦/局部刷新造成的旁路覆盖，结束时必须用按下瞬间的 Tag 快照恢复。
+                word.tags = [];
+                activeRatingWidget.dispatchEvent(new PointerEvent('pointerup', {
+                  bubbles: true, pointerId: 93, button: 0, buttons: 0,
+                  clientX, clientY: rect.top + rect.height / 2
+                }));
+                const storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(item => String(item.id) === String(word.id));
+                const afterTagTexts = Array.from(document.querySelectorAll('#detailTags .tag-badge')).map(tag => tag.childNodes[0]?.textContent?.trim());
+                const memoryTagsPreserved = JSON.stringify(word.tags) === JSON.stringify(expectedTags);
+                const storedTagsPreserved = JSON.stringify(storedWord?.tags) === JSON.stringify(expectedTags);
+                const detailTagsPreserved = expectedTags.every(tag => afterTagTexts.includes(`#${tag}`));
+                const tagsVisibleBeforeRating = expectedTags.every(tag => beforeTagTexts.includes(`#${tag}`));
+                const ratingChanged = app.normalizeRating(word.rating) === 4;
+
+                app.words[wordIndex] = originalWord;
+                app.savePendingCloudChanges(originalPending);
+                app.persistSyncedData();
+                app.showDetailModal(originalWord.id, true);
+                return {tagsVisibleBeforeRating, memoryTagsPreserved, storedTagsPreserved, detailTagsPreserved, ratingChanged};
+            """)
+            self.assert_true(
+                bool(detail_rating_tag_preservation and all(detail_rating_tag_preservation.values())),
+                f"[{lang_name}] 浏览器详情弹窗-调整星级后原有 Tag 保持显示并持久化",
+                f"详情星级调整导致 Tag 丢失: {detail_rating_tag_preservation}",
             )
 
             example_pair_edit_lifecycle = driver.execute_script("""

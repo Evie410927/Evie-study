@@ -20298,17 +20298,40 @@ class KrVocabApp {
   setWordRating(wordId, value, options = {}) {
     const word = this.words.find(item => String(item.id) === String(wordId));
     if (!word) return;
+    const preservedTags = Array.isArray(options.preservedTags)
+      ? [...options.preservedTags]
+      : (Array.isArray(word.tags) ? [...word.tags] : []);
     const nextRating = this.normalizeRating(value);
     const changed = this.normalizeRating(word.rating) !== nextRating;
     word.rating = nextRating;
+    word.tags = [...preservedTags];
     this.syncRatingWidgets(wordId);
-    if (!changed) return;
+    if (!changed) {
+      this.refreshRatingTagViews(wordId);
+      return;
+    }
     word.updatedAt = Math.max(Date.now(), Number(word.updatedAt || 0) + 1);
     if (this.markPendingCloudChanges) this.markPendingCloudChanges([String(word.id)], word.updatedAt);
     this.saveData();
+    word.tags = [...preservedTags];
     if (options.rerender !== false) this.renderWordList();
     this.syncRatingWidgets(wordId);
+    this.refreshRatingTagViews(wordId);
     this.updateStats();
+  }
+
+  refreshRatingTagViews(wordId) {
+    const word = this.words.find(item => String(item.id) === String(wordId));
+    if (!word) return;
+    const detailModal = document.getElementById('detailModal');
+    if (detailModal?.classList.contains('active') && String(this.currentDetailWordId) === String(wordId)) {
+      this.renderDetailTags(word);
+    }
+    const reviewWord = this.reviewList?.[this.currentReviewIndex];
+    const cardBackTags = document.getElementById('cardBackTags');
+    if (cardBackTags && reviewWord && String(reviewWord.id) === String(wordId)) {
+      cardBackTags.innerHTML = this.renderWordTagsHtml(word);
+    }
   }
 
   beginRatingDrag(event, wordId) {
@@ -20318,6 +20341,7 @@ class KrVocabApp {
     const widget = event.currentTarget;
     const word = this.words.find(item => String(item.id) === String(wordId));
     if (!widget || !word) return;
+    const preservedTags = Array.isArray(word.tags) ? [...word.tags] : [];
     const initialRating = this.normalizeRating(word.rating);
     const startX = event.clientX;
     let previewRating = initialRating;
@@ -20346,7 +20370,8 @@ class KrVocabApp {
       widget.removeEventListener('pointercancel', finish);
       if (!moved && previewRating === initialRating) previewRating = 0;
       word.rating = initialRating;
-      this.setWordRating(wordId, previewRating);
+      word.tags = [...preservedTags];
+      this.setWordRating(wordId, previewRating, { preservedTags });
     };
 
     widget.classList.add('is-dragging');
@@ -21497,15 +21522,7 @@ class KrVocabApp {
     const detailUserNote = document.getElementById('detailUserNote');
     if (detailUserNote) detailUserNote.innerHTML = this.renderUserNoteHtml(word, 'detail');
 
-    const tagsContainer = document.getElementById('detailTags');
-    tagsContainer.style.display = 'flex';
-    const systemPOSList = ['动词', '形容词', '名词', '副词', '短语', '惯用句', '接续词', '连体词', '形容动词', '感叹词', '代词', '数词', '语法', '句型', '词汇', '助词', '助动词', '俗语', '成语'];
-    const tagsHtml = (word.tags || []).map(t => {
-      const isSystem = systemPOSList.includes(t.trim());
-      const tagClass = isSystem ? 'pos-tag' : 'custom-tag';
-      return `<span class="tag-badge ${tagClass}" onclick="event.stopPropagation(); (window.app||window.vocabApp).filterByTag('${this.escapeHtml(t)}'); (window.app||window.vocabApp).closeDetailModal();" style="cursor:pointer;" title="点击按标签筛选">#${this.escapeHtml(t)}<i class="remove-tag-x" onclick="event.stopPropagation(); (window.app||window.vocabApp).removeCustomTag('${word.id}', '${this.escapeHtml(t)}');" title="删除标签">×</i></span>`;
-    }).join('');
-    tagsContainer.innerHTML = tagsHtml + `<button class="add-tag-btn" onclick="(window.app||window.vocabApp).showInlineTagInput(event, '${word.id}')" title="添加自定义标签">+</button>`;
+    this.renderDetailTags(word);
 
     const parsedExamples = this.getParsedExamples(word);
     const listContainer = document.getElementById('detailExamplesList');
@@ -21532,6 +21549,19 @@ class KrVocabApp {
 
     // A newly opened or newly selected word must start at the top of the reused detail scroller.
     if (shouldResetDetailScroll && modalEl) this.resetModalScrollToTop(modalEl, '.detail-body');
+  }
+
+  renderDetailTags(word) {
+    const tagsContainer = document.getElementById('detailTags');
+    if (!tagsContainer || !word) return;
+    tagsContainer.style.display = 'flex';
+    const systemPOSList = ['动词', '形容词', '名词', '副词', '短语', '惯用句', '接续词', '连体词', '形容动词', '感叹词', '代词', '数词', '语法', '句型', '词汇', '助词', '助动词', '俗语', '成语'];
+    const tagsHtml = (word.tags || []).map(t => {
+      const isSystem = systemPOSList.includes(t.trim());
+      const tagClass = isSystem ? 'pos-tag' : 'custom-tag';
+      return `<span class="tag-badge ${tagClass}" onclick="event.stopPropagation(); (window.app||window.vocabApp).filterByTag('${this.escapeHtml(t)}'); (window.app||window.vocabApp).closeDetailModal();" style="cursor:pointer;" title="点击按标签筛选">#${this.escapeHtml(t)}<i class="remove-tag-x" onclick="event.stopPropagation(); (window.app||window.vocabApp).removeCustomTag('${word.id}', '${this.escapeHtml(t)}');" title="删除标签">×</i></span>`;
+    }).join('');
+    tagsContainer.innerHTML = tagsHtml + `<button class="add-tag-btn" onclick="(window.app||window.vocabApp).showInlineTagInput(event, '${word.id}')" title="添加自定义标签">+</button>`;
   }
 
   goBackDetailModal() {
