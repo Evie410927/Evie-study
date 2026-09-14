@@ -2155,8 +2155,16 @@ body::-webkit-scrollbar,
 }
 .example-pair-input {
   min-width: 0;
+  min-height: 38px;
+  height: 38px;
   padding: 10px 11px;
   font-size: 13px;
+  line-height: 1.45;
+  resize: none;
+  overflow-y: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  box-sizing: border-box;
 }
 .example-pair-remove-btn {
   width: 28px;
@@ -20714,6 +20722,10 @@ class KrVocabApp {
       this.searchModalSimilarWordOptions(modalSimilarSearchInput);
     }
     modal.classList.add('active');
+    this.resizeAllExamplePairInputs();
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => this.resizeAllExamplePairInputs());
+    }
     this.resetModalScrollToTop(modal);
   }
 
@@ -21078,8 +21090,8 @@ class KrVocabApp {
     row.dataset.exampleIndex = String(index);
     row.innerHTML = `
       <button type="button" class="example-drag-handle" aria-label="拖动例句 ${index + 1} 排序" title="按住拖动排序" onpointerdown="(window.app||window.vocabApp).startExampleSort(event, 'editor')" onkeydown="(window.app||window.vocabApp).handleExampleSortKey(event, 'editor')">≡</button>
-      <input type="text" class="form-input example-pair-input example-source-input" autocomplete="off" required>
-      <input type="text" class="form-input example-pair-input example-translation-input" autocomplete="off" required>
+      <textarea class="form-input example-pair-input example-source-input" rows="1" autocomplete="off" required></textarea>
+      <textarea class="form-input example-pair-input example-translation-input" rows="1" autocomplete="off" required></textarea>
       <button type="button" class="example-pair-remove-btn" onclick="(window.app||window.vocabApp).removeExamplePairRow(this)">×</button>
     `;
     const addButton = document.getElementById('addExamplePairBtn');
@@ -21089,9 +21101,30 @@ class KrVocabApp {
     const translationInput = row.querySelector('.example-translation-input');
     if (sourceInput) sourceInput.value = pair && pair.example ? String(pair.example) : '';
     if (translationInput) translationInput.value = pair && pair.trans ? String(pair.trans) : '';
+    [sourceInput, translationInput].forEach(input => {
+      if (!input) return;
+      input.addEventListener('input', () => this.autoResizeExamplePairInput(input));
+      this.autoResizeExamplePairInput(input);
+    });
     this.renumberExamplePairRows();
     if (focusNewRow && sourceInput) sourceInput.focus();
     return row;
+  }
+
+  autoResizeExamplePairInput(input) {
+    if (!input || !input.style) return;
+    input.style.height = '38px';
+    const style = typeof getComputedStyle === 'function' ? getComputedStyle(input) : null;
+    const borderHeight = style
+      ? (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0)
+      : 0;
+    input.style.height = `${Math.max(38, (input.scrollHeight || 0) + borderHeight)}px`;
+  }
+
+  resizeAllExamplePairInputs() {
+    const editor = document.getElementById('examplePairsEditor');
+    if (!editor) return;
+    editor.querySelectorAll('.example-pair-input').forEach(input => this.autoResizeExamplePairInput(input));
   }
 
   removeExamplePairRow(button) {

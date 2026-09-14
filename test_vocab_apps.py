@@ -1101,6 +1101,19 @@ class VocabAppTester:
         ))
         self.assert_true(example_pair_layout, f"[{lang_name}] 编辑弹窗-动态例句双等分布局及添加删除控件完整", "例句双栏缺少稳定等分网格、动态按钮样式或手机端适配")
 
+        example_pair_full_wrap = all(token in content for token in (
+            '<textarea class="form-input example-pair-input example-source-input" rows="1"',
+            '<textarea class="form-input example-pair-input example-translation-input" rows="1"',
+            'overflow-y: hidden;',
+            'white-space: pre-wrap;',
+            'overflow-wrap: anywhere;',
+            'autoResizeExamplePairInput(input)',
+            'resizeAllExamplePairInputs()',
+            "input.addEventListener('input', () => this.autoResizeExamplePairInput(input))",
+            "requestAnimationFrame(() => this.resizeAllExamplePairInputs())",
+        ))
+        self.assert_true(example_pair_full_wrap, f"[{lang_name}] 编辑弹窗-长例句与译文自动换行增高并完整显示", "例句编辑控件仍为单行输入框，或缺少按内容自动增高与完整换行防护")
+
         # ---------------------------------------------------------------------
         # 测试点 31D: 详情、复习与编辑区例句支持鼠标/触屏拖动排序并持久化
         # ---------------------------------------------------------------------
@@ -2781,6 +2794,34 @@ class VocabAppTester:
                 bool(dynamic_example_pair_editor and all(dynamic_example_pair_editor.values())),
                 f"[{lang_name}] 浏览器新增弹窗-＋可连续追加且每条例句均可删除至零条",
                 f"动态例句添加、重编号或自由删除异常: {dynamic_example_pair_editor}",
+            )
+            wrapped_example_pair_editor = driver.execute_script("""
+                const app = window.app;
+                if (!app) return null;
+                const row = app.addExamplePairRow();
+                const source = row?.querySelector('.example-source-input');
+                const translation = row?.querySelector('.example-translation-input');
+                if (!source || !translation) return null;
+                source.value = 'これは編集欄の幅を大きく超える長い例文で、後半まで横スクロールせずにすべて読めることを確認するための文章です。'.repeat(3);
+                translation.value = '这是一条明显超过编辑栏宽度的长译文，用来确认不用横向滚动也能直接读到句子最后的全部内容。'.repeat(3);
+                source.dispatchEvent(new Event('input', { bubbles: true }));
+                translation.dispatchEvent(new Event('input', { bubbles: true }));
+                const sourceStyle = getComputedStyle(source);
+                const translationStyle = getComputedStyle(translation);
+                const result = {
+                  usesTextareas: source.tagName === 'TEXTAREA' && translation.tagName === 'TEXTAREA',
+                  bothExpanded: source.offsetHeight > 38 && translation.offsetHeight > 38,
+                  fullContentVisible: source.scrollHeight <= source.clientHeight + 1 && translation.scrollHeight <= translation.clientHeight + 1,
+                  wrapsWithoutScrollbars: sourceStyle.overflowY === 'hidden' && translationStyle.overflowY === 'hidden'
+                    && sourceStyle.whiteSpace === 'pre-wrap' && translationStyle.whiteSpace === 'pre-wrap',
+                };
+                app.removeExamplePairRow(row.querySelector('.example-pair-remove-btn'));
+                return result;
+            """)
+            self.assert_true(
+                bool(wrapped_example_pair_editor and all(wrapped_example_pair_editor.values())),
+                f"[{lang_name}] 浏览器编辑弹窗-长例句与译文实际自动换行增高且全文可见",
+                f"长句编辑框仍有横向查看或内容裁切问题: {wrapped_example_pair_editor}",
             )
             protected_modal_draft = driver.execute_script("""
                 const app = window.app;
