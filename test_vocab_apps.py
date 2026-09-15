@@ -484,7 +484,7 @@ class VocabAppTester:
             'if (clean) datasetTags.add(clean);',
             'return Array.from(datasetTags).sort(',
         )) and 'const posTags = new Set(' not in content
-        self.assert_true(all_used_tags_filter, f"[{lang_name}] 标签筛选-下拉菜单显示当前词库全部 Tag（包含词性）", "getAllAvailableTags 仍在排除词性标签，或没有对全部已用 Tag 做清洗、去重与排序")
+        self.assert_true(all_used_tags_filter, f"[{lang_name}] 标签筛选-下拉菜单仅汇总当前词库的自定义 Tag", "getAllAvailableTags 没有对独立 tags 字段做完整清洗、去重与排序")
 
         similar_ex_trans_clarity = ('.similar-word-chip .similar-ex-trans {' in content and 'color: var(--text-secondary)' in content) or ('similar-ex-trans' in content and 'color:var(--text-secondary)' in content)
         self.assert_true(similar_ex_trans_clarity, f"[{lang_name}] 相近表达-例句原文高亮与例句中文翻译层次色配置", ".similar-ex-trans 缺少 color: var(--text-secondary) 层次色配置，导致与例句原文难以区分")
@@ -534,6 +534,50 @@ class VocabAppTester:
                 print(f"  ⚠️ 解析 samples JSON 失败: {err}")
 
         self.assert_true(cards_examples_non_empty, f"[{lang_name}] 数据集-全量卡片 100% 包含例句与翻译断言", "存在未包含例句的硬编码卡片数据")
+
+        taxonomy_structure = all(token in content for token in (
+            'id="addWordPartOfSpeechGroup"',
+            'for="inputPartOfSpeech">单词词性 *',
+            'id="inputPartOfSpeech"',
+            'list="partOfSpeechOptions"',
+            'normalizeWordTaxonomy(word)',
+            'renderPartOfSpeechLabel(word)',
+            'class="part-of-speech-label"',
+            "const partOfSpeech = this.normalizeTaxonomyText(partOfSpeechInput.value);",
+            "filter(tag => tag && tag !== partOfSpeech)",
+            'samples.forEach(item => this.normalizeWordTaxonomy(item));',
+            'normalizeFallbackTaxonomy(fallbackWords);',
+        )) and content.index('id="addWordPartOfSpeechGroup"') < content.index('id="addWordTagsGroup"')
+        self.assert_true(taxonomy_structure, f"[{lang_name}] 词性结构-独立可编辑字段位于卡片标签上方并与 Tag 隔离", "缺少单词词性输入、迁移/归一化逻辑，或字段未放在卡片标签上方")
+
+        taxonomy_views = all(token in content for token in (
+            '<div class="word-meaning">${this.renderPartOfSpeechLabel(w)}${this.escapeHtml(w.meaning)}</div>',
+            "detailMeaning.innerHTML = this.renderPartOfSpeechLabel(word) + this.escapeHtml(word.meaning)",
+            "cardBackMeaning.innerHTML = this.renderPartOfSpeechLabel(word) + this.escapeHtml(word.meaning)",
+            '${this.renderPartOfSpeechLabel(w)}${this.escapeHtml(w.meaning)}',
+        ))
+        self.assert_true(taxonomy_views, f"[{lang_name}] 词性 Label-列表、详情、复习与相近表达均显示在中文释义左侧", "至少一个卡片视图没有在中文释义左侧渲染独立词性 Label")
+
+        taxonomy_data_valid = True
+        taxonomy_dataset_count = 0
+        for taxonomy_match in re.finditer(r'(?:const samples|var fallbackWords|window\.JP_NOTE_ADDITIONS) = (\[.*?\]);', content, re.DOTALL):
+            try:
+                taxonomy_cards = json.loads(taxonomy_match.group(1), strict=False)
+                taxonomy_dataset_count += 1
+                if any(
+                    not str(card.get('partOfSpeech') or '').strip()
+                    or str(card.get('partOfSpeech') or '').strip() in [str(tag).lstrip('#').strip() for tag in (card.get('tags') or [])]
+                    for card in taxonomy_cards
+                ):
+                    taxonomy_data_valid = False
+            except Exception:
+                taxonomy_data_valid = False
+        expected_taxonomy_datasets = 3 if lang_name == '日语' else 2
+        taxonomy_data_valid = taxonomy_data_valid and taxonomy_dataset_count == expected_taxonomy_datasets
+        self.assert_true(taxonomy_data_valid, f"[{lang_name}] 数据迁移-主数据与失效保护数据全量具备独立词性且 Tag 不重复词性", "samples、fallbackWords 或追加数据中仍有首个 Tag 未迁入 partOfSpeech")
+
+        taxonomy_cloud_tracking = "'meaning', 'partOfSpeech', 'example'" in content and 'partOfSpeech,' in content
+        self.assert_true(taxonomy_cloud_tracking, f"[{lang_name}] 词性持久化-新增编辑与云端逐字段同步均追踪 partOfSpeech", "独立词性字段未进入保存对象或云同步字段更新时间追踪")
 
         # ---------------------------------------------------------------------
         # 测试点 16: 统计数字与卡片数据一致性与自我修复测试 (Stats Data Self-Healing Parity)
@@ -635,7 +679,7 @@ class VocabAppTester:
             'addModalQuickTag(',
             'removeModalTag(',
             'const existingWord = id ? this.words.find(w => w.id === id) : null;',
-            'const tags = [...(this.editingModalTags || [])];',
+            'const tags = [...new Set((this.editingModalTags || []).map(tag => this.normalizeTaxonomyText(tag)).filter(tag => tag && tag !== partOfSpeech))];',
         )) and "const tags = existingWord && Array.isArray(existingWord.tags) ? [...existingWord.tags] : ['名词'];" not in content
         self.assert_true(shared_modal_tag_editor, f"[{lang_name}] 新建/编辑弹窗-共用可增改删 Tag 字段并回填旧值", "新建与编辑弹窗的 Tag 字段没有统一显示、回填或保存")
 
@@ -775,17 +819,17 @@ class VocabAppTester:
         )
 
         # ---------------------------------------------------------------------
-        # 测试点 24: 所有标签（含系统词性）均可删除并阻止冒泡
+        # 测试点 24: 自定义 Tag 均可删除并阻止冒泡，词性不再混入 Tag
         # ---------------------------------------------------------------------
         remove_tag_protection = all(token in content for token in (
-            "const tagClass = isSystem ? 'pos-tag' : 'custom-tag';",
+            'class="tag-badge custom-tag"',
             'title="删除标签">×</i>',
             'removeCustomTag(wordId, tagName)',
             "const cleanTag = String(tagName || '').replace(/^#/, '').trim();",
             "word.tags = word.tags.filter(tag => String(tag || '').replace(/^#/, '').trim() !== cleanTag);",
             'word.updatedAt = Date.now();',
         ))
-        self.assert_true(remove_tag_protection, f"[{lang_name}] 交互-系统词性与自定义 Tag 均显示 × 并可删除持久化", "系统词性 Tag 仍不可删除，或删除逻辑缺少归一化、更新时间与冒泡防护")
+        self.assert_true(remove_tag_protection, f"[{lang_name}] 交互-底部仅保留可删除持久化的自定义 Tag", "自定义 Tag 缺少删除入口、持久化或冒泡防护")
 
         custom_tag_css_m = re.search(r'\.tag-badge\.custom-tag\s*\{([^}]*)\}', content, re.DOTALL)
         active_tag_css_m = re.search(r'\.active-tag-chip\s*\{([^}]*)\}', content, re.DOTALL)
@@ -804,7 +848,7 @@ class VocabAppTester:
             and 'var(--accent-gradient)' not in (active_tag_css_m.group(1) if active_tag_css_m else '')
             and 'var(--accent-primary' not in (reusable_tag_css_m.group(1) if reusable_tag_css_m else '')
         )
-        self.assert_true(all_tags_neutral_gray, f"[{lang_name}] 样式-系统、自定义、已选与已有 Tag 选项全部统一为中性灰色", "Tag 仍保留蓝紫、粉色、渐变等特殊配色，或未采用与词性 Tag 一致的灰色")
+        self.assert_true(all_tags_neutral_gray, f"[{lang_name}] 样式-自定义、已选与已有 Tag 选项全部统一为中性灰色", "自定义 Tag 仍保留蓝紫、粉色或渐变等特殊配色")
 
         # ---------------------------------------------------------------------
         # 测试点 25: 卡片点击 showDetailModal 触发事件与 card-actions stopPropagation 事件隔离
@@ -1341,7 +1385,7 @@ class VocabAppTester:
                 }
                 recovered_today_cards_ok = True
                 for source_name, cards in (('samples', primary_cards), ('fallbackWords', fallback_cards)):
-                    for word, (expected_id, expected_reading, expected_tag) in expected.items():
+                    for word, (expected_id, expected_reading, expected_part_of_speech) in expected.items():
                         matches = [item for item in cards if item.get('word') == word]
                         if len(matches) != 1:
                             recovered_today_cards_ok = False
@@ -1351,7 +1395,8 @@ class VocabAppTester:
                         if not (
                             card.get('id') == expected_id
                             and card.get('reading') == expected_reading
-                            and card.get('tags') == [expected_tag]
+                            and card.get('partOfSpeech') == expected_part_of_speech
+                            and expected_part_of_speech not in (card.get('tags') or [])
                             and card.get('autoSimilarWordIds') == []
                             and len(card.get('examples') or []) >= 3
                             and len([line for line in str(card.get('example') or '').split('\n') if line]) >= 3
@@ -1575,7 +1620,7 @@ class VocabAppTester:
             and 'if (clean) datasetTags.add(clean);' in content
             and 'const posTags = new Set(' not in content
         )
-        self.assert_true(tag_normalization_safe, f"[{lang_name}] 基线差异-全部 Tag 去井号归一化且不再排除词性标签", "getAllAvailableTags 缺少稳定归一化，或仍把词性标签排除在顶部筛选之外")
+        self.assert_true(tag_normalization_safe, f"[{lang_name}] 基线差异-自定义 Tag 去井号归一化且词性与标签字段隔离", "getAllAvailableTags 缺少稳定归一化，或仍使用旧词性排除清单")
 
         detached_pagination_exact = (
             'class="pagination-bar word-list-inline-pagination"' in content
@@ -1730,12 +1775,13 @@ class VocabAppTester:
                 const app = window.app;
                 const originalWords = app.words;
                 try {
-                  const systemTags = ['词汇', '动词', '形容词', '副词', '接续词', '连体词', '形容动词', '名词', '短语', '惯用句', '语法', '句型', '助词', '助动词'];
-                  app.words = systemTags.map((tag, index) => ({
+                  const partOfSpeechValues = ['词汇', '动词', '形容词', '副词', '接续词', '连体词', '形容动词', '名词', '短语', '惯用句', '语法', '句型', '助词', '助动词'];
+                  app.words = partOfSpeechValues.map((partOfSpeech, index) => ({
                     id: 'tag_filter_probe_' + index,
                     word: 'probe_' + index,
                     meaning: '测试',
-                    tags: index === 0 ? [tag, '我的自定义标签'] : (index === 1 ? [tag, '#第二个自定义标签'] : [tag]),
+                    partOfSpeech,
+                    tags: index === 0 ? ['我的自定义标签'] : (index === 1 ? ['#第二个自定义标签'] : []),
                     mastered: false
                   }));
                   const available = app.getAllAvailableTags();
@@ -1746,10 +1792,10 @@ class VocabAppTester:
                   return {
                     available,
                     rendered,
-                    allTagsVisible: available.length === systemTags.length + 2
-                      && rendered.length === systemTags.length + 2
-                      && [...systemTags, '我的自定义标签', '第二个自定义标签']
-                        .every(tag => available.includes(tag) && rendered.includes(tag))
+                    customTagsOnly: available.length === 2
+                      && rendered.length === 2
+                      && ['我的自定义标签', '第二个自定义标签'].every(tag => available.includes(tag) && rendered.includes(tag))
+                      && partOfSpeechValues.every(partOfSpeech => !available.includes(partOfSpeech) && !rendered.includes(partOfSpeech))
                   };
                 } finally {
                   app.words = originalWords;
@@ -1759,8 +1805,8 @@ class VocabAppTester:
                 }
             """)
             self.assert_true(
-                bool(all_tag_dropdown_result and all_tag_dropdown_result.get('allTagsVisible')),
-                f"[{lang_name}] 浏览器标签下拉-词性与其他手动标签全部渲染且无遗漏",
+                bool(all_tag_dropdown_result and all_tag_dropdown_result.get('customTagsOnly')),
+                f"[{lang_name}] 浏览器标签下拉-仅渲染自定义 Tag 且不混入独立词性",
                 f"标签列表错误：{all_tag_dropdown_result}",
             )
 
@@ -1778,9 +1824,9 @@ class VocabAppTester:
                 const targetId = prefix + '_inline_existing_target';
                 try {
                   app.words = [
-                    {id:targetId, word:'Tag目标词', meaning:'测试已有标签选择', tags:['名词'], rating:0, mastered:false, examples:[], updatedAt:1001},
-                    {id:prefix + '_inline_existing_source_a', word:'来源甲', meaning:'来源', tags:['自定义甲','易忘'], rating:0, mastered:false, examples:[], updatedAt:1002},
-                    {id:prefix + '_inline_existing_source_b', word:'来源乙', meaning:'来源', tags:['动词','自定义乙'], rating:0, mastered:false, examples:[], updatedAt:1003}
+                    {id:targetId, word:'Tag目标词', meaning:'测试已有标签选择', partOfSpeech:'名词', tags:[], rating:0, mastered:false, examples:[], updatedAt:1001},
+                    {id:prefix + '_inline_existing_source_a', word:'来源甲', meaning:'来源', partOfSpeech:'名词', tags:['自定义甲','易忘'], rating:0, mastered:false, examples:[], updatedAt:1002},
+                    {id:prefix + '_inline_existing_source_b', word:'来源乙', meaning:'来源', partOfSpeech:'动词', tags:['自定义乙'], rating:0, mastered:false, examples:[], updatedAt:1003}
                   ];
                   app.currentFilter = 'all';
                   app.subFilter = 'all';
@@ -1806,8 +1852,8 @@ class VocabAppTester:
                     && !editor.querySelector('.inline-existing-tags-header')
                     && !editor.textContent.includes('选择词库已有 Tag')
                     && optionTexts.includes('#自定义甲') && optionTexts.includes('#自定义乙')
-                    && optionTexts.includes('#动词') && optionTexts.includes('#易忘')
-                    && !optionTexts.includes('#名词');
+                    && optionTexts.includes('#易忘')
+                    && !optionTexts.includes('#名词') && !optionTexts.includes('#动词');
                   const floatsOverFollowingCard = !!dropdown && getComputedStyle(dropdown).position === 'absolute'
                     && cardHeightAfter <= cardHeightBefore + 8
                     && (!nextCardRect || (dropdownRect && dropdownRect.bottom > nextCardRect.top))
@@ -2900,14 +2946,14 @@ class VocabAppTester:
                 container?.querySelector('.add-tag-btn')?.click();
                 let input = container?.querySelector('.inline-tag-input');
                 if (input) {
-                  input.value = '手动词性';
+                  input.value = '手动Tag';
                   input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
                 }
-                const added = app.editingModalTags.length === 1 && app.editingModalTags[0] === '手动词性';
+                const added = app.editingModalTags.length === 1 && app.editingModalTags[0] === '手动Tag';
                 const customBadge = container?.querySelector('.tag-badge.custom-tag');
                 const referenceBadge = document.createElement('span');
-                referenceBadge.className = 'tag-badge pos-tag';
-                referenceBadge.textContent = '#动词';
+                referenceBadge.className = 'tag-badge';
+                referenceBadge.textContent = '#参考标签';
                 container?.appendChild(referenceBadge);
                 const customStyle = customBadge ? getComputedStyle(customBadge) : null;
                 const referenceStyle = getComputedStyle(referenceBadge);
@@ -2919,7 +2965,7 @@ class VocabAppTester:
                 referenceBadge.remove();
                 container?.querySelector('.modal-editable-tag')?.click();
                 input = container?.querySelector('.inline-tag-input');
-                const editPrefilled = input?.value === '手动词性';
+                const editPrefilled = input?.value === '手动Tag';
                 if (input) {
                   input.value = '自定义新词Tag';
                   input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -2998,6 +3044,7 @@ class VocabAppTester:
 
                 const testWord = `新增弹窗星级相近词测试_${Date.now()}`;
                 document.getElementById('inputWord').value = testWord;
+                document.getElementById('inputPartOfSpeech').value = '自定义测试词性';
                 const readingInput = document.getElementById('inputReading');
                 readingInput.value = 'test-reading';
                 readingInput.dispatchEvent(new Event('blur', { bubbles: true }));
@@ -3017,6 +3064,7 @@ class VocabAppTester:
                 const savedRating = newWord?.rating === 4;
                 const savedMastered = newWord?.mastered === true;
                 const savedReading = newWord?.reading === '[test-reading]';
+                const savedPartOfSpeech = newWord?.partOfSpeech === '自定义测试词性' && !newWord?.tags?.includes('自定义测试词性');
                 const savedManualRelation = Array.isArray(newWord?.manualSimilarWordIds)
                   && newWord.manualSimilarWordIds.map(String).includes(String(target.id));
                 const automaticSnapshotEmpty = Array.isArray(newWord?.autoSimilarWordIds) && newWord.autoSimilarWordIds.length === 0;
@@ -3029,6 +3077,8 @@ class VocabAppTester:
                 const persisted = storedNewWord?.rating === 4
                   && storedNewWord?.mastered === true
                   && storedNewWord?.reading === '[test-reading]'
+                  && storedNewWord?.partOfSpeech === '自定义测试词性'
+                  && !storedNewWord?.tags?.includes('自定义测试词性')
                   && storedNewWord.manualSimilarWordIds?.map(String).includes(String(target.id));
                 const modalClosed = document.getElementById('wordModal')?.classList.contains('active') === false;
 
@@ -3046,13 +3096,13 @@ class VocabAppTester:
                   groupsVisible, startsEmpty, ratingSet, masteredSet, searchFound, selected,
                   selectedRendered, removed, readded, savedRating, savedManualRelation,
                   savedMastered, readingAutoBracketed, duplicateBracketsRemoved, pitchNumbersRemoved, savedReading,
-                  automaticSnapshotEmpty, reverseRelation, mutualRecommendation, persisted, modalClosed
+                  savedPartOfSpeech, automaticSnapshotEmpty, reverseRelation, mutualRecommendation, persisted, modalClosed
                 };
             """)
             self.assert_true(
                 bool(manual_add_rating_similar and all(manual_add_rating_similar.values())),
-                f"[{lang_name}] 浏览器新增弹窗-星级、学习状态、读音加括号去音调编号与相近词保存全流程",
-                f"新增弹窗星级、学习状态、读音规范化或相近词交互失败: {manual_add_rating_similar}",
+                f"[{lang_name}] 浏览器新增弹窗-独立词性、星级、状态、读音与相近词保存全流程",
+                f"新增弹窗独立词性、星级、状态、读音规范化或相近词交互失败: {manual_add_rating_similar}",
             )
 
             shared_add_edit_modal = driver.execute_script("""
@@ -3067,7 +3117,7 @@ class VocabAppTester:
                   currentPage: app.currentPage,
                   ratingSort: app.ratingSort
                 };
-                const sharedGroupIds = ['addWordTagsGroup', 'addWordRatingGroup', 'addWordMasteredGroup', 'addWordSimilarGroup'];
+                const sharedGroupIds = ['addWordPartOfSpeechGroup', 'addWordTagsGroup', 'addWordRatingGroup', 'addWordMasteredGroup', 'addWordSimilarGroup'];
                 const form = document.getElementById('wordForm');
 
                 app.openWordModal();
@@ -3084,6 +3134,7 @@ class VocabAppTester:
                 const existingValuesLoaded = document.getElementById('inputWord')?.value === String(target.word || '')
                   && document.getElementById('inputReading')?.value === app.normalizeBracketedReading(target.reading)
                   && document.getElementById('inputMeaning')?.value === String(target.meaning || '')
+                  && document.getElementById('inputPartOfSpeech')?.value === String(target.partOfSpeech || '')
                   && JSON.stringify(app.editingModalTags) === JSON.stringify(target.tags || [])
                   && app.editingModalRating === app.normalizeRating(target.rating)
                   && app.editingModalMastered === Boolean(target.mastered)
@@ -3094,12 +3145,14 @@ class VocabAppTester:
                   && editTitle.startsWith('编辑');
 
                 const editedTags = ['编辑字段测试'];
+                const editedPartOfSpeech = '自定义编辑词性';
                 const editedRating = app.normalizeRating(target.rating) === 5 ? 4 : 5;
                 const editedMastered = !Boolean(target.mastered);
                 app.editingModalTags = [...editedTags];
                 app.editingModalRating = editedRating;
                 app.editingModalMastered = editedMastered;
                 app.editingModalSimilarWordIds = [String(candidate.id)];
+                document.getElementById('inputPartOfSpeech').value = editedPartOfSpeech;
                 app.renderModalTags();
                 app.renderModalDraftRating();
                 app.renderModalDraftMastered();
@@ -3116,6 +3169,8 @@ class VocabAppTester:
                 const savedTarget = app.words.find(word => String(word.id) === String(target.id));
                 const savedCandidate = app.words.find(word => String(word.id) === String(candidate.id));
                 const sharedFieldsSaved = JSON.stringify(savedTarget?.tags || []) === JSON.stringify(editedTags)
+                  && savedTarget?.partOfSpeech === editedPartOfSpeech
+                  && !savedTarget?.tags?.includes(editedPartOfSpeech)
                   && savedTarget?.rating === editedRating
                   && Boolean(savedTarget?.mastered) === editedMastered
                   && savedTarget?.userNote === '编辑弹窗共用字段测试'
@@ -3124,6 +3179,7 @@ class VocabAppTester:
                 const storedTarget = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(target.id));
                 const persisted = storedTarget?.rating === editedRating
                   && Boolean(storedTarget?.mastered) === editedMastered
+                  && storedTarget?.partOfSpeech === editedPartOfSpeech
                   && JSON.stringify(storedTarget?.tags || []) === JSON.stringify(editedTags)
                   && (storedTarget?.manualSimilarWordIds || []).map(String).includes(String(candidate.id));
 
@@ -3340,7 +3396,7 @@ class VocabAppTester:
                 const originalWord = JSON.parse(JSON.stringify(app.words[wordIndex]));
                 const originalPending = JSON.parse(JSON.stringify(app.getPendingCloudChanges()));
                 const word = app.words[wordIndex];
-                const expectedTags = ['短语', '星级保留测试'];
+                const expectedTags = ['星级保留测试'];
                 word.tags = [...expectedTags];
                 word.rating = 2;
                 app.refreshWordFingerprints();
@@ -3402,11 +3458,12 @@ class VocabAppTester:
                 const editModalOpened = modal?.classList.contains('active') === true;
                 const detailHiddenWhileEditing = detailModal?.classList.contains('active') === false;
                 const returnContextCaptured = String(app.wordModalReturnContext?.wordId) === String(currentId);
-                const sharedControlsVisible = ['addWordTagsGroup', 'addWordRatingGroup', 'addWordMasteredGroup', 'addWordSimilarGroup'].every(id => {
+                const sharedControlsVisible = ['addWordPartOfSpeechGroup', 'addWordTagsGroup', 'addWordRatingGroup', 'addWordMasteredGroup', 'addWordSimilarGroup'].every(id => {
                   const element = document.getElementById(id);
                   return !!element && getComputedStyle(element).display !== 'none';
                 });
                 const sharedValuesLoaded = JSON.stringify(app.editingModalTags) === JSON.stringify(originalWord.tags || [])
+                  && document.getElementById('inputPartOfSpeech')?.value === String(originalWord.partOfSpeech || '')
                   && app.editingModalRating === app.normalizeRating(originalWord.rating)
                   && app.editingModalMastered === Boolean(originalWord.mastered)
                   && JSON.stringify(app.editingModalSimilarWordIds) === JSON.stringify(app.getSimilarWords(app.words[wordIndex]).map(word => String(word.id)));
@@ -3761,14 +3818,14 @@ class VocabAppTester:
                     f"日语韩文释义编辑全流程失败: {jp_kr_meaning_lifecycle}",
                 )
 
-            all_tags_deletable = driver.execute_script("""
+            taxonomy_label_and_custom_tags = driver.execute_script("""
                 const app = window.app;
-                const systemTags = new Set(['动词', '形容词', '名词', '副词', '短语', '惯用句', '接续词', '连体词', '形容动词', '感叹词', '代词', '数词', '语法', '句型', '词汇', '助词', '助动词', '俗语', '成语']);
-                const word = app.words.find(item => Array.isArray(item.tags) && item.tags.some(tag => systemTags.has(String(tag).replace(/^#/, '').trim())));
+                const word = app.words.find(item => item && item.partOfSpeech);
                 if (!word) return null;
                 const wordId = word.id;
                 const wordIndex = app.words.findIndex(item => String(item.id) === String(wordId));
-                const tagName = String(word.tags.find(tag => systemTags.has(String(tag).replace(/^#/, '').trim()))).replace(/^#/, '').trim();
+                const partOfSpeech = String(word.partOfSpeech);
+                const customTag = '删除测试Tag';
                 const originalWord = JSON.parse(JSON.stringify(word));
                 const originalState = {
                   currentFilter: app.currentFilter,
@@ -3777,25 +3834,37 @@ class VocabAppTester:
                   reviewList: app.reviewList,
                   currentReviewIndex: app.currentReviewIndex
                 };
+                word.tags = [...new Set([...(word.tags || []), customTag])];
+                app.saveData();
                 app.currentFilter = 'all';
                 app.searchQuery = String(word.word || '').toLowerCase();
                 app.currentPage = 1;
                 app.renderWordList();
                 const listCard = Array.from(document.querySelectorAll('#wordList .word-card')).find(card => String(card.dataset.id) === String(wordId));
-                const findTag = root => Array.from(root?.querySelectorAll('.tag-badge') || []).find(tag => tag.textContent.replace('×', '').trim() === `#${tagName}`);
+                const findTag = root => Array.from(root?.querySelectorAll('.tag-badge') || []).find(tag => tag.textContent.replace('×', '').trim() === `#${customTag}`);
                 const listTag = findTag(listCard);
-                const listSystemTagDeletable = !!listTag?.querySelector('.remove-tag-x');
+                const listLabelSeparated = listCard?.querySelector('.word-meaning .part-of-speech-label')?.textContent === partOfSpeech
+                  && !Array.from(listCard?.querySelectorAll('.word-tags .tag-badge') || []).some(tag => tag.textContent.includes(partOfSpeech))
+                  && !!listTag?.querySelector('.remove-tag-x');
                 app.showDetailModal(wordId);
-                const detailSystemTagDeletable = !!findTag(document.getElementById('detailTags'))?.querySelector('.remove-tag-x');
+                const detailLabelSeparated = document.querySelector('#detailMeaning .part-of-speech-label')?.textContent === partOfSpeech
+                  && !Array.from(document.querySelectorAll('#detailTags .tag-badge')).some(tag => tag.textContent.includes(partOfSpeech))
+                  && !!findTag(document.getElementById('detailTags'))?.querySelector('.remove-tag-x');
                 app.reviewList = [word];
                 app.currentReviewIndex = 0;
                 app.renderCurrentCard();
-                const reviewSystemTagDeletable = !!findTag(document.getElementById('cardBackTags'))?.querySelector('.remove-tag-x');
+                const reviewLabelSeparated = document.querySelector('#cardBackMeaning .part-of-speech-label')?.textContent === partOfSpeech
+                  && !Array.from(document.querySelectorAll('#cardBackTags .tag-badge')).some(tag => tag.textContent.includes(partOfSpeech))
+                  && !!findTag(document.getElementById('cardBackTags'))?.querySelector('.remove-tag-x');
+                const similarProbe = document.createElement('div');
+                similarProbe.innerHTML = app.renderSimilarBlockHtml([word], { id: 'taxonomy_probe_target', word: 'probe' });
+                const similarLabelSeparated = similarProbe.querySelector('.similar-word-meaning .part-of-speech-label')?.textContent === partOfSpeech;
                 listTag?.querySelector('.remove-tag-x')?.click();
                 const updatedWord = app.words.find(item => String(item.id) === String(wordId));
-                const removed = !updatedWord.tags.some(tag => String(tag).replace(/^#/, '').trim() === tagName);
+                const customTagRemoved = !updatedWord.tags.includes(customTag) && updatedWord.partOfSpeech === partOfSpeech;
                 const storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(item => String(item.id) === String(wordId));
-                const persisted = !!storedWord && !storedWord.tags.some(tag => String(tag).replace(/^#/, '').trim() === tagName);
+                const persistedSeparately = !!storedWord && storedWord.partOfSpeech === partOfSpeech
+                  && !storedWord.tags.includes(customTag) && !storedWord.tags.includes(partOfSpeech);
 
                 app.words[wordIndex] = originalWord;
                 app.currentFilter = originalState.currentFilter;
@@ -3806,12 +3875,12 @@ class VocabAppTester:
                 app.saveData();
                 app.renderWordList();
                 app.closeDetailModal();
-                return { listSystemTagDeletable, detailSystemTagDeletable, reviewSystemTagDeletable, removed, persisted };
+                return { listLabelSeparated, detailLabelSeparated, reviewLabelSeparated, similarLabelSeparated, customTagRemoved, persistedSeparately };
             """)
             self.assert_true(
-                bool(all_tags_deletable and all(all_tags_deletable.values())),
-                f"[{lang_name}] 浏览器 Tag-系统词性在列表、详情、复习均可删除并持久化",
-                f"系统词性 Tag 删除全流程失败: {all_tags_deletable}",
+                bool(taxonomy_label_and_custom_tags and all(taxonomy_label_and_custom_tags.values())),
+                f"[{lang_name}] 浏览器词性/Tag-三视图独立显示且自定义 Tag 可删除持久化",
+                f"词性 Label 与自定义 Tag 分离全流程失败: {taxonomy_label_and_custom_tags}",
             )
 
             similar_manual_crud = driver.execute_script("""
