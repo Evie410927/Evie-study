@@ -463,6 +463,14 @@ class VocabAppTester:
         tag_dropdown_btn = 'id="tagDropdownBtn"' in content and 'toggleTagDropdown' in content
         self.assert_true(tag_dropdown_btn, f"[{lang_name}] 标签筛选-触发按钮 #tagDropdownBtn 绑定 toggleTagDropdown", "DOM 中缺少 id='tagDropdownBtn' 或未绑定 toggleTagDropdown")
 
+        compact_icon_tag_filter = (
+            '🏷️ 标签 <span id="tagDropdownBadge"' not in content
+            and '🏷️ <span id="tagDropdownBadge"' in content
+            and 'aria-label="按标签过滤"' in content
+            and bool(re.search(r'\.tag-dropdown-btn\s*\{[^}]*padding-left:\s*8px;[^}]*padding-right:\s*8px;[^}]*gap:\s*2px;', content, re.DOTALL))
+        )
+        self.assert_true(compact_icon_tag_filter, f"[{lang_name}] 标签筛选-按钮仅保留图案与箭头并缩小宽度", "标签筛选按钮仍显示“标签”文字，或没有使用紧凑内边距")
+
         tag_dropdown_menu = 'id="tagDropdownMenu"' in content and 'id="tagDropdownList"' in content
         self.assert_true(tag_dropdown_menu, f"[{lang_name}] 标签筛选-下拉菜单面板 #tagDropdownMenu 存在", "DOM 中缺少 id='tagDropdownMenu' 面板")
 
@@ -1818,9 +1826,16 @@ class VocabAppTester:
                   else app.renderTagDropdownItems();
                   const rendered = Array.from(document.querySelectorAll('#tagDropdownList .tag-name'))
                     .map(el => el.textContent.replace(/^#/, '').trim());
+                  const tagButton = document.getElementById('tagDropdownBtn');
+                  const partOfSpeechButton = document.getElementById('partOfSpeechDropdownBtn');
                   return {
                     available,
                     rendered,
+                    compactIconButton: !!tagButton
+                      && !tagButton.textContent.includes('标签')
+                      && tagButton.textContent.includes('🏷️')
+                      && tagButton.getAttribute('aria-label') === '按标签过滤'
+                      && tagButton.getBoundingClientRect().width < partOfSpeechButton.getBoundingClientRect().width,
                     customTagsOnly: available.length === 2
                       && rendered.length === 2
                       && ['我的自定义标签', '第二个自定义标签'].every(tag => available.includes(tag) && rendered.includes(tag))
@@ -1837,6 +1852,11 @@ class VocabAppTester:
                 bool(all_tag_dropdown_result and all_tag_dropdown_result.get('customTagsOnly')),
                 f"[{lang_name}] 浏览器标签下拉-仅渲染自定义 Tag 且不混入独立词性",
                 f"标签列表错误：{all_tag_dropdown_result}",
+            )
+            self.assert_true(
+                bool(all_tag_dropdown_result and all_tag_dropdown_result.get('compactIconButton')),
+                f"[{lang_name}] 浏览器标签筛选-仅保留图案且实际宽度小于词性按钮",
+                f"标签筛选按钮仍有文字或宽度未缩小：{all_tag_dropdown_result}",
             )
 
             part_of_speech_filter_result = driver.execute_script("""

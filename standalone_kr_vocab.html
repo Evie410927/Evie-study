@@ -2188,6 +2188,12 @@ body::-webkit-scrollbar,
   overflow-wrap: anywhere;
   box-sizing: border-box;
 }
+
+.tag-dropdown-btn {
+  padding-left: 8px;
+  padding-right: 8px;
+  gap: 2px;
+}
 .example-pair-remove-btn {
   width: 28px;
   height: 100%;
@@ -2480,8 +2486,8 @@ body::-webkit-scrollbar,
               </div>
             </div>
             <div class="tag-filter-dropdown-wrapper" id="tagDropdownContainer">
-              <button id="tagDropdownBtn" class="pill-btn tag-dropdown-btn" onclick="if(window.app) window.app.toggleTagDropdown(event)" title="按标签/Label过滤 (可多选)" style="display: inline-flex; align-items: center; gap: 4px;">
-                🏷️ 标签 <span id="tagDropdownBadge" class="tag-badge" style="display:none;">0</span> ▾
+              <button id="tagDropdownBtn" class="pill-btn tag-dropdown-btn" onclick="if(window.app) window.app.toggleTagDropdown(event)" title="按标签/Label过滤 (可多选)" aria-label="按标签过滤" style="display: inline-flex; align-items: center;">
+                🏷️ <span id="tagDropdownBadge" class="tag-badge" style="display:none;">0</span> ▾
               </button>
               <div id="tagDropdownMenu" class="tag-dropdown-menu" style="display:none;" onclick="event.stopPropagation()">
                 <div id="tagDropdownList" class="tag-dropdown-list">
