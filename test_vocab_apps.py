@@ -486,6 +486,35 @@ class VocabAppTester:
         )) and 'const posTags = new Set(' not in content
         self.assert_true(all_used_tags_filter, f"[{lang_name}] 标签筛选-下拉菜单仅汇总当前词库的自定义 Tag", "getAllAvailableTags 没有对独立 tags 字段做完整清洗、去重与排序")
 
+        part_of_speech_filter_dom = all(token in content for token in (
+            'id="partOfSpeechDropdownContainer"',
+            'id="partOfSpeechDropdownBtn"',
+            'id="partOfSpeechDropdownMenu"',
+            'id="partOfSpeechDropdownList"',
+        )) and content.index('id="partOfSpeechDropdownContainer"') < content.index('id="tagDropdownContainer"')
+        self.assert_true(part_of_speech_filter_dom, f"[{lang_name}] 词性筛选-独立按钮位于标签筛选左侧", "词性筛选 DOM 不完整，或没有放在标签筛选按钮左侧")
+
+        part_of_speech_filter_methods = all(token in content for token in (
+            'this.selectedPartOfSpeech = new Set();',
+            'getAllAvailablePartOfSpeech() {',
+            'getPartOfSpeechCount(partOfSpeech) {',
+            'togglePartOfSpeechDropdown(event) {',
+            'togglePartOfSpeechFilter(partOfSpeech) {',
+            'clearAllPartOfSpeechFilters() {',
+            'renderPartOfSpeechDropdownItems() {',
+            'updatePartOfSpeechBadge() {',
+        ))
+        self.assert_true(part_of_speech_filter_methods, f"[{lang_name}] 词性筛选-多选、计数、清空及状态方法完整", "独立词性筛选方法集不完整")
+
+        part_of_speech_filter_logic = all(token in content for token in (
+            'if (this.selectedPartOfSpeech && this.selectedPartOfSpeech.size > 0)',
+            'this.normalizeTaxonomyText(w.partOfSpeech).toLowerCase()',
+            'if (!matchesPartOfSpeech) return false;',
+            "document.body.appendChild(menu)",
+            "positionPartOfSpeechDropdownMenu(menu)",
+        ))
+        self.assert_true(part_of_speech_filter_logic, f"[{lang_name}] 词性筛选-仅匹配独立 partOfSpeech 且手机端浮层不裁切", "词性筛选未使用独立 partOfSpeech 字段，或下拉浮层没有脱离滚动层定位")
+
         similar_ex_trans_clarity = ('.similar-word-chip .similar-ex-trans {' in content and 'color: var(--text-secondary)' in content) or ('similar-ex-trans' in content and 'color:var(--text-secondary)' in content)
         self.assert_true(similar_ex_trans_clarity, f"[{lang_name}] 相近表达-例句原文高亮与例句中文翻译层次色配置", ".similar-ex-trans 缺少 color: var(--text-secondary) 层次色配置，导致与例句原文难以区分")
 
@@ -1283,9 +1312,9 @@ class VocabAppTester:
         # ---------------------------------------------------------------------
         filter_pills_no_margin = 'padding-bottom: 0 !important;' in content or 'padding-bottom: 0px' in content or 'padding-bottom: 0;' in content
         pill_btn_height_28 = '.pill-btn {' in content and 'height: 28px;' in content
-        tag_btn_height_28 = '.tag-dropdown-btn {' in content and 'height: 28px;' in content
-        layout_alignment_ok = filter_pills_no_margin and pill_btn_height_28 and tag_btn_height_28
-        self.assert_true(layout_alignment_ok, f"[{lang_name}] 布局-筛选按钮 .pill-btn 与 .tag-dropdown-btn 统一 28px 高度并与标签下拉框完美水平齐平", "filter-pills 含有底边距或 pill-btn / tag-dropdown-btn 高度未统一为 28px")
+        dropdown_btn_height_28 = bool(re.search(r'\.tag-dropdown-btn\s*,?[^\{]*\.part-of-speech-dropdown-btn\s*\{[^}]*height:\s*28px;', content, re.DOTALL))
+        layout_alignment_ok = filter_pills_no_margin and pill_btn_height_28 and dropdown_btn_height_28
+        self.assert_true(layout_alignment_ok, f"[{lang_name}] 布局-状态、词性与标签筛选按钮统一 28px 高度并水平齐平", "filter-pills 含有底边距，或词性/标签筛选按钮高度未统一为 28px")
 
         # ---------------------------------------------------------------------
         # 测试点 42: HTML 静态 DOM 数字标签 (#count-all & #count-learning) 与 samples 数据源 100% 精确一致
@@ -1808,6 +1837,72 @@ class VocabAppTester:
                 bool(all_tag_dropdown_result and all_tag_dropdown_result.get('customTagsOnly')),
                 f"[{lang_name}] 浏览器标签下拉-仅渲染自定义 Tag 且不混入独立词性",
                 f"标签列表错误：{all_tag_dropdown_result}",
+            )
+
+            part_of_speech_filter_result = driver.execute_script("""
+                const app = window.app;
+                const originalWords = app.words;
+                const originalPartOfSpeech = new Set(app.selectedPartOfSpeech || []);
+                const originalTags = new Set(app.selectedTags || []);
+                const originalSearchQuery = app.searchQuery;
+                const originalPage = app.currentPage;
+                try {
+                  app.words = [
+                    {id:'pos_filter_noun', word:'词性名词', meaning:'名词测试', partOfSpeech:'名词', tags:['联合筛选'], mastered:false, rating:0, examples:[]},
+                    {id:'pos_filter_verb', word:'词性动词', meaning:'动词测试', partOfSpeech:'动词', tags:['其他标签'], mastered:false, rating:0, examples:[]},
+                    {id:'pos_filter_phrase', word:'词性短语', meaning:'短语测试', partOfSpeech:'短语', tags:['联合筛选'], mastered:false, rating:0, examples:[]}
+                  ];
+                  app.selectedPartOfSpeech = new Set();
+                  app.selectedTags = new Set();
+                  app.searchQuery = '';
+                  app.currentPage = 1;
+                  app.renderWordList();
+                  app.renderPartOfSpeechDropdownItems();
+                  const available = app.getAllAvailablePartOfSpeech();
+                  const rendered = Array.from(document.querySelectorAll('#partOfSpeechDropdownList .tag-name')).map(el => el.textContent.trim());
+                  app.togglePartOfSpeechFilter('名词');
+                  const nounOnly = app.getSearchFilteredWords().map(word => word.id);
+                  app.togglePartOfSpeechFilter('动词');
+                  const nounOrVerb = app.getSearchFilteredWords().map(word => word.id).sort();
+                  app.selectedTags = new Set(['联合筛选']);
+                  app.renderWordList();
+                  const combined = app.getSearchFilteredWords().map(word => word.id);
+                  const badge = document.getElementById('partOfSpeechDropdownBadge');
+                  const button = document.getElementById('partOfSpeechDropdownBtn');
+                  return {
+                    available,
+                    rendered,
+                    nounOnly,
+                    nounOrVerb,
+                    combined,
+                    badgeCount: badge?.textContent,
+                    badgeVisible: badge?.style.display === 'inline-flex',
+                    buttonActive: button?.classList.contains('has-active-part-of-speech') === true
+                  };
+                } finally {
+                  app.words = originalWords;
+                  app.selectedPartOfSpeech = originalPartOfSpeech;
+                  app.selectedTags = originalTags;
+                  app.searchQuery = originalSearchQuery;
+                  app.currentPage = originalPage;
+                  app.renderWordList();
+                }
+            """)
+            part_of_speech_filter_ok = bool(
+                part_of_speech_filter_result
+                and sorted(part_of_speech_filter_result.get('available') or []) == ['动词', '名词', '短语']
+                and sorted(part_of_speech_filter_result.get('rendered') or []) == ['动词', '名词', '短语']
+                and part_of_speech_filter_result.get('nounOnly') == ['pos_filter_noun']
+                and part_of_speech_filter_result.get('nounOrVerb') == ['pos_filter_noun', 'pos_filter_verb']
+                and part_of_speech_filter_result.get('combined') == ['pos_filter_noun']
+                and part_of_speech_filter_result.get('badgeCount') == '2'
+                and part_of_speech_filter_result.get('badgeVisible')
+                and part_of_speech_filter_result.get('buttonActive')
+            )
+            self.assert_true(
+                part_of_speech_filter_ok,
+                f"[{lang_name}] 浏览器词性筛选-独立多选、计数及 Tag 联合过滤完整",
+                f"词性筛选运行结果异常：{part_of_speech_filter_result}",
             )
 
             inline_existing_tag_result = driver.execute_script("""
