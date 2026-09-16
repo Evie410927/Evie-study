@@ -9320,6 +9320,7 @@ class JpVocabApp {
   }
 
   getSearchFilteredWords() {
+    this.reconcilePartOfSpeechFilters();
     return this.words.filter(w => {
       // 独立词性筛选：同组词性取并集，并与 Tag/关键词筛选叠加。
       if (this.selectedPartOfSpeech && this.selectedPartOfSpeech.size > 0) {
@@ -9561,6 +9562,23 @@ class JpVocabApp {
     return Array.from(values).sort((a, b) => a.localeCompare(b, 'zh'));
   }
 
+  reconcilePartOfSpeechFilters() {
+    const rawValues = this.selectedPartOfSpeech instanceof Set
+      ? Array.from(this.selectedPartOfSpeech)
+      : (Array.isArray(this.selectedPartOfSpeech) ? this.selectedPartOfSpeech : []);
+    const availableByKey = new Map(this.getAllAvailablePartOfSpeech().map(value => [
+      this.normalizeTaxonomyText(value).toLowerCase(),
+      value
+    ]));
+    const validValues = new Set();
+    rawValues.forEach(value => {
+      const key = this.normalizeTaxonomyText(value).toLowerCase();
+      if (key && availableByKey.has(key)) validValues.add(availableByKey.get(key));
+    });
+    this.selectedPartOfSpeech = validValues;
+    return validValues;
+  }
+
   getPartOfSpeechCount(partOfSpeech) {
     const target = this.normalizeTaxonomyText(partOfSpeech).toLowerCase();
     return (this.words || []).filter(word =>
@@ -9640,7 +9658,7 @@ class JpVocabApp {
   updatePartOfSpeechBadge() {
     const badge = document.getElementById('partOfSpeechDropdownBadge');
     const button = document.getElementById('partOfSpeechDropdownBtn');
-    const count = this.selectedPartOfSpeech ? this.selectedPartOfSpeech.size : 0;
+    const count = this.reconcilePartOfSpeechFilters().size;
     if (badge) {
       badge.textContent = count;
       badge.style.display = count > 0 ? 'inline-flex' : 'none';
@@ -9651,6 +9669,7 @@ class JpVocabApp {
   renderPartOfSpeechDropdownItems() {
     const container = document.getElementById('partOfSpeechDropdownList');
     if (!container) return;
+    this.reconcilePartOfSpeechFilters();
     const values = this.getAllAvailablePartOfSpeech();
     if (values.length === 0) {
       container.innerHTML = '<div class="tag-dropdown-empty">暂无可用词性</div>';

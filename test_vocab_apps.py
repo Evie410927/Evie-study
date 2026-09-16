@@ -505,6 +505,7 @@ class VocabAppTester:
         part_of_speech_filter_methods = all(token in content for token in (
             'this.selectedPartOfSpeech = new Set();',
             'getAllAvailablePartOfSpeech() {',
+            'reconcilePartOfSpeechFilters() {',
             'getPartOfSpeechCount(partOfSpeech) {',
             'togglePartOfSpeechDropdown(event) {',
             'togglePartOfSpeechFilter(partOfSpeech) {',
@@ -513,6 +514,15 @@ class VocabAppTester:
             'updatePartOfSpeechBadge() {',
         ))
         self.assert_true(part_of_speech_filter_methods, f"[{lang_name}] 词性筛选-多选、计数、清空及状态方法完整", "独立词性筛选方法集不完整")
+
+        part_of_speech_stale_state_guard = all(token in content for token in (
+            'const availableByKey = new Map(this.getAllAvailablePartOfSpeech().map(value => [',
+            'if (key && availableByKey.has(key)) validValues.add(availableByKey.get(key));',
+            'this.selectedPartOfSpeech = validValues;',
+            'const count = this.reconcilePartOfSpeechFilters().size;',
+            'getSearchFilteredWords() {\n    this.reconcilePartOfSpeechFilters();',
+        ))
+        self.assert_true(part_of_speech_stale_state_guard, f"[{lang_name}] 词性筛选-失效选择自动清理且 Badge 与勾选状态一致", "缺少失效词性筛选状态自清理，可能出现 Badge 有数字但下拉无勾选")
 
         part_of_speech_filter_logic = all(token in content for token in (
             'if (this.selectedPartOfSpeech && this.selectedPartOfSpeech.size > 0)',
@@ -1889,15 +1899,31 @@ class VocabAppTester:
                   const combined = app.getSearchFilteredWords().map(word => word.id);
                   const badge = document.getElementById('partOfSpeechDropdownBadge');
                   const button = document.getElementById('partOfSpeechDropdownBtn');
+                  const activeBadgeCount = badge?.textContent;
+                  const activeBadgeVisible = badge?.style.display === 'inline-flex';
+                  const activeButton = button?.classList.contains('has-active-part-of-speech') === true;
+
+                  // 回归用户反馈：内部残留 3 个已不存在的词性时，Badge 曾显示 3、下拉却零勾选，并把统计筛成 0。
+                  app.selectedTags = new Set();
+                  app.selectedPartOfSpeech = new Set(['失效词性甲', '失效词性乙', '失效词性丙']);
+                  app.renderWordList();
+                  app.renderPartOfSpeechDropdownItems();
+                  const checkedAfterStaleState = document.querySelectorAll('#partOfSpeechDropdownList .tag-dropdown-item.selected').length;
+                  const staleStateSelfHealed = app.selectedPartOfSpeech.size === 0
+                    && badge?.style.display === 'none'
+                    && !button?.classList.contains('has-active-part-of-speech')
+                    && checkedAfterStaleState === 0
+                    && Number(document.getElementById('count-all')?.textContent) === 3;
                   return {
                     available,
                     rendered,
                     nounOnly,
                     nounOrVerb,
                     combined,
-                    badgeCount: badge?.textContent,
-                    badgeVisible: badge?.style.display === 'inline-flex',
-                    buttonActive: button?.classList.contains('has-active-part-of-speech') === true
+                    badgeCount: activeBadgeCount,
+                    badgeVisible: activeBadgeVisible,
+                    buttonActive: activeButton,
+                    staleStateSelfHealed
                   };
                 } finally {
                   app.words = originalWords;
@@ -1923,6 +1949,11 @@ class VocabAppTester:
                 part_of_speech_filter_ok,
                 f"[{lang_name}] 浏览器词性筛选-独立多选、计数及 Tag 联合过滤完整",
                 f"词性筛选运行结果异常：{part_of_speech_filter_result}",
+            )
+            self.assert_true(
+                bool(part_of_speech_filter_result and part_of_speech_filter_result.get('staleStateSelfHealed')),
+                f"[{lang_name}] 浏览器词性筛选-无勾选时 Badge 归零且不会把统计筛成 0",
+                f"失效词性状态未自动清理：{part_of_speech_filter_result}",
             )
 
             inline_existing_tag_result = driver.execute_script("""
