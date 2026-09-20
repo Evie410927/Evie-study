@@ -3255,6 +3255,57 @@ body::-webkit-scrollbar,
   }
   const SafeStorage = new SafeStorageWrapper();
 
+  // Mobile browsers can reject localStorage while IndexedDB remains available.
+  // Keep a durable mirror so a successful cloud download survives page reloads.
+  const DurableStorage = {
+    databaseName: 'evie_vocab_durable_v1',
+    storeName: 'snapshots',
+    open() {
+      return new Promise((resolve, reject) => {
+        if (!window.indexedDB) {
+          reject(new Error('IndexedDB is unavailable'));
+          return;
+        }
+        const request = window.indexedDB.open(this.databaseName, 1);
+        request.onupgradeneeded = () => {
+          const database = request.result;
+          if (!database.objectStoreNames.contains(this.storeName)) database.createObjectStore(this.storeName);
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('IndexedDB open failed'));
+        request.onblocked = () => reject(new Error('IndexedDB open blocked'));
+      });
+    },
+    async getItem(key) {
+      const database = await this.open();
+      try {
+        return await new Promise((resolve, reject) => {
+          const transaction = database.transaction(this.storeName, 'readonly');
+          const request = transaction.objectStore(this.storeName).get(key);
+          request.onsuccess = () => resolve(request.result || null);
+          request.onerror = () => reject(request.error || new Error('IndexedDB read failed'));
+        });
+      } finally {
+        database.close();
+      }
+    },
+    async setItem(key, value) {
+      const database = await this.open();
+      try {
+        await new Promise((resolve, reject) => {
+          const transaction = database.transaction(this.storeName, 'readwrite');
+          transaction.objectStore(this.storeName).put(value, key);
+          transaction.oncomplete = () => resolve(true);
+          transaction.onerror = () => reject(transaction.error || new Error('IndexedDB write failed'));
+          transaction.onabort = () => reject(transaction.error || new Error('IndexedDB write aborted'));
+        });
+        return true;
+      } finally {
+        database.close();
+      }
+    }
+  };
+
 const SUPABASE_CONFIG = Object.freeze({
   url: 'https://orxkrmiqboumwbneworn.supabase.co',
   publishableKey: 'sb_publishable_YrhTciM7PjyCIJvdmu5OlA_I1fgsyU4',
@@ -7050,12 +7101,80 @@ function createSupabaseSyncMethods(language) {
       return false;
     },
 
-    persistSyncedData() {
+    buildDurableSnapshot() {
+      return {
+        schema: 1,
+        savedAt: Date.now(),
+        words: Array.isArray(this.words) ? this.words : [],
+        pendingCloudChanges: this.getPendingCloudChanges(),
+        deletedRecords: this.getDeletedRecords(),
+        cloudBaselineRevision: this.getCloudBaselineRevision()
+      };
+    },
+
+    async persistDurableSnapshot() {
+      try {
+        const persisted = await DurableStorage.setItem(this.STORAGE_KEY, this.buildDurableSnapshot());
+        this._indexedDbDurabilityConfirmed = persisted === true;
+        return persisted;
+      } catch (error) {
+        this._indexedDbDurabilityConfirmed = false;
+        console.warn('Durable IndexedDB snapshot failed:', error);
+        return false;
+      }
+    },
+
+    queueDurableSnapshot() {
+      this._durableSnapshotQueue = (this._durableSnapshotQueue || Promise.resolve())
+        .catch(() => false)
+        .then(() => this.persistDurableSnapshot());
+      return this._durableSnapshotQueue;
+    },
+
+    async restoreDurableSnapshot() {
+      if (this._hadDurableLocalWords) return false;
+      try {
+        const snapshot = await DurableStorage.getItem(this.STORAGE_KEY);
+        if (!snapshot || snapshot.schema !== 1 || !Array.isArray(snapshot.words) || snapshot.words.length === 0) return false;
+        this.words = snapshot.words;
+        SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
+        SafeStorage.setItem(this.PENDING_CLOUD_KEY, JSON.stringify(snapshot.pendingCloudChanges || {}));
+        SafeStorage.setItem(this.DELETED_KEY, JSON.stringify(snapshot.deletedRecords || {}));
+        if (snapshot.cloudBaselineRevision !== null && snapshot.cloudBaselineRevision !== undefined) {
+          SafeStorage.setItem(this.CLOUD_BASE_REVISION_KEY, String(snapshot.cloudBaselineRevision));
+        }
+        this.words.forEach(word => {
+          if (!word) return;
+          this.normalizeWordTaxonomy(word);
+          word.rating = this.normalizeRating(word.rating);
+          word.reading = this.normalizeBracketedReading(word.reading);
+          const parsed = this.getParsedExamples(word);
+          if (parsed.length > 0) {
+            word.examples = parsed;
+            word.example = parsed.map(item => item.example).filter(Boolean).join('\n');
+            word.exampleTrans = parsed.map(item => item.trans).filter(Boolean).join('\n');
+          }
+        });
+        this._hadDurableLocalWords = true;
+        this._indexedDbDurabilityConfirmed = true;
+        if (this.refreshWordFingerprints) this.refreshWordFingerprints();
+        this.renderWordList();
+        this.updateStats();
+        this.showToast('✅ 已从浏览器备用存储恢复词库');
+        return true;
+      } catch (error) {
+        console.warn('Durable IndexedDB restore failed:', error);
+        return false;
+      }
+    },
+
+    async persistSyncedData() {
       SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words || []));
       SafeStorage.flushMemoryStore();
-      const durable = !SafeStorage.hasVolatileValue(this.STORAGE_KEY)
+      const localDurable = !SafeStorage.hasVolatileValue(this.STORAGE_KEY)
         && !SafeStorage.hasVolatileValue(this.PENDING_CLOUD_KEY);
-      if (!durable) return false;
+      const indexedDbDurable = await this.persistDurableSnapshot();
+      if (!localDurable && !indexedDbDurable) return false;
       this.refreshWordFingerprints();
       return true;
     },
@@ -7102,6 +7221,7 @@ function createSupabaseSyncMethods(language) {
 
     saveCloudBaselineRevision(revision) {
       SafeStorage.setItem(this.CLOUD_BASE_REVISION_KEY, String(Math.max(0, Number(revision) || 0)));
+      this.queueDurableSnapshot();
     },
 
     splitCloudRows(rows) {
@@ -7111,7 +7231,7 @@ function createSupabaseSyncMethods(language) {
       return { metaRow, dataRows, revision };
     },
 
-    replaceLocalWithCloudRows(rows) {
+    async replaceLocalWithCloudRows(rows) {
       const nextWords = [];
       const nextDeleted = {};
       (rows || []).forEach(row => {
@@ -7130,7 +7250,7 @@ function createSupabaseSyncMethods(language) {
       this.words = nextWords;
       this.saveDeletedRecords(nextDeleted);
       this.savePendingCloudChanges({});
-      if (!this.persistSyncedData()) throw new Error('云端数据已载入，但浏览器未能持久保存，请保留当前页面并重试');
+      if (!await this.persistSyncedData()) throw new Error('云端数据已载入，但浏览器的 localStorage 与 IndexedDB 均未能持久保存，请检查无痕模式或站点存储权限后重试');
       return nextWords.length;
     },
 
@@ -7174,7 +7294,7 @@ function createSupabaseSyncMethods(language) {
       return row;
     },
 
-    mergeCloudRows(rows) {
+    async mergeCloudRows(rows) {
       const localMap = new Map((this.words || []).filter(w => w && w.id).map(w => [String(w.id), w]));
       const deleted = this.getDeletedRecords();
       const pending = this.getPendingCloudChanges();
@@ -7251,8 +7371,8 @@ function createSupabaseSyncMethods(language) {
       this.words = Array.from(localMap.values()).map(word => this.normalizeWordTaxonomy ? this.normalizeWordTaxonomy(word) : word);
       this.saveDeletedRecords(deleted);
       this.savePendingCloudChanges(pending);
-      if (!this.persistSyncedData()) {
-        throw new Error('云端数据已载入，但浏览器未能持久保存，请保留当前页面并重试');
+      if (!await this.persistSyncedData()) {
+        throw new Error('云端数据已载入，但浏览器的 localStorage 与 IndexedDB 均未能持久保存，请检查无痕模式或站点存储权限后重试');
       }
       return changedCount;
     },
@@ -7332,7 +7452,7 @@ function createSupabaseSyncMethods(language) {
         const { metaRow, dataRows, revision: cloudRevision } = this.splitCloudRows(cloudRows);
 
         if (!uploadLocal && downloadCloud) {
-          this.replaceLocalWithCloudRows(dataRows);
+          await this.replaceLocalWithCloudRows(dataRows);
           this.saveCloudBaselineRevision(cloudRevision);
           this.renderWordList();
           this.updateStats();
@@ -7360,7 +7480,7 @@ function createSupabaseSyncMethods(language) {
         // 云端版本变化或本地快照缺词时一律逐词无损合并；禁止整库替换。
         // 即使待上传标记意外缺失，本地独有卡片也会被识别并补传，点击云朵绝不删除本地新增词。
         if (metaRow && (localRevision !== cloudRevision || missingCloudWordCount > 0)) {
-          this.mergeCloudRows(dataRows);
+          await this.mergeCloudRows(dataRows);
           this.saveCloudBaselineRevision(cloudRevision);
           const pendingAfterMerge = this.getPendingCloudChanges();
           const pendingAfterMergeIds = Object.keys(pendingAfterMerge).filter(id => this.getPendingCloudMeta(pendingAfterMerge[id]).changedAt > 0);
@@ -7634,6 +7754,7 @@ class JpVocabApp {
     this.renderWordList();
     this.updateStats();
     this.bindEvents();
+    if (this.restoreDurableSnapshot) this.restoreDurableSnapshot();
     if (this.consumeCloudAuthCallback) this.consumeCloudAuthCallback();
     // 严格手动同步：页面启动与本地保存均不自动上传，只有点击云朵才执行版本门禁。
   }
@@ -7641,6 +7762,7 @@ class JpVocabApp {
   loadData() {
     try {
       const stored = SafeStorage.getItem(this.STORAGE_KEY);
+      this._hadDurableLocalWords = Boolean(stored && !SafeStorage.hasVolatileValue(this.STORAGE_KEY));
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
@@ -7728,6 +7850,7 @@ class JpVocabApp {
       SafeStorage.flushMemoryStore();
       const durable = !SafeStorage.hasVolatileValue(this.STORAGE_KEY)
         && !SafeStorage.hasVolatileValue(this.PENDING_CLOUD_KEY);
+      if (this.queueDurableSnapshot) this.queueDurableSnapshot();
       this.updateStats();
       if (!durable) {
         this.showToast('⚠️ 保存失败：浏览器未能持久保存，请保留当前窗口并重试');

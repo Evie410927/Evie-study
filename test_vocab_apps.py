@@ -939,6 +939,21 @@ class VocabAppTester:
         ))
         self.assert_true(safe_storage_wrapper, f"[{lang_name}] 安全-SafeStorageWrapper 写入回读验证、临时数据重试与保存失败显式返回", "浏览器持久存储失败仍可能被静默降级为内存数据并误报保存成功")
 
+        mobile_cloud_durable_fallback = all(token in content for token in (
+            "const DurableStorage = {",
+            "window.indexedDB.open(this.databaseName, 1)",
+            "database.transaction(this.storeName, 'readwrite')",
+            "async persistDurableSnapshot()",
+            "async restoreDurableSnapshot()",
+            "const indexedDbDurable = await this.persistDurableSnapshot();",
+            "if (!localDurable && !indexedDbDurable) return false;",
+            "if (this.restoreDurableSnapshot) this.restoreDurableSnapshot();",
+            "await this.replaceLocalWithCloudRows(dataRows);",
+            "await this.mergeCloudRows(dataRows);",
+            "localStorage 与 IndexedDB 均未能持久保存",
+        ))
+        self.assert_true(mobile_cloud_durable_fallback, f"[{lang_name}] 云同步-手机 localStorage 受限时使用 IndexedDB 持久化并在重载后恢复", "云端数据下载后仍只依赖 localStorage，手机端可能因存储限制误报持久化失败")
+
         persistence_gated_feedback = (
             content.count('const persisted = this.saveData();') >= 7
             and content.count('if (!persisted) return;') >= 7
@@ -2680,6 +2695,70 @@ class VocabAppTester:
                 bool(directional_sync_result and directional_sync_result.get('emptySelectionRejected')),
                 f"[{lang_name}] 浏览器云同步-两项均未选择时禁止执行",
                 f"空选择仍连接了云端或执行了同步：{directional_sync_result}",
+            )
+
+            mobile_storage_fallback_result = driver.execute_async_script("""
+                const done = arguments[0];
+                const app = window.app;
+                const originalWords = app.words;
+                const originalDeleted = app.getDeletedRecords();
+                const originalPending = app.getPendingCloudChanges();
+                const originalBaseline = SafeStorage.getItem(app.CLOUD_BASE_REVISION_KEY);
+                const originalSetItem = Storage.prototype.setItem;
+                const prefix = originalWords[0] && String(originalWords[0].id).startsWith('jp_') ? 'jp' : 'kr';
+                const fallbackId = prefix + '_mobile_indexeddb_fallback';
+                (async () => {
+                  let result = null;
+                  try {
+                    app.words = [{id:fallbackId, word:'手机备用存储测试词', meaning:'验证 IndexedDB 持久化', tags:[], updatedAt:Date.now()}];
+                    app.saveDeletedRecords({});
+                    app.savePendingCloudChanges({});
+                    Storage.prototype.setItem = function(key, value) {
+                      if (String(key) === String(app.STORAGE_KEY)) throw new DOMException('mobile quota simulation', 'QuotaExceededError');
+                      return originalSetItem.call(this, key, value);
+                    };
+                    const persistedWithBlockedLocalStorage = await app.persistSyncedData();
+                    const localStorageActuallyFellBack = SafeStorage.hasVolatileValue(app.STORAGE_KEY);
+                    const durableSnapshot = await DurableStorage.getItem(app.STORAGE_KEY);
+                    const indexedDbContainsCloudWords = !!durableSnapshot
+                      && Array.isArray(durableSnapshot.words)
+                      && durableSnapshot.words.some(word => word.id === fallbackId);
+
+                    Storage.prototype.setItem = originalSetItem;
+                    SafeStorage.removeItem(app.STORAGE_KEY);
+                    app.words = [{id:prefix + '_temporary_memory_only', word:'临时内存词', meaning:'应被恢复数据替换', tags:[]}];
+                    app._hadDurableLocalWords = false;
+                    const restoredAfterReload = await app.restoreDurableSnapshot();
+                    const reloadRecoveredCloudWords = restoredAfterReload
+                      && app.words.some(word => word.id === fallbackId)
+                      && !app.words.some(word => word.id === prefix + '_temporary_memory_only');
+                    result = {persistedWithBlockedLocalStorage, localStorageActuallyFellBack, indexedDbContainsCloudWords, reloadRecoveredCloudWords};
+                  } finally {
+                    Storage.prototype.setItem = originalSetItem;
+                    app.words = originalWords;
+                    app.saveDeletedRecords(originalDeleted);
+                    app.savePendingCloudChanges(originalPending);
+                    if (originalBaseline === null) SafeStorage.removeItem(app.CLOUD_BASE_REVISION_KEY);
+                    else SafeStorage.setItem(app.CLOUD_BASE_REVISION_KEY, originalBaseline);
+                    app._hadDurableLocalWords = true;
+                    await app.persistSyncedData();
+                    app.renderWordList();
+                    app.updateStats();
+                  }
+                  done(result);
+                })().catch(error => {
+                  Storage.prototype.setItem = originalSetItem;
+                  done({error:String(error && error.message || error)});
+                });
+            """)
+            self.assert_true(
+                bool(mobile_storage_fallback_result
+                     and mobile_storage_fallback_result.get('persistedWithBlockedLocalStorage')
+                     and mobile_storage_fallback_result.get('localStorageActuallyFellBack')
+                     and mobile_storage_fallback_result.get('indexedDbContainsCloudWords')
+                     and mobile_storage_fallback_result.get('reloadRecoveredCloudWords')),
+                f"[{lang_name}] 浏览器手机存储回归-localStorage 写入失败后 IndexedDB 落盘并可重载恢复",
+                f"手机端备用持久层未完整接管云端下载数据：{mobile_storage_fallback_result}",
             )
 
             paginated_fetch_result = driver.execute_async_script("""
