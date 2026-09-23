@@ -505,6 +505,11 @@ class VocabAppTester:
         part_of_speech_filter_methods = all(token in content for token in (
             'this.selectedPartOfSpeech = new Set();',
             'getAllAvailablePartOfSpeech() {',
+            'renderPartOfSpeechOptions() {',
+            "const optionsList = document.getElementById('partOfSpeechOptions');",
+            'this.getAllAvailablePartOfSpeech().forEach(value => {',
+            'optionsList.replaceChildren(fragment);',
+            'this.renderPartOfSpeechOptions();',
             'reconcilePartOfSpeechFilters() {',
             'getPartOfSpeechCount(partOfSpeech) {',
             'togglePartOfSpeechDropdown(event) {',
@@ -1895,7 +1900,8 @@ class VocabAppTester:
                   app.words = [
                     {id:'pos_filter_noun', word:'词性名词', meaning:'名词测试', partOfSpeech:'名词', tags:['联合筛选'], mastered:false, rating:0, examples:[]},
                     {id:'pos_filter_verb', word:'词性动词', meaning:'动词测试', partOfSpeech:'动词', tags:['其他标签'], mastered:false, rating:0, examples:[]},
-                    {id:'pos_filter_phrase', word:'词性短语', meaning:'短语测试', partOfSpeech:'短语', tags:['联合筛选'], mastered:false, rating:0, examples:[]}
+                    {id:'pos_filter_phrase', word:'词性短语', meaning:'短语测试', partOfSpeech:'短语', tags:['联合筛选'], mastered:false, rating:0, examples:[]},
+                    {id:'pos_filter_custom', word:'词性短副', meaning:'动态词性测试', partOfSpeech:'短副', tags:[], mastered:false, rating:0, examples:[]}
                   ];
                   app.selectedPartOfSpeech = new Set();
                   app.selectedTags = new Set();
@@ -1905,6 +1911,8 @@ class VocabAppTester:
                   app.renderPartOfSpeechDropdownItems();
                   const available = app.getAllAvailablePartOfSpeech();
                   const rendered = Array.from(document.querySelectorAll('#partOfSpeechDropdownList .tag-name')).map(el => el.textContent.trim());
+                  app.renderPartOfSpeechOptions();
+                  const suggested = Array.from(document.querySelectorAll('#partOfSpeechOptions option')).map(el => el.value.trim());
                   app.togglePartOfSpeechFilter('名词');
                   const nounOnly = app.getSearchFilteredWords().map(word => word.id);
                   app.togglePartOfSpeechFilter('动词');
@@ -1928,10 +1936,11 @@ class VocabAppTester:
                     && badge?.style.display === 'none'
                     && !button?.classList.contains('has-active-part-of-speech')
                     && checkedAfterStaleState === 0
-                    && Number(document.getElementById('count-all')?.textContent) === 3;
+                    && Number(document.getElementById('count-all')?.textContent) === 4;
                   return {
                     available,
                     rendered,
+                    suggested,
                     nounOnly,
                     nounOrVerb,
                     combined,
@@ -1951,8 +1960,8 @@ class VocabAppTester:
             """)
             part_of_speech_filter_ok = bool(
                 part_of_speech_filter_result
-                and sorted(part_of_speech_filter_result.get('available') or []) == ['动词', '名词', '短语']
-                and sorted(part_of_speech_filter_result.get('rendered') or []) == ['动词', '名词', '短语']
+                and sorted(part_of_speech_filter_result.get('available') or []) == ['动词', '名词', '短副', '短语']
+                and sorted(part_of_speech_filter_result.get('rendered') or []) == ['动词', '名词', '短副', '短语']
                 and part_of_speech_filter_result.get('nounOnly') == ['pos_filter_noun']
                 and part_of_speech_filter_result.get('nounOrVerb') == ['pos_filter_noun', 'pos_filter_verb']
                 and part_of_speech_filter_result.get('combined') == ['pos_filter_noun']
@@ -1964,6 +1973,11 @@ class VocabAppTester:
                 part_of_speech_filter_ok,
                 f"[{lang_name}] 浏览器词性筛选-独立多选、计数及 Tag 联合过滤完整",
                 f"词性筛选运行结果异常：{part_of_speech_filter_result}",
+            )
+            self.assert_true(
+                bool(part_of_speech_filter_result and sorted(part_of_speech_filter_result.get('suggested') or []) == ['动词', '名词', '短副', '短语']),
+                f"[{lang_name}] 新增/编辑弹窗-词性建议与当前词库动态词性完全一致",
+                f"弹窗词性建议未随当前词库同步：{part_of_speech_filter_result}",
             )
             self.assert_true(
                 bool(part_of_speech_filter_result and part_of_speech_filter_result.get('staleStateSelfHealed')),

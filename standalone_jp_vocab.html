@@ -3109,9 +3109,7 @@ body::-webkit-scrollbar,
           <div id="addWordPartOfSpeechGroup" class="form-group">
             <label class="form-label" for="inputPartOfSpeech">单词词性 *</label>
             <input type="text" id="inputPartOfSpeech" class="form-input" list="partOfSpeechOptions" placeholder="如：动词、名词、短语（可自定义）" autocomplete="off" oninput="if(window.app) window.app.renderModalTags()" required>
-            <datalist id="partOfSpeechOptions">
-              <option value="动词"><option value="形容词"><option value="名词"><option value="副词"><option value="短语"><option value="惯用句"><option value="语法"><option value="助词"><option value="接续词"><option value="形容动词">
-            </datalist>
+            <datalist id="partOfSpeechOptions"></datalist>
           </div>
 
           <div id="addWordTagsGroup" class="form-group" style="display:none;">
@@ -8339,6 +8337,7 @@ class JpVocabApp {
     const addWordMasteredGroup = document.getElementById('addWordMasteredGroup');
     const addWordSimilarGroup = document.getElementById('addWordSimilarGroup');
     if (!modal || !form || !title || !wordIdInput || !wordInput || !readingInput || !meaningInput || !partOfSpeechInput || !krMeaningInput || !userNoteInput || !addWordTagsGroup || !addWordRatingGroup || !addWordMasteredGroup || !addWordSimilarGroup) return;
+    this.renderPartOfSpeechOptions();
     form.reset();
     this.editingModalTags = word && Array.isArray(word.tags) ? [...word.tags] : [];
     this.editingModalRating = word ? this.normalizeRating(word.rating) : 0;
@@ -9683,6 +9682,18 @@ class JpVocabApp {
       if (value) values.add(value);
     });
     return Array.from(values).sort((a, b) => a.localeCompare(b, 'zh'));
+  }
+
+  renderPartOfSpeechOptions() {
+    const optionsList = document.getElementById('partOfSpeechOptions');
+    if (!optionsList) return;
+    const fragment = document.createDocumentFragment();
+    this.getAllAvailablePartOfSpeech().forEach(value => {
+      const option = document.createElement('option');
+      option.value = value;
+      fragment.appendChild(option);
+    });
+    optionsList.replaceChildren(fragment);
   }
 
   reconcilePartOfSpeechFilters() {
