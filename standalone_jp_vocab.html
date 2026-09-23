@@ -8752,19 +8752,29 @@ class JpVocabApp {
     const id = String(similarWordId || '');
     const editingWordId = String(document.getElementById('wordId')?.value || '');
     if (!id || id === editingWordId || !this.words.some(word => String(word.id) === id)) return;
+    const results = document.getElementById('modalSimilarSearchResults');
+    const resultsScrollTop = results ? results.scrollTop : 0;
     if (!Array.isArray(this.editingModalSimilarWordIds)) this.editingModalSimilarWordIds = [];
     if (!this.editingModalSimilarWordIds.map(String).includes(id)) this.editingModalSimilarWordIds.push(id);
     this.renderModalSelectedSimilarWords();
     const input = document.getElementById('modalSimilarSearchInput');
-    if (input) this.searchModalSimilarWordOptions(input);
+    if (input) {
+      this.searchModalSimilarWordOptions(input);
+      this.restoreSimilarWordResultsScroll(results, resultsScrollTop);
+    }
   }
 
   removeModalSimilarWord(similarWordId) {
     const id = String(similarWordId || '');
+    const results = document.getElementById('modalSimilarSearchResults');
+    const resultsScrollTop = results ? results.scrollTop : 0;
     this.editingModalSimilarWordIds = (this.editingModalSimilarWordIds || []).map(String).filter(selectedId => selectedId !== id);
     this.renderModalSelectedSimilarWords();
     const input = document.getElementById('modalSimilarSearchInput');
-    if (input) this.searchModalSimilarWordOptions(input);
+    if (input) {
+      this.searchModalSimilarWordOptions(input);
+      this.restoreSimilarWordResultsScroll(results, resultsScrollTop);
+    }
   }
 
   getParsedExamples(w) {
@@ -9171,7 +9181,18 @@ class JpVocabApp {
     }).join('') : '<div class="similar-word-search-hint">当前词库中没有匹配的单词</div>';
   }
 
-  restoreSimilarWordPickerState(hostId, targetWordId, searchValue) {
+  restoreSimilarWordResultsScroll(results, scrollTop = 0) {
+    if (!results) return;
+    const savedScrollTop = Math.max(0, Number(scrollTop) || 0);
+    results.scrollTop = savedScrollTop;
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        if (results.isConnected) results.scrollTop = savedScrollTop;
+      });
+    }
+  }
+
+  restoreSimilarWordPickerState(hostId, targetWordId, searchValue, resultsScrollTop = 0) {
     const host = hostId ? document.getElementById(hostId) : null;
     const picker = host ? host.querySelector('.similar-word-picker') : null;
     const input = picker ? picker.querySelector('.similar-word-search-input') : null;
@@ -9179,6 +9200,8 @@ class JpVocabApp {
     picker.classList.add('active');
     input.value = String(searchValue || '');
     this.searchSimilarWordOptions(input, targetWordId);
+    const results = picker.querySelector('.similar-word-search-results');
+    this.restoreSimilarWordResultsScroll(results, resultsScrollTop);
     setTimeout(() => {
       if (!document.contains(input)) return;
       input.focus();
@@ -9195,8 +9218,9 @@ class JpVocabApp {
       ? triggerElement.closest('#detailSimilarBlock, #cardBackSimilarBlock')
       : null;
     const sourceInput = sourceHost ? sourceHost.querySelector('.similar-word-search-input') : null;
+    const sourceResults = sourceHost ? sourceHost.querySelector('.similar-word-search-results') : null;
     const pickerState = sourceHost && sourceHost.id
-      ? { hostId: sourceHost.id, searchValue: sourceInput ? sourceInput.value : '' }
+      ? { hostId: sourceHost.id, searchValue: sourceInput ? sourceInput.value : '', resultsScrollTop: sourceResults ? sourceResults.scrollTop : 0 }
       : null;
     targetWord.manualSimilarWordIds = Array.isArray(targetWord.manualSimilarWordIds) ? targetWord.manualSimilarWordIds.map(String) : [];
     targetWord.hiddenSimilarWordIds = Array.isArray(targetWord.hiddenSimilarWordIds) ? targetWord.hiddenSimilarWordIds.map(String) : [];
@@ -9213,7 +9237,7 @@ class JpVocabApp {
     const persisted = this.saveData();
     this.refreshSimilarWordPanels(targetWord.id);
     this.refreshSimilarWordPanels(similarWord.id);
-    if (pickerState) this.restoreSimilarWordPickerState(pickerState.hostId, targetWord.id, pickerState.searchValue);
+    if (pickerState) this.restoreSimilarWordPickerState(pickerState.hostId, targetWord.id, pickerState.searchValue, pickerState.resultsScrollTop);
     if (!persisted) return;
     this.showToast(`✅ 已添加相近表达：${similarWord.word}`);
   }

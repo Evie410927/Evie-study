@@ -1040,8 +1040,11 @@ class VocabAppTester:
 
         similar_word_continuous_multi_select = all(token in content for token in (
             "addSimilarWord('${targetWord.id}', '${word.id}', this)",
-            'restoreSimilarWordPickerState(hostId, targetWordId, searchValue)',
+            'restoreSimilarWordResultsScroll(results, scrollTop = 0)',
+            'restoreSimilarWordPickerState(hostId, targetWordId, searchValue, resultsScrollTop = 0)',
             "triggerElement.closest('#detailSimilarBlock, #cardBackSimilarBlock')",
+            'resultsScrollTop: sourceResults ? sourceResults.scrollTop : 0',
+            'this.restoreSimilarWordResultsScroll(results, resultsScrollTop);',
             "picker.classList.add('active')",
             'this.searchSimilarWordOptions(input, targetWordId);',
             'if (pickerState) this.restoreSimilarWordPickerState(',
@@ -4158,6 +4161,9 @@ class VocabAppTester:
                 source.hiddenSimilarWordIds = [];
                 const initial = candidates[0];
                 const addTargets = candidates.slice(3, 7);
+                const scrollQuery = 'similar-scroll-regression';
+                const originalMeanings = candidates.map(word => ({word, meaning: word.meaning}));
+                candidates.forEach(word => { word.meaning = `${word.meaning || ''} ${scrollQuery}`; });
                 const reverseOriginal = reverseOriginalState([initial].concat(addTargets));
                 const automaticSnapshotIgnored = app.getSimilarWords(source, 3).length === 0;
                 app.addSimilarWord(source.id, initial.id);
@@ -4188,33 +4194,38 @@ class VocabAppTester:
                 freshAddButton?.click();
                 const firstInput = freshPanel?.querySelector('.similar-word-search-input');
                 if (firstInput) {
-                  firstInput.value = addTargets[0].word;
+                  firstInput.value = scrollQuery;
                   firstInput.dispatchEvent(new Event('input', { bubbles: true }));
                 }
+                const firstResults = freshPanel?.querySelector('.similar-word-search-results');
+                if (firstResults) firstResults.scrollTop = Math.min(60, Math.max(0, firstResults.scrollHeight - firstResults.clientHeight));
+                const firstScrollBefore = firstResults?.scrollTop || 0;
                 const firstResultButton = Array.from(freshPanel?.querySelectorAll('.similar-word-search-result') || []).find(button => button.querySelector('strong')?.textContent === addTargets[0].word);
                 firstResultButton?.click();
                 const panelAfterFirst = document.querySelector('#detailSimilarBlock .similar-words-container');
                 const pickerAfterFirst = panelAfterFirst?.querySelector('.similar-word-picker');
                 const inputAfterFirst = panelAfterFirst?.querySelector('.similar-word-search-input');
+                const firstResultsAfter = panelAfterFirst?.querySelector('.similar-word-search-results');
+                const firstSelectionKeptScroll = firstScrollBefore > 0 && firstResultsAfter?.scrollTop === firstScrollBefore;
                 const firstSelectionStayedOpen = !!pickerAfterFirst
                   && pickerAfterFirst.classList.contains('active')
-                  && inputAfterFirst?.value === addTargets[0].word
+                  && inputAfterFirst?.value === scrollQuery
                   && !!panelAfterFirst.querySelector('.similar-word-search-result.is-added[disabled]');
-                if (inputAfterFirst) {
-                  inputAfterFirst.value = addTargets[1].word;
-                  inputAfterFirst.dispatchEvent(new Event('input', { bubbles: true }));
-                }
+                if (firstResultsAfter) firstResultsAfter.scrollTop = Math.min(90, Math.max(0, firstResultsAfter.scrollHeight - firstResultsAfter.clientHeight));
+                const secondScrollBefore = firstResultsAfter?.scrollTop || 0;
                 const secondResultButton = Array.from(panelAfterFirst?.querySelectorAll('.similar-word-search-result') || []).find(button => button.querySelector('strong')?.textContent === addTargets[1].word);
                 secondResultButton?.click();
                 const panelAfterSecond = document.querySelector('#detailSimilarBlock .similar-words-container');
                 const pickerAfterSecond = panelAfterSecond?.querySelector('.similar-word-picker');
                 const inputAfterSecond = panelAfterSecond?.querySelector('.similar-word-search-input');
+                const secondResultsAfter = panelAfterSecond?.querySelector('.similar-word-search-results');
+                const secondSelectionKeptScroll = secondScrollBefore > 0 && secondResultsAfter?.scrollTop === secondScrollBefore;
                 const secondSelectionStayedOpen = !!pickerAfterSecond
                   && pickerAfterSecond.classList.contains('active')
-                  && inputAfterSecond?.value === addTargets[1].word
+                  && inputAfterSecond?.value === scrollQuery
                   && (source.manualSimilarWordIds || []).map(String).includes(String(addTargets[0].id))
                   && (source.manualSimilarWordIds || []).map(String).includes(String(addTargets[1].id));
-                const continuousMultiSelect = firstSelectionStayedOpen && secondSelectionStayedOpen;
+                const continuousMultiSelect = firstSelectionStayedOpen && secondSelectionStayedOpen && firstSelectionKeptScroll && secondSelectionKeptScroll;
                 addTargets.slice(2).forEach(word => app.addSimilarWord(source.id, word.id));
                 const afterUnlimitedAdd = app.getSimilarWords(source, 3);
                 const addedPersisted = addTargets.every(word => (source.manualSimilarWordIds || []).map(String).includes(String(word.id)));
@@ -4232,6 +4243,7 @@ class VocabAppTester:
                   if (manual === undefined) delete word.manualSimilarWordIds; else word.manualSimilarWordIds = manual;
                   if (hidden === undefined) delete word.hiddenSimilarWordIds; else word.hiddenSimilarWordIds = hidden;
                 });
+                originalMeanings.forEach(({word, meaning}) => { word.meaning = meaning; });
                 app.saveData();
                 app.refreshSimilarWordPanels(source.id);
                 return {
