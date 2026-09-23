@@ -21797,10 +21797,14 @@ class KrVocabApp {
     targetWord.manualSimilarWordIds = (Array.isArray(targetWord.manualSimilarWordIds) ? targetWord.manualSimilarWordIds : []).map(String).filter(id => id !== String(similarWord.id));
     targetWord.hiddenSimilarWordIds = Array.isArray(targetWord.hiddenSimilarWordIds) ? targetWord.hiddenSimilarWordIds.map(String) : [];
     if (!targetWord.hiddenSimilarWordIds.includes(String(similarWord.id))) targetWord.hiddenSimilarWordIds.push(String(similarWord.id));
+    similarWord.manualSimilarWordIds = (Array.isArray(similarWord.manualSimilarWordIds) ? similarWord.manualSimilarWordIds : []).map(String).filter(id => id !== String(targetWord.id));
+    similarWord.hiddenSimilarWordIds = Array.isArray(similarWord.hiddenSimilarWordIds) ? similarWord.hiddenSimilarWordIds.map(String) : [];
+    if (!similarWord.hiddenSimilarWordIds.includes(String(targetWord.id))) similarWord.hiddenSimilarWordIds.push(String(targetWord.id));
     const persisted = this.saveData();
     this.refreshSimilarWordPanels(targetWord.id);
+    this.refreshSimilarWordPanels(similarWord.id);
     if (!persisted) return;
-    this.showToast(`已从当前面板移除：${similarWord.word}`);
+    this.showToast(`已双向删除相近关系：${similarWord.word}`);
   }
 
   refreshSimilarWordPanels(targetWordId) {

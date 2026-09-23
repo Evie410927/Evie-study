@@ -968,7 +968,7 @@ class VocabAppTester:
         persistence_gated_feedback = (
             content.count('const persisted = this.saveData();') >= 7
             and content.count('if (!persisted) return;') >= 7
-            and 'this.refreshSimilarWordPanels(targetWord.id);\n    if (!persisted) return;' in content
+            and 'this.refreshSimilarWordPanels(targetWord.id);\n    this.refreshSimilarWordPanels(similarWord.id);\n    if (!persisted) return;' in content
         )
         self.assert_true(persistence_gated_feedback, f"[{lang_name}] 持久化-编辑、相近表达、状态、删除、导入和清空仅在落盘成功后提示完成", "部分编辑入口仍可能在持久化失败后显示成功或继续完成后续动作")
 
@@ -1016,6 +1016,14 @@ class VocabAppTester:
             'this.refreshSimilarWordPanels(similarWord.id)',
         ))
         self.assert_true(bidirectional_manual_similarity, f"[{lang_name}] 相近表达-人工添加自动建立并刷新双向持久关联", "A 手动添加 B 时未同步把 A 写入 B 的相近表达关系或未刷新反向视图")
+
+        bidirectional_manual_delete = all(token in content for token in (
+            'similarWord.manualSimilarWordIds = (Array.isArray(similarWord.manualSimilarWordIds)',
+            '.filter(id => id !== String(targetWord.id));',
+            'if (!similarWord.hiddenSimilarWordIds.includes(String(targetWord.id))) similarWord.hiddenSimilarWordIds.push(String(targetWord.id));',
+            '已双向删除相近关系',
+        ))
+        self.assert_true(bidirectional_manual_delete, f"[{lang_name}] 相近表达-点击×同步删除双方关系并写入双向删除记忆", "A 删除 B 后仍可能在 B 的相近表达中残留 A，或被旧迁移重新补回")
 
         bidirectional_legacy_migration = all(token in content for token in (
             'SIMILAR_RELATION_MIGRATION_KEY',
@@ -4189,6 +4197,9 @@ class VocabAppTester:
                 const afterRepeatedReadIds = app.getSimilarWords(source, 3).map(word => String(word.id));
                 const deleteLeavesGap = beforeDeleteCount === 1 && afterDeleteIds.length === 0;
                 const noAutomaticRefill = JSON.stringify(afterDeleteIds) === JSON.stringify(afterRepeatedReadIds) && !afterDeleteIds.includes(String(initial.id));
+                const initialDeleteRemovedReverse = !app.getSimilarWords(initial, 3).some(item => item.id === source.id);
+                const initialDeleteHiddenBothWays = (source.hiddenSimilarWordIds || []).map(String).includes(String(initial.id))
+                  && (initial.hiddenSimilarWordIds || []).map(String).includes(String(source.id));
                 const freshPanel = document.querySelector('#detailSimilarBlock .similar-words-container');
                 const freshAddButton = freshPanel?.querySelector('.similar-panel-add-btn');
                 freshAddButton?.click();
@@ -4235,7 +4246,9 @@ class VocabAppTester:
                 const reverseVisible = addTargets.every(word => app.getSimilarWords(word, 3).some(item => item.id === source.id));
                 const hiddenPersisted = (source.hiddenSimilarWordIds || []).map(String).includes(String(initial.id));
                 app.removeSimilarWord(source.id, addTargets[0].id);
-                const oneSidedDeletePreservedReverse = app.getSimilarWords(addTargets[0], 3).some(item => item.id === source.id);
+                const bidirectionalDeleteRemovedReverse = !app.getSimilarWords(addTargets[0], 3).some(item => item.id === source.id);
+                const bidirectionalDeleteHiddenBothWays = (source.hiddenSimilarWordIds || []).map(String).includes(String(addTargets[0].id))
+                  && (addTargets[0].hiddenSimilarWordIds || []).map(String).includes(String(source.id));
                 if (originalAuto === undefined) delete source.autoSimilarWordIds; else source.autoSimilarWordIds = originalAuto;
                 if (originalManual === undefined) delete source.manualSimilarWordIds; else source.manualSimilarWordIds = originalManual;
                 if (originalHidden === undefined) delete source.hiddenSimilarWordIds; else source.hiddenSimilarWordIds = originalHidden;
@@ -4255,12 +4268,15 @@ class VocabAppTester:
                   existingResultLabeled,
                   deleteLeavesGap,
                   noAutomaticRefill,
+                  initialDeleteRemovedReverse,
+                  initialDeleteHiddenBothWays,
                   addedPersisted,
                   addedVisible,
                   manualUnlimited,
                   reversePersisted,
                   reverseVisible,
-                  oneSidedDeletePreservedReverse,
+                  bidirectionalDeleteRemovedReverse,
+                  bidirectionalDeleteHiddenBothWays,
                   hiddenPersisted,
                 };
             """)
