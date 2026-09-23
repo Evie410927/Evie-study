@@ -2150,6 +2150,77 @@ body::-webkit-scrollbar,
   border-color: var(--accent-primary);
 }
 
+.part-of-speech-input-wrapper {
+  position: relative;
+}
+
+.part-of-speech-input-wrapper #inputPartOfSpeech {
+  padding-right: 42px;
+}
+
+.part-of-speech-options-toggle {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 40px;
+  height: 42px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  transition: transform 0.2s ease;
+}
+
+.part-of-speech-input-wrapper.is-open .part-of-speech-options-toggle {
+  transform: rotate(180deg);
+}
+
+.part-of-speech-options-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 1200;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+}
+
+.part-of-speech-options-menu[hidden] {
+  display: none !important;
+}
+
+.part-of-speech-option {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.part-of-speech-option:hover,
+.part-of-speech-option:focus-visible {
+  background: var(--bg-input);
+  color: var(--accent-primary);
+  outline: none;
+}
+
+.part-of-speech-options-empty {
+  padding: 10px 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 .form-textarea {
   resize: vertical;
   min-height: 64px;
@@ -3108,8 +3179,11 @@ body::-webkit-scrollbar,
 
           <div id="addWordPartOfSpeechGroup" class="form-group">
             <label class="form-label" for="inputPartOfSpeech">单词词性 *</label>
-            <input type="text" id="inputPartOfSpeech" class="form-input" list="partOfSpeechOptions" placeholder="如：动词、名词、短语（可自定义）" autocomplete="off" oninput="if(window.app) window.app.renderModalTags()" required>
-            <datalist id="partOfSpeechOptions"></datalist>
+            <div id="partOfSpeechInputWrapper" class="part-of-speech-input-wrapper">
+              <input type="text" id="inputPartOfSpeech" class="form-input" placeholder="如：动词、名词、短语（可自定义）" autocomplete="off" aria-controls="partOfSpeechOptions" aria-expanded="false" onclick="if(window.app) window.app.openPartOfSpeechOptions(true)" oninput="if(window.app) { window.app.renderModalTags(); window.app.filterPartOfSpeechOptions(this.value); }" onblur="setTimeout(() => { if(window.app) window.app.closePartOfSpeechOptions(); }, 120)" required>
+              <button id="partOfSpeechOptionsToggle" type="button" class="part-of-speech-options-toggle" aria-label="展开词性建议" aria-expanded="false" onpointerdown="event.preventDefault()" onclick="if(window.app) window.app.togglePartOfSpeechOptions(event)">▼</button>
+              <div id="partOfSpeechOptions" class="part-of-speech-options-menu" role="listbox" hidden></div>
+            </div>
           </div>
 
           <div id="addWordTagsGroup" class="form-group" style="display:none;">
@@ -8338,6 +8412,7 @@ class JpVocabApp {
     const addWordSimilarGroup = document.getElementById('addWordSimilarGroup');
     if (!modal || !form || !title || !wordIdInput || !wordInput || !readingInput || !meaningInput || !partOfSpeechInput || !krMeaningInput || !userNoteInput || !addWordTagsGroup || !addWordRatingGroup || !addWordMasteredGroup || !addWordSimilarGroup) return;
     this.renderPartOfSpeechOptions();
+    this.closePartOfSpeechOptions();
     form.reset();
     this.editingModalTags = word && Array.isArray(word.tags) ? [...word.tags] : [];
     this.editingModalRating = word ? this.normalizeRating(word.rating) : 0;
@@ -8383,6 +8458,7 @@ class JpVocabApp {
 
   closeWordModal() {
     this.closeTagDropdown();
+    this.closePartOfSpeechOptions();
     const modal = document.getElementById('wordModal');
     if (modal) modal.classList.remove('active');
     this.restoreDetailAfterWordModal();
@@ -9684,16 +9760,81 @@ class JpVocabApp {
     return Array.from(values).sort((a, b) => a.localeCompare(b, 'zh'));
   }
 
-  renderPartOfSpeechOptions() {
+  renderPartOfSpeechOptions(query = '') {
     const optionsList = document.getElementById('partOfSpeechOptions');
     if (!optionsList) return;
+    const normalizedQuery = this.normalizeTaxonomyText(query).toLowerCase();
+    const values = this.getAllAvailablePartOfSpeech().filter(value =>
+      !normalizedQuery || this.normalizeTaxonomyText(value).toLowerCase().includes(normalizedQuery)
+    );
     const fragment = document.createDocumentFragment();
-    this.getAllAvailablePartOfSpeech().forEach(value => {
-      const option = document.createElement('option');
-      option.value = value;
+    values.forEach(value => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'part-of-speech-option';
+      option.setAttribute('role', 'option');
+      option.textContent = value;
+      option.addEventListener('pointerdown', event => {
+        event.preventDefault();
+      });
+      option.addEventListener('click', () => {
+        this.selectPartOfSpeechOption(value);
+      });
       fragment.appendChild(option);
     });
+    if (values.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'part-of-speech-options-empty';
+      empty.textContent = normalizedQuery ? '无匹配词性，可直接使用当前输入' : '暂无已创建词性，可直接输入新词性';
+      fragment.appendChild(empty);
+    }
     optionsList.replaceChildren(fragment);
+  }
+
+  openPartOfSpeechOptions(showAll = true) {
+    const optionsList = document.getElementById('partOfSpeechOptions');
+    const input = document.getElementById('inputPartOfSpeech');
+    const wrapper = document.getElementById('partOfSpeechInputWrapper');
+    const toggle = document.getElementById('partOfSpeechOptionsToggle');
+    if (!optionsList || !input || !wrapper || !toggle) return;
+    this.renderPartOfSpeechOptions(showAll ? '' : input.value);
+    optionsList.hidden = false;
+    wrapper.classList.add('is-open');
+    input.setAttribute('aria-expanded', 'true');
+    toggle.setAttribute('aria-expanded', 'true');
+  }
+
+  filterPartOfSpeechOptions(query) {
+    this.renderPartOfSpeechOptions(query);
+    this.openPartOfSpeechOptions(false);
+  }
+
+  closePartOfSpeechOptions() {
+    const optionsList = document.getElementById('partOfSpeechOptions');
+    const input = document.getElementById('inputPartOfSpeech');
+    const wrapper = document.getElementById('partOfSpeechInputWrapper');
+    const toggle = document.getElementById('partOfSpeechOptionsToggle');
+    if (optionsList) optionsList.hidden = true;
+    if (wrapper) wrapper.classList.remove('is-open');
+    if (input) input.setAttribute('aria-expanded', 'false');
+    if (toggle) toggle.setAttribute('aria-expanded', 'false');
+  }
+
+  togglePartOfSpeechOptions(event) {
+    if (event) event.stopPropagation();
+    const optionsList = document.getElementById('partOfSpeechOptions');
+    if (!optionsList) return;
+    if (optionsList.hidden) this.openPartOfSpeechOptions(true);
+    else this.closePartOfSpeechOptions();
+  }
+
+  selectPartOfSpeechOption(value) {
+    const input = document.getElementById('inputPartOfSpeech');
+    if (!input) return;
+    input.value = this.normalizeTaxonomyText(value);
+    this.renderModalTags();
+    this.closePartOfSpeechOptions();
+    input.focus({ preventScroll: true });
   }
 
   reconcilePartOfSpeechFilters() {

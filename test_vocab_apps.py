@@ -505,9 +505,13 @@ class VocabAppTester:
         part_of_speech_filter_methods = all(token in content for token in (
             'this.selectedPartOfSpeech = new Set();',
             'getAllAvailablePartOfSpeech() {',
-            'renderPartOfSpeechOptions() {',
+            "renderPartOfSpeechOptions(query = '') {",
             "const optionsList = document.getElementById('partOfSpeechOptions');",
-            'this.getAllAvailablePartOfSpeech().forEach(value => {',
+            'openPartOfSpeechOptions(showAll = true) {',
+            'filterPartOfSpeechOptions(query) {',
+            'closePartOfSpeechOptions() {',
+            'togglePartOfSpeechOptions(event) {',
+            'selectPartOfSpeechOption(value) {',
             'optionsList.replaceChildren(fragment);',
             'this.renderPartOfSpeechOptions();',
             'reconcilePartOfSpeechFilters() {',
@@ -591,7 +595,9 @@ class VocabAppTester:
             'id="addWordPartOfSpeechGroup"',
             'for="inputPartOfSpeech">单词词性 *',
             'id="inputPartOfSpeech"',
-            'list="partOfSpeechOptions"',
+            'id="partOfSpeechInputWrapper"',
+            'id="partOfSpeechOptionsToggle"',
+            'id="partOfSpeechOptions" class="part-of-speech-options-menu"',
             'normalizeWordTaxonomy(word)',
             'renderPartOfSpeechLabel(word)',
             'class="part-of-speech-label"',
@@ -1912,7 +1918,16 @@ class VocabAppTester:
                   const available = app.getAllAvailablePartOfSpeech();
                   const rendered = Array.from(document.querySelectorAll('#partOfSpeechDropdownList .tag-name')).map(el => el.textContent.trim());
                   app.renderPartOfSpeechOptions();
-                  const suggested = Array.from(document.querySelectorAll('#partOfSpeechOptions option')).map(el => el.value.trim());
+                  const suggested = Array.from(document.querySelectorAll('#partOfSpeechOptions .part-of-speech-option')).map(el => el.textContent.trim());
+                  const partOfSpeechInput = document.getElementById('inputPartOfSpeech');
+                  const partOfSpeechOptions = document.getElementById('partOfSpeechOptions');
+                  app.openWordModal();
+                  partOfSpeechInput.value = '名词';
+                  partOfSpeechInput.click();
+                  const clickOpenedAllSuggestions = partOfSpeechOptions.hidden === false
+                    && getComputedStyle(partOfSpeechOptions).display !== 'none'
+                    && Array.from(partOfSpeechOptions.querySelectorAll('.part-of-speech-option')).map(el => el.textContent.trim()).sort().join('|') === ['动词', '名词', '短副', '短语'].sort().join('|');
+                  app.closeWordModal();
                   app.togglePartOfSpeechFilter('名词');
                   const nounOnly = app.getSearchFilteredWords().map(word => word.id);
                   app.togglePartOfSpeechFilter('动词');
@@ -1941,6 +1956,7 @@ class VocabAppTester:
                     available,
                     rendered,
                     suggested,
+                    clickOpenedAllSuggestions,
                     nounOnly,
                     nounOrVerb,
                     combined,
@@ -1975,8 +1991,10 @@ class VocabAppTester:
                 f"词性筛选运行结果异常：{part_of_speech_filter_result}",
             )
             self.assert_true(
-                bool(part_of_speech_filter_result and sorted(part_of_speech_filter_result.get('suggested') or []) == ['动词', '名词', '短副', '短语']),
-                f"[{lang_name}] 新增/编辑弹窗-词性建议与当前词库动态词性完全一致",
+                bool(part_of_speech_filter_result
+                     and sorted(part_of_speech_filter_result.get('suggested') or []) == ['动词', '名词', '短副', '短语']
+                     and part_of_speech_filter_result.get('clickOpenedAllSuggestions')),
+                f"[{lang_name}] 新增/编辑弹窗-点击词性框立即展开当前词库全部动态词性",
                 f"弹窗词性建议未随当前词库同步：{part_of_speech_filter_result}",
             )
             self.assert_true(
