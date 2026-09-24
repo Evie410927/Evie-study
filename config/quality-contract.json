@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "2026-09-24",
+  "authority": {
+    "qualityContract": "config/quality-contract.json",
+    "architecture": "docs/architecture.md",
+    "dataContract": "docs/data-contract.md",
+    "decisions": [
+      "docs/decisions/ADR-001-pagination-layout.md",
+      "docs/decisions/ADR-002-review-order.md"
+    ]
+  },
+  "mirroredApps": [
+    "standalone_kr_vocab.html",
+    "standalone_jp_vocab.html"
+  ],
+  "allowedLanguageDifferences": [
+    "language data",
+    "speech locale",
+    "storage and cloud language keys",
+    "JP krMeaning field and badge"
+  ],
+  "uiContracts": {
+    "pagination": {
+      "id": "paginationBar",
+      "parentId": "tab-list",
+      "previousSiblingId": "wordList",
+      "class": "word-list-inline-pagination",
+      "inlineStyle": "margin-top: 2px; margin-bottom: 0px;"
+    },
+    "reviewOrder": {
+      "selectId": "reviewRatingSortSelect",
+      "default": "createdDesc",
+      "allowed": [
+        "createdDesc",
+        "createdAsc",
+        "desc",
+        "asc"
+      ],
+      "automaticSimilarityClustering": false
+    },
+    "cardActions": {
+      "statusPlacement": "card header before rating",
+      "footerActions": [
+        "speak",
+        "edit",
+        "delete"
+      ],
+      "footerContainsStatusToggle": false,
+      "partOfSpeechIsCustomTag": false
+    }
+  },
+  "dataContracts": {
+    "examples": {
+      "generatedEntryMinimum": 3,
+      "userMayDeleteAll": true,
+      "detailAndReviewShowAllExisting": true
+    },
+    "similarWords": {
+      "mode": "manual-only",
+      "bidirectional": true,
+      "clearLegacyAutomaticSnapshots": true,
+      "conversationContextDoesNotAutoPersist": true
+    },
+    "mainSearch": {
+      "krFields": ["word", "reading", "meaning"],
+      "jpFields": ["word", "reading", "meaning", "krMeaning"]
+    }
+  },
+  "qualityGate": {
+    "command": "python scripts/run_quality_gate.py",
+    "requiredChecks": [
+      "contract validation",
+      "Python syntax compilation",
+      "Git whitespace validation",
+      "static application assertions",
+      "Selenium browser regression for KR and JP",
+      "Supabase schema and RLS assertions"
+    ]
+  }
+}

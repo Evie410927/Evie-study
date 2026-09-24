@@ -21,9 +21,10 @@ from pathlib import Path
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
-KR_FILE = r"C:\Users\NCC Technology\Evie-study\standalone_kr_vocab.html"
-JP_FILE = r"C:\Users\NCC Technology\Evie-study\standalone_jp_vocab.html"
-SUPABASE_SQL_FILE = r"C:\Users\NCC Technology\Evie-study\supabase_vocab_sync.sql"
+PROJECT_ROOT = Path(__file__).resolve().parent
+KR_FILE = str(PROJECT_ROOT / "standalone_kr_vocab.html")
+JP_FILE = str(PROJECT_ROOT / "standalone_jp_vocab.html")
+SUPABASE_SQL_FILE = str(PROJECT_ROOT / "supabase_vocab_sync.sql")
 
 class VocabAppTester:
     def __init__(self):
@@ -1268,12 +1269,12 @@ class VocabAppTester:
         # 测试点 32: 复习出卡顺序严格四项，移除相近表达聚类入口
         # ---------------------------------------------------------------------
         review_order_options = all(token in content for token in (
-            '<option value="createdDesc">从近到远</option>',
+            '<option value="createdDesc" selected>从近到远</option>',
             '<option value="createdAsc">从远到近</option>',
             '<option value="desc">五星到一星</option>',
             '<option value="asc">一星到五星</option>',
         )) and content.count('<select id="reviewRatingSortSelect"') == 1
-        self.assert_true(review_order_options, f"[{lang_name}] 复习出卡顺序-近远与星级四项完整", "复习出卡下拉框未严格提供从近到远、从远到近、五星到一星、一星到五星四项")
+        self.assert_true(review_order_options, f"[{lang_name}] 复习出卡顺序-近远与星级四项完整且静态默认明确", "复习出卡下拉框未严格提供四项顺序，或 createdDesc 未显式标记 selected")
 
         review_order_similarity_removed = '<option value="default">相近表达</option>' not in content
         self.assert_true(review_order_similarity_removed, f"[{lang_name}] 复习出卡顺序-移除相近表达选项", "复习出卡下拉框仍残留相近表达选项")
@@ -3781,7 +3782,12 @@ class VocabAppTester:
 
             example_pair_edit_lifecycle = driver.execute_script("""
                 const app = window.app;
-                const currentId = app.currentDetailWordId;
+                const targetWord = app.words.find(word => app.getParsedExamples(word).length >= 2);
+                if (!targetWord) return null;
+                const currentId = targetWord.id;
+                if (String(app.currentDetailWordId) !== String(currentId)) {
+                  app.showDetailModal(currentId, true);
+                }
                 const wordIndex = app.words.findIndex(word => String(word.id) === String(currentId));
                 if (wordIndex < 0) return null;
                 const originalWord = JSON.parse(JSON.stringify(app.words[wordIndex]));
