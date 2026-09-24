@@ -1265,10 +1265,36 @@ class VocabAppTester:
         self.assert_true(example_drag_sort, f"[{lang_name}] 例句排序-详情/复习展示与编辑区均支持鼠标触屏拖动及持久化", "例句三视图缺少拖动手柄、Pointer Events、键盘兜底或完整顺序持久化")
 
         # ---------------------------------------------------------------------
-        # 测试点 32: 复习卡片语义与 Tag 聚类出词算法防护 (clusterBySimilarity)
+        # 测试点 32: 复习出卡顺序严格四项，移除相近表达聚类入口
         # ---------------------------------------------------------------------
-        cluster_by_sim = 'clusterBySimilarity(' in content and 'this.clusterBySimilarity(' in content
-        self.assert_true(cluster_by_sim, f"[{lang_name}] 算法-clusterBySimilarity 复习卡片语义与 Tag 聚类出词算法", "缺少 clusterBySimilarity 方法或未在 startReviewSession 中调用")
+        review_order_options = all(token in content for token in (
+            '<option value="createdDesc">从近到远</option>',
+            '<option value="createdAsc">从远到近</option>',
+            '<option value="desc">五星到一星</option>',
+            '<option value="asc">一星到五星</option>',
+        )) and content.count('<select id="reviewRatingSortSelect"') == 1
+        self.assert_true(review_order_options, f"[{lang_name}] 复习出卡顺序-近远与星级四项完整", "复习出卡下拉框未严格提供从近到远、从远到近、五星到一星、一星到五星四项")
+
+        review_order_similarity_removed = '<option value="default">相近表达</option>' not in content
+        self.assert_true(review_order_similarity_removed, f"[{lang_name}] 复习出卡顺序-移除相近表达选项", "复习出卡下拉框仍残留相近表达选项")
+
+        review_order_default = "this.reviewRatingSort = 'createdDesc'" in content
+        self.assert_true(review_order_default, f"[{lang_name}] 复习出卡顺序-默认从近到远", "reviewRatingSort 未默认初始化为 createdDesc")
+
+        review_order_guard = ("allowedSorts = ['createdDesc', 'createdAsc', 'desc', 'asc']" in content
+            and "allowedSorts.includes(value) ? value : 'createdDesc'" in content)
+        self.assert_true(review_order_guard, f"[{lang_name}] 复习出卡顺序-四值合法护栏", "onReviewRatingSortChange 缺少四值白名单或非法值未回落到从近到远")
+
+        review_order_dispatch = all(token in content for token in (
+            "this.reviewRatingSort === 'createdAsc' || this.reviewRatingSort === 'createdDesc'",
+            'this.sortWordsByCreatedAt(this.reviewList, this.reviewRatingSort)',
+            'this.sortWordsByRating(this.reviewList, this.reviewRatingSort)',
+        ))
+        self.assert_true(review_order_dispatch, f"[{lang_name}] 复习出卡顺序-时间与星级排序正确分发", "startReviewSession 未按近远或星级方向调用对应排序方法")
+
+        review_session_block = content[content.find('  startReviewSession() {'):content.find('  renderCurrentCard() {')]
+        review_similarity_disabled = 'clusterBySimilarity' not in review_session_block
+        self.assert_true(review_similarity_disabled, f"[{lang_name}] 复习出卡顺序-不再执行相似表达聚类", "startReviewSession 仍在调用相近表达聚类算法")
 
         # ---------------------------------------------------------------------
         # 测试点 33: 分页工具条位于独立滚动列表之外并保持紧凑固定
@@ -3005,6 +3031,56 @@ class VocabAppTester:
                 bool(fixed_list_layout and fixed_list_layout.get('paginationCompact') and fixed_list_layout.get('bottomNavCompact')),
                 f"[{lang_name}] 浏览器尺寸-分页栏不高于 38px、底部 Tab 不高于 46px",
                 "分页栏或底部 Tab 仍然过高，挤占单词列表空间",
+            )
+
+            review_order_runtime = driver.execute_script("""
+                const app = window.app;
+                const select = document.getElementById('reviewRatingSortSelect');
+                if (!app || !select) return null;
+                const originalState = {
+                  words: app.words,
+                  reviewList: app.reviewList,
+                  currentReviewIndex: app.currentReviewIndex,
+                  reviewRatingSort: app.reviewRatingSort
+                };
+                const makeWord = (id, createdAt, rating) => ({
+                  id, word: id, reading: '', meaning: id, partOfSpeech: '名词',
+                  examples: [], tags: [], mastered: false, createdAt, rating
+                });
+                app.words = [
+                  makeWord('middle-four', 300, 4),
+                  makeWord('oldest-five', 100, 5),
+                  makeWord('newest-one', 400, 1),
+                  makeWord('older-two', 200, 2)
+                ];
+                const idsFor = value => {
+                  app.onReviewRatingSortChange(value);
+                  return app.reviewList.map(word => word.id).join(',');
+                };
+                const result = {
+                  exactlyFourOptions: select.options.length === 4,
+                  exactLabels: Array.from(select.options).map(option => option.textContent.trim()).join('|')
+                    === '从近到远|从远到近|五星到一星|一星到五星',
+                  noSimilarityOption: !Array.from(select.options).some(option => option.textContent.includes('相近表达')),
+                  nearToFar: idsFor('createdDesc') === 'newest-one,middle-four,older-two,oldest-five',
+                  farToNear: idsFor('createdAsc') === 'oldest-five,older-two,middle-four,newest-one',
+                  fiveToOne: idsFor('desc') === 'oldest-five,middle-four,older-two,newest-one',
+                  oneToFive: idsFor('asc') === 'newest-one,older-two,middle-four,oldest-five',
+                  invalidFallsBackToNear: idsFor('unexpected') === 'newest-one,middle-four,older-two,oldest-five'
+                    && app.reviewRatingSort === 'createdDesc'
+                };
+                app.words = originalState.words;
+                app.reviewList = originalState.reviewList;
+                app.currentReviewIndex = originalState.currentReviewIndex;
+                app.reviewRatingSort = originalState.reviewRatingSort;
+                select.value = originalState.reviewRatingSort;
+                app.renderCurrentCard();
+                return result;
+            """)
+            self.assert_true(
+                bool(review_order_runtime and all(review_order_runtime.values())),
+                f"[{lang_name}] 浏览器复习出卡顺序-严格四项且四种排序真实生效",
+                f"复习出卡选项或排序运行结果异常: {review_order_runtime}",
             )
 
             browser_logs = driver.get_log('browser')

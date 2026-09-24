@@ -16393,10 +16393,11 @@ body::-webkit-scrollbar,
           <div id="reviewStatusText" class="review-status-text">进度：0 / 0</div>
           <div class="review-rating-order-box">
             <span>出卡顺序:</span>
-            <select id="reviewRatingSortSelect" class="page-size-select rating-sort-select" onchange="if(window.app) window.app.onReviewRatingSortChange(this.value)" title="按星级安排复习卡片顺序">
-              <option value="default">相近表达</option>
-              <option value="desc">五星 → 无星</option>
-              <option value="asc">无星 → 五星</option>
+            <select id="reviewRatingSortSelect" class="page-size-select rating-sort-select" onchange="if(window.app) window.app.onReviewRatingSortChange(this.value)" title="安排复习卡片顺序">
+              <option value="createdDesc">从近到远</option>
+              <option value="createdAsc">从远到近</option>
+              <option value="desc">五星到一星</option>
+              <option value="asc">一星到五星</option>
             </select>
           </div>
 
@@ -20346,7 +20347,7 @@ class KrVocabApp {
     this.currentPage = 1;
     this.pageSize = 20;
     this.ratingSort = 'desc';
-    this.reviewRatingSort = 'default';
+    this.reviewRatingSort = 'createdDesc';
     this.init();
   }
 
@@ -20702,7 +20703,8 @@ class KrVocabApp {
   }
 
   onReviewRatingSortChange(value) {
-    this.reviewRatingSort = value === 'asc' || value === 'desc' ? value : 'default';
+    const allowedSorts = ['createdDesc', 'createdAsc', 'desc', 'asc'];
+    this.reviewRatingSort = allowedSorts.includes(value) ? value : 'createdDesc';
     this.startReviewSession();
   }
 
@@ -22988,11 +22990,10 @@ class KrVocabApp {
     if (this.reviewList.length === 0) {
       this.reviewList = [...this.words];
     }
-    if (this.reviewRatingSort === 'asc' || this.reviewRatingSort === 'desc') {
-      this.reviewList = this.sortWordsByRating(this.reviewList, this.reviewRatingSort);
+    if (this.reviewRatingSort === 'createdAsc' || this.reviewRatingSort === 'createdDesc') {
+      this.reviewList = this.sortWordsByCreatedAt(this.reviewList, this.reviewRatingSort);
     } else {
-      // 默认继续按意思相近/表达相似聚类排序出词。
-      this.reviewList = this.clusterBySimilarity(this.reviewList);
+      this.reviewList = this.sortWordsByRating(this.reviewList, this.reviewRatingSort);
     }
     const reviewSortSelect = document.getElementById('reviewRatingSortSelect');
     if (reviewSortSelect) reviewSortSelect.value = this.reviewRatingSort;
