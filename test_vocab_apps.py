@@ -356,28 +356,28 @@ class VocabAppTester:
         self.assert_true(on_page_jump_change_method, f"[{lang_name}] 分页-onPageJumpChange 显式方法与跳页滚动", "类中缺少 onPageJumpChange 方法或未触发 renderWordList")
 
         # ---------------------------------------------------------------------
-        # 测试点 10.5: 主列表排序=五星→无星/无星→五星 + 创建时间近→远/远→近
+        # 测试点 10.5: 主列表排序=五星→无星/无星→五星 + 创建时间近→远/远→近，默认近→远
         #              (回归: 星级升降排序曾被误删, 用户要求维持原星级排序;
         #               用户随后要求删除"默认排序"项, 只保留升降/创建时间四项)
         # ---------------------------------------------------------------------
         default_sort_option_absent = 'value="default">默认排序<' not in content
         self.assert_true(default_sort_option_absent, f"[{lang_name}] 排序-默认排序选项已删除(用户需求)", "主列表下拉框仍残留 默认排序 选项, 用户明确要求删除")
 
-        star_sort_options_present = ('value="desc" selected>五星 → 无星<' in content
+        star_sort_options_present = ('value="desc">五星 → 无星<' in content
             and 'value="asc">无星 → 五星<' in content)
-        self.assert_true(star_sort_options_present, f"[{lang_name}] 排序-星级升降两选项齐全且默认五星→无星", "主列表下拉框星级排序两选项缺失或 selected 未落在 五星→无星 上")
+        self.assert_true(star_sort_options_present, f"[{lang_name}] 排序-星级升降两选项完整保留", "主列表下拉框星级排序两选项缺失或五星→无星仍被误标为默认项")
 
-        star_sort_default_selected = 'value="desc" selected>五星 → 无星<' in content
-        self.assert_true(star_sort_default_selected, f"[{lang_name}] 排序-默认选中五星→无星(星级降序)", "selected 未默认设置在 value=\"desc\" 五星→无星 选项上")
+        created_sort_default_selected = 'value="createdDesc" selected>近 → 远<' in content
+        self.assert_true(created_sort_default_selected, f"[{lang_name}] 排序-默认选中近→远(创建时间降序)", "selected 未默认设置在 value=\"createdDesc\" 近→远选项上")
 
-        created_sort_options = 'value="createdDesc">近 → 远<' in content and 'value="createdAsc">远 → 近<' in content
-        self.assert_true(created_sort_options, f"[{lang_name}] 排序-创建时间近→远/远→近两选项保留(不再 selected)", "sortRatingSelect 创建时间 createdDesc/createdAsc 选项缺失或仍被误标 selected")
+        created_sort_options = 'value="createdDesc" selected>近 → 远<' in content and 'value="createdAsc">远 → 近<' in content
+        self.assert_true(created_sort_options, f"[{lang_name}] 排序-创建时间近→远/远→近两选项保留且近→远为默认", "ratingSortSelect 创建时间选项缺失或近→远未被设为默认")
 
         created_sort_prefix_removed = '创建时间:' not in content
         self.assert_true(created_sort_prefix_removed, f"[{lang_name}] 排序-下拉框移除前缀防文案截断", "主列表排序下拉框仍残留“创建时间:”前缀，112px 限宽下文案会被截断")
 
-        rating_sort_init_desc = "this.ratingSort = 'desc'" in content
-        self.assert_true(rating_sort_init_desc, f"[{lang_name}] 排序-ratingSort 默认初始化为 desc(五星→无星)", "构造函数中 ratingSort 未默认设置为 desc")
+        rating_sort_init_created_desc = "this.ratingSort = 'createdDesc'" in content
+        self.assert_true(rating_sort_init_created_desc, f"[{lang_name}] 排序-ratingSort 默认初始化为 createdDesc(近→远)", "构造函数中 ratingSort 未默认设置为 createdDesc")
 
         star_sort_method = 'sortWordsByRating(items, direction)' in content
         self.assert_true(star_sort_method, f"[{lang_name}] 排序-sortWordsByRating 星级排序方法存在", "类中缺少 sortWordsByRating 星级排序方法")
@@ -386,8 +386,8 @@ class VocabAppTester:
         self.assert_true(created_sort_method, f"[{lang_name}] 排序-sortWordsByCreatedAt 方法存在", "类中缺少 sortWordsByCreatedAt 排序方法")
 
         rating_sort_guard = ("allowedSorts = ['asc', 'desc', 'createdAsc', 'createdDesc']" in content
-            and "allowedSorts.includes(value) ? value : 'desc'" in content)
-        self.assert_true(rating_sort_guard, f"[{lang_name}] 排序-onRatingSortChange 四值合法护栏(默认回落 desc)", "onRatingSortChange 缺少四值 allowedSorts 护栏或默认回落 desc 逻辑")
+            and "allowedSorts.includes(value) ? value : 'createdDesc'" in content)
+        self.assert_true(rating_sort_guard, f"[{lang_name}] 排序-onRatingSortChange 四值合法护栏(默认回落 createdDesc)", "onRatingSortChange 缺少四值 allowedSorts 护栏或默认回落 createdDesc 逻辑")
 
         created_sort_branch = "this.ratingSort === 'createdAsc' || this.ratingSort === 'createdDesc'" in content
         self.assert_true(created_sort_branch, f"[{lang_name}] 排序-renderWordList 创建时间分支联动", "renderWordList 缺少 createdAsc/createdDesc 排序分支")
@@ -3838,8 +3838,9 @@ class VocabAppTester:
 
                 app.addExamplePairRow();
                 activeRows = Array.from(document.querySelectorAll('#examplePairsEditor .example-pair-row'));
-                const fourthRowAdded = activeRows.length === 4
-                  && activeRows[3].querySelector('.example-pair-remove-btn')?.disabled === false;
+                const editedPairCount = expectedPairs.length + 1;
+                const appendedRowAdded = activeRows.length === editedPairCount
+                  && activeRows[editedPairCount - 1].querySelector('.example-pair-remove-btn')?.disabled === false;
                 activeRows.forEach((row, index) => {
                   const source = row.querySelector('.example-source-input');
                   const translation = row.querySelector('.example-translation-input');
@@ -3867,19 +3868,21 @@ class VocabAppTester:
                 document.getElementById('saveWordBtn')?.click();
                 const savedWord = app.words[wordIndex];
                 const parsedAfterSave = app.getParsedExamples(savedWord);
-                const structuredSaved = parsedAfterSave.length === 4 && parsedAfterSave.every((pair, index) =>
+                const structuredSaved = parsedAfterSave.length === editedPairCount && parsedAfterSave.every((pair, index) =>
                   pair.example === `编辑原句 ${index + 1}` && pair.trans === `编辑译文 ${index + 1}`
                 );
                 const tagsPreserved = JSON.stringify(savedWord.tags || []) === originalTags;
-                const legacySaved = savedWord.example.split(String.fromCharCode(10)).join('|') === '编辑原句 1|编辑原句 2|编辑原句 3|编辑原句 4' &&
-                  savedWord.exampleTrans.split(String.fromCharCode(10)).join('|') === '编辑译文 1|编辑译文 2|编辑译文 3|编辑译文 4';
+                const expectedLegacyExamples = Array.from({length: editedPairCount}, (_, index) => `编辑原句 ${index + 1}`).join('|');
+                const expectedLegacyTranslations = Array.from({length: editedPairCount}, (_, index) => `编辑译文 ${index + 1}`).join('|');
+                const legacySaved = savedWord.example.split(String.fromCharCode(10)).join('|') === expectedLegacyExamples &&
+                  savedWord.exampleTrans.split(String.fromCharCode(10)).join('|') === expectedLegacyTranslations;
                 const modalClosedAfterSave = modal?.classList.contains('active') === false;
                 const saveReturnedToDetail = detailModal?.classList.contains('active') === true
                   && String(app.currentDetailWordId) === String(savedWord.id)
                   && document.getElementById('detailWord')?.textContent === savedWord.word
                   && JSON.stringify(app.detailModalHistory || []) === detailHistoryBefore;
                 const storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(savedWord.id));
-                const persisted = storedWord?.examples?.length === 4 && storedWord.example === savedWord.example && storedWord.exampleTrans === savedWord.exampleTrans;
+                const persisted = storedWord?.examples?.length === editedPairCount && storedWord.example === savedWord.example && storedWord.exampleTrans === savedWord.exampleTrans;
                 const userEditProtected = Number(savedWord.userEditedAt || 0) > 0;
 
                 app.currentFilter = 'all';
@@ -3891,12 +3894,12 @@ class VocabAppTester:
                   savedCard?.querySelector('.ex-preview-trans')?.textContent === '编辑译文 1';
 
                 app.showDetailModal(savedWord.id);
-                const detailShowsAllPairs = document.querySelectorAll('#detailExamplesList .detail-example-item').length === 4 &&
+                const detailShowsAllPairs = document.querySelectorAll('#detailExamplesList .detail-example-item').length === editedPairCount &&
                   document.querySelector('#detailExamplesList .detail-example-text')?.textContent === '编辑原句 1';
                 app.reviewList = [savedWord];
                 app.currentReviewIndex = 0;
                 app.renderCurrentCard();
-                const reviewShowsAllPairs = document.querySelectorAll('#cardBackExampleBlock .word-example-item').length === 4 &&
+                const reviewShowsAllPairs = document.querySelectorAll('#cardBackExampleBlock .word-example-item').length === editedPairCount &&
                   document.querySelector('#cardBackExampleBlock .word-example')?.textContent === '编辑原句 1';
 
                 app.words[wordIndex] = originalWord;
@@ -3911,7 +3914,7 @@ class VocabAppTester:
                 return {
                   editModalOpened, detailHiddenWhileEditing, returnContextCaptured, cancelReturnedToDetail,
                   reopenedFromDetail, sharedControlsVisible, sharedValuesLoaded, allExistingRowsLoaded, existingPairsLoaded, incompleteRejected,
-                  fourthRowAdded, failedSaveKeptDraft, failedSaveReported, structuredSaved, tagsPreserved, legacySaved,
+                  appendedRowAdded, failedSaveKeptDraft, failedSaveReported, structuredSaved, tagsPreserved, legacySaved,
                   userEditProtected, modalClosedAfterSave, persisted,
                   saveReturnedToDetail, listPreviewUpdated, detailShowsAllPairs, reviewShowsAllPairs
                 };
