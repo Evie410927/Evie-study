@@ -24,6 +24,7 @@
 
 - `saveData()` 返回失败时，界面不得报告成功或关闭编辑上下文。
 - localStorage 不可用时使用 IndexedDB 持久化降级；内存回退不能冒充持久化成功。
+- 启动时同时检查 localStorage 与 IndexedDB。通过受内容指纹保护的保存时间、云端基线、数据更新时间及词条集合判定新旧，恢复较新的有效快照；不得仅因 localStorage 非空就跳过 IndexedDB。
 - 内置样本升级必须按稳定 ID 合并，不得复活已删除词或覆盖用户编辑。
 - KR 与 JP 使用隔离的存储键和云端 `language` 值。
 - `autoSimilarWordIds` 在装载时统一清空，展示层只读取人工双向关系。

@@ -955,6 +955,11 @@ class VocabAppTester:
             "const DurableStorage = {",
             "window.indexedDB.open(this.databaseName, 1)",
             "database.transaction(this.storeName, 'readwrite')",
+            "getPersistentItem(key)",
+            "LOCAL_SNAPSHOT_META_KEY",
+            "getDurableSnapshotSummary(snapshot)",
+            "shouldRestoreDurableSnapshot(snapshot",
+            "this._startupLocalSnapshotSummary",
             "async persistDurableSnapshot()",
             "async restoreDurableSnapshot()",
             "const indexedDbDurable = await this.persistDurableSnapshot();",
@@ -2774,13 +2779,18 @@ class VocabAppTester:
                 const originalDeleted = app.getDeletedRecords();
                 const originalPending = app.getPendingCloudChanges();
                 const originalBaseline = SafeStorage.getItem(app.CLOUD_BASE_REVISION_KEY);
+                const originalLocalSnapshotMeta = SafeStorage.getItem(app.LOCAL_SNAPSHOT_META_KEY);
                 const originalSetItem = Storage.prototype.setItem;
                 const prefix = originalWords[0] && String(originalWords[0].id).startsWith('jp_') ? 'jp' : 'kr';
                 const fallbackId = prefix + '_mobile_indexeddb_fallback';
+                const staleId = prefix + '_mobile_stale_local';
                 (async () => {
                   let result = null;
                   try {
-                    app.words = [{id:fallbackId, word:'手机备用存储测试词', meaning:'验证 IndexedDB 持久化', tags:[], updatedAt:Date.now()}];
+                    const staleWords = [{id:staleId, word:'手机旧本地测试词', meaning:'模拟未扩容前的旧词库', tags:[], updatedAt:1}];
+                    originalSetItem.call(localStorage, app.STORAGE_KEY, JSON.stringify(staleWords));
+                    SafeStorage.removeItem(app.LOCAL_SNAPSHOT_META_KEY);
+                    app.words = staleWords.concat([{id:fallbackId, word:'手机备用存储测试词', meaning:'验证 IndexedDB 持久化', tags:[], updatedAt:Date.now()}]);
                     app.saveDeletedRecords({});
                     app.savePendingCloudChanges({});
                     Storage.prototype.setItem = function(key, value) {
@@ -2795,14 +2805,22 @@ class VocabAppTester:
                       && durableSnapshot.words.some(word => word.id === fallbackId);
 
                     Storage.prototype.setItem = originalSetItem;
-                    SafeStorage.removeItem(app.STORAGE_KEY);
-                    app.words = [{id:prefix + '_temporary_memory_only', word:'临时内存词', meaning:'应被恢复数据替换', tags:[]}];
-                    app._hadDurableLocalWords = false;
+                    delete SafeStorage.memoryStore[app.STORAGE_KEY];
+                    app.words = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]');
+                    app._hadDurableLocalWords = true;
+                    app._startupLocalSnapshotSummary = app.getDurableSnapshotSummary({
+                      words:app.words,
+                      pendingCloudChanges:{},
+                      deletedRecords:{},
+                      cloudBaselineRevision:app.getCloudBaselineRevision(),
+                      savedAt:0
+                    });
+                    const staleLocalWasPresent = app.words.length === 1 && app.words[0].id === staleId;
                     const restoredAfterReload = await app.restoreDurableSnapshot();
                     const reloadRecoveredCloudWords = restoredAfterReload
                       && app.words.some(word => word.id === fallbackId)
-                      && !app.words.some(word => word.id === prefix + '_temporary_memory_only');
-                    result = {persistedWithBlockedLocalStorage, localStorageActuallyFellBack, indexedDbContainsCloudWords, reloadRecoveredCloudWords};
+                      && app.words.some(word => word.id === staleId);
+                    result = {persistedWithBlockedLocalStorage, localStorageActuallyFellBack, indexedDbContainsCloudWords, staleLocalWasPresent, reloadRecoveredCloudWords};
                   } finally {
                     Storage.prototype.setItem = originalSetItem;
                     app.words = originalWords;
@@ -2810,6 +2828,8 @@ class VocabAppTester:
                     app.savePendingCloudChanges(originalPending);
                     if (originalBaseline === null) SafeStorage.removeItem(app.CLOUD_BASE_REVISION_KEY);
                     else SafeStorage.setItem(app.CLOUD_BASE_REVISION_KEY, originalBaseline);
+                    if (originalLocalSnapshotMeta === null) SafeStorage.removeItem(app.LOCAL_SNAPSHOT_META_KEY);
+                    else SafeStorage.setItem(app.LOCAL_SNAPSHOT_META_KEY, originalLocalSnapshotMeta);
                     app._hadDurableLocalWords = true;
                     await app.persistSyncedData();
                     app.renderWordList();
@@ -2826,9 +2846,10 @@ class VocabAppTester:
                      and mobile_storage_fallback_result.get('persistedWithBlockedLocalStorage')
                      and mobile_storage_fallback_result.get('localStorageActuallyFellBack')
                      and mobile_storage_fallback_result.get('indexedDbContainsCloudWords')
+                     and mobile_storage_fallback_result.get('staleLocalWasPresent')
                      and mobile_storage_fallback_result.get('reloadRecoveredCloudWords')),
-                f"[{lang_name}] 浏览器手机存储回归-localStorage 写入失败后 IndexedDB 落盘并可重载恢复",
-                f"手机端备用持久层未完整接管云端下载数据：{mobile_storage_fallback_result}",
+                f"[{lang_name}] 浏览器手机存储回归-localStorage 留有旧词库时仍从 IndexedDB 恢复较新云端快照",
+                f"手机端旧 localStorage 阻止了较新 IndexedDB 云端快照恢复：{mobile_storage_fallback_result}",
             )
 
             paginated_fetch_result = driver.execute_async_script("""

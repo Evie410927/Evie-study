@@ -3281,6 +3281,14 @@ body::-webkit-scrollbar,
         return null;
       }
     }
+    getPersistentItem(key) {
+      try {
+        return localStorage.getItem(key);
+      } catch (e) {
+        this.lastError = e;
+        return null;
+      }
+    }
     setItem(key, value) {
       const serialized = String(value);
       try {
@@ -7185,10 +7193,90 @@ function createSupabaseSyncMethods(language) {
       };
     },
 
+    snapshotWordsFingerprint(words) {
+      const serialized = JSON.stringify(Array.isArray(words) ? words : []);
+      let hash = 2166136261;
+      for (let index = 0; index < serialized.length; index++) {
+        hash ^= serialized.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+      }
+      return `${Array.isArray(words) ? words.length : 0}:${serialized.length}:${hash >>> 0}`;
+    },
+
+    getDurableSnapshotSummary(snapshot) {
+      const words = Array.isArray(snapshot && snapshot.words) ? snapshot.words : [];
+      const pending = snapshot && snapshot.pendingCloudChanges && typeof snapshot.pendingCloudChanges === 'object' ? snapshot.pendingCloudChanges : {};
+      const deleted = snapshot && snapshot.deletedRecords && typeof snapshot.deletedRecords === 'object' ? snapshot.deletedRecords : {};
+      const timestamps = [];
+      words.forEach(word => {
+        if (!word) return;
+        timestamps.push(Number(word.updatedAt || 0), Number(word.userEditedAt || 0), Number(word.createdAt || 0));
+        if (word.fieldUpdatedAt && typeof word.fieldUpdatedAt === 'object') timestamps.push(...Object.values(word.fieldUpdatedAt).map(Number));
+      });
+      Object.values(pending).forEach(meta => timestamps.push(Number(this.getPendingCloudMeta(meta).changedAt || 0)));
+      Object.values(deleted).forEach(record => timestamps.push(Number(record && record.deletedAt || 0)));
+      return {
+        savedAt: Math.max(0, Number(snapshot && snapshot.savedAt || 0)),
+        cloudBaselineRevision: snapshot && snapshot.cloudBaselineRevision !== null && snapshot.cloudBaselineRevision !== undefined
+          ? Math.max(0, Number(snapshot.cloudBaselineRevision) || 0) : null,
+        maxChangedAt: Math.max(0, ...timestamps.filter(Number.isFinite)),
+        wordIds: words.map(word => String(word && word.id || '')).filter(Boolean),
+        deletedIds: Object.keys(deleted),
+        fingerprint: this.snapshotWordsFingerprint(words)
+      };
+    },
+
+    readLocalSnapshotMeta(words) {
+      try {
+        const meta = JSON.parse(SafeStorage.getItem(this.LOCAL_SNAPSHOT_META_KEY) || 'null');
+        if (!meta || meta.schema !== 1 || meta.fingerprint !== this.snapshotWordsFingerprint(words)) return null;
+        return meta;
+      } catch (error) {
+        return null;
+      }
+    },
+
+    persistLocalSnapshotMeta(snapshot) {
+      try {
+        if (SafeStorage.hasVolatileValue(this.STORAGE_KEY)) return false;
+        const persistedWords = JSON.parse(SafeStorage.getPersistentItem(this.STORAGE_KEY) || 'null');
+        const fingerprint = this.snapshotWordsFingerprint(snapshot.words);
+        if (!Array.isArray(persistedWords) || this.snapshotWordsFingerprint(persistedWords) !== fingerprint) return false;
+        return SafeStorage.setItem(this.LOCAL_SNAPSHOT_META_KEY, JSON.stringify({
+          schema: 1,
+          savedAt: Math.max(0, Number(snapshot.savedAt || 0)),
+          fingerprint
+        }));
+      } catch (error) {
+        return false;
+      }
+    },
+
+    shouldRestoreDurableSnapshot(snapshot, localSummary = this._startupLocalSnapshotSummary) {
+      const durableSummary = this.getDurableSnapshotSummary(snapshot);
+      if (!localSummary || localSummary.wordIds.length === 0) return durableSummary.wordIds.length > 0;
+      if (durableSummary.fingerprint === localSummary.fingerprint) return false;
+      if (localSummary.savedAt > 0) return durableSummary.savedAt > localSummary.savedAt;
+      if (durableSummary.cloudBaselineRevision !== null && localSummary.cloudBaselineRevision !== null
+          && durableSummary.cloudBaselineRevision !== localSummary.cloudBaselineRevision) {
+        return durableSummary.cloudBaselineRevision > localSummary.cloudBaselineRevision;
+      }
+      if (durableSummary.maxChangedAt !== localSummary.maxChangedAt) return durableSummary.maxChangedAt > localSummary.maxChangedAt;
+      const localIds = new Set(localSummary.wordIds);
+      const durableIds = new Set(durableSummary.wordIds);
+      const localDeletedIds = new Set(localSummary.deletedIds);
+      const durableDeletedIds = new Set(durableSummary.deletedIds);
+      const durableOnly = durableSummary.wordIds.filter(id => !localIds.has(id) && !localDeletedIds.has(id)).length;
+      const localOnly = localSummary.wordIds.filter(id => !durableIds.has(id) && !durableDeletedIds.has(id)).length;
+      return durableOnly > 0 && localOnly === 0;
+    },
+
     async persistDurableSnapshot() {
       try {
-        const persisted = await DurableStorage.setItem(this.STORAGE_KEY, this.buildDurableSnapshot());
+        const snapshot = this.buildDurableSnapshot();
+        const persisted = await DurableStorage.setItem(this.STORAGE_KEY, snapshot);
         this._indexedDbDurabilityConfirmed = persisted === true;
+        if (persisted) this.persistLocalSnapshotMeta(snapshot);
         return persisted;
       } catch (error) {
         this._indexedDbDurabilityConfirmed = false;
@@ -7205,10 +7293,10 @@ function createSupabaseSyncMethods(language) {
     },
 
     async restoreDurableSnapshot() {
-      if (this._hadDurableLocalWords) return false;
       try {
         const snapshot = await DurableStorage.getItem(this.STORAGE_KEY);
         if (!snapshot || snapshot.schema !== 1 || !Array.isArray(snapshot.words) || snapshot.words.length === 0) return false;
+        if (!this.shouldRestoreDurableSnapshot(snapshot)) return false;
         this.words = snapshot.words;
         SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
         SafeStorage.setItem(this.PENDING_CLOUD_KEY, JSON.stringify(snapshot.pendingCloudChanges || {}));
@@ -7230,10 +7318,12 @@ function createSupabaseSyncMethods(language) {
         });
         this._hadDurableLocalWords = true;
         this._indexedDbDurabilityConfirmed = true;
+        this.loadSampleData(false);
         if (this.refreshWordFingerprints) this.refreshWordFingerprints();
+        await this.persistDurableSnapshot();
         this.renderWordList();
         this.updateStats();
-        this.showToast('✅ 已从浏览器备用存储恢复词库');
+        this.showToast('✅ 已从浏览器备用存储恢复较新的词库');
         return true;
       } catch (error) {
         console.warn('Durable IndexedDB restore failed:', error);
@@ -7789,6 +7879,7 @@ class JpVocabApp {
     window.vocabApp = this;
     this.STORAGE_KEY = 'evie_jp_vocab_data_v5000';
     this.PENDING_CLOUD_KEY = `${this.STORAGE_KEY}_cloud_pending_v1`;
+    this.LOCAL_SNAPSHOT_META_KEY = `${this.STORAGE_KEY}_local_snapshot_meta_v1`;
     this.CLOUD_FIELD_PENDING_MIGRATION_KEY = `${this.STORAGE_KEY}_cloud_field_pending_v3`;
     this.CLOUD_DEVICE_KEY = `${this.STORAGE_KEY}_cloud_device_v1`;
     this.CLOUD_BASE_REVISION_KEY = `${this.STORAGE_KEY}_cloud_base_revision_v1`;
@@ -7814,7 +7905,7 @@ class JpVocabApp {
     try {
       // Auto purge old obsolete storage keys safely
       SafeStorage.keys().forEach(k => {
-        if (k.startsWith('evie_jp_') && k !== this.STORAGE_KEY && k !== this.PENDING_CLOUD_KEY && k !== this.CLOUD_FIELD_PENDING_MIGRATION_KEY && k !== this.CLOUD_DEVICE_KEY && k !== this.CLOUD_BASE_REVISION_KEY && k !== this.THEME_KEY && k !== this.DELETED_KEY && k !== this.SIMILAR_RELATION_MIGRATION_KEY && k !== SUPABASE_CONFIG.sessionKey) {
+        if (k.startsWith('evie_jp_') && k !== this.STORAGE_KEY && k !== this.PENDING_CLOUD_KEY && k !== this.LOCAL_SNAPSHOT_META_KEY && k !== this.CLOUD_FIELD_PENDING_MIGRATION_KEY && k !== this.CLOUD_DEVICE_KEY && k !== this.CLOUD_BASE_REVISION_KEY && k !== this.THEME_KEY && k !== this.DELETED_KEY && k !== this.SIMILAR_RELATION_MIGRATION_KEY && k !== SUPABASE_CONFIG.sessionKey) {
           SafeStorage.removeItem(k);
         }
       });
@@ -7848,8 +7939,17 @@ class JpVocabApp {
       } else {
         this.words = [];
       }
+      const localMeta = this.readLocalSnapshotMeta ? this.readLocalSnapshotMeta(this.words) : null;
+      this._startupLocalSnapshotSummary = this.getDurableSnapshotSummary ? this.getDurableSnapshotSummary({
+        words: this.words,
+        pendingCloudChanges: this.getPendingCloudChanges ? this.getPendingCloudChanges() : {},
+        deletedRecords: this.getDeletedRecords ? this.getDeletedRecords() : {},
+        cloudBaselineRevision: this.getCloudBaselineRevision ? this.getCloudBaselineRevision() : null,
+        savedAt: localMeta ? localMeta.savedAt : 0
+      }) : null;
     } catch (e) {
       this.words = [];
+      this._startupLocalSnapshotSummary = null;
     }
 
     if (!Array.isArray(this.words) || this.words.length === 0) {
