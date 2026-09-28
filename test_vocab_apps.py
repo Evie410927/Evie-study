@@ -1158,18 +1158,24 @@ class VocabAppTester:
         pronunciation_note_inline_card_controls = all(token in content for token in (
             'class="word-card-pronunciation-note-add-btn"',
             'class="word-card-pronunciation-note-editor-slot"',
+            'class="pronunciation-note-text pronunciation-note-edit-btn"',
             'class="pronunciation-note-delete-btn"',
             'startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId)',
+            "startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId, 'replace')",
             'saveWordCardPronunciationNote(input, wordId)',
             'deleteWordCardPronunciationNote(event, wordId)',
             "const note = typeof word.pronunciationNote === 'string' ? word.pronunciationNote.trim() : '';",
             'renderPronunciationNoteHtml(word)',
+            "const input = document.createElement('textarea');",
             "input.maxLength = 500;",
-            "input.value = '';",
+            "input.value = editMode === 'replace' ? String(word.pronunciationNote || '').trim() : '';",
+            "input.dataset.noteEditMode = editMode;",
             "if (inputEvent.key === 'Enter')",
             "inputEvent.key === 'Escape'",
             "input.addEventListener('blur'",
-            "const nextNote = `${previousNote}${previousNote ? '\\n' : ''}${enteredNote}`.slice(0, 500).trim();",
+            "const nextNote = (editMode === 'replace'",
+            '? enteredNote',
+            ": `${previousNote}${previousNote ? '\\n' : ''}${enteredNote}`).slice(0, 500).trim();",
             "this.showToast('✅ 发音备注已保存')",
             "this.showToast('✅ 发音备注已删除')",
             '.word-title-group.pronunciation-note-editor-open {',
@@ -1178,7 +1184,7 @@ class VocabAppTester:
             'width: 15px;',
             'height: 15px;',
         )) and 'prompt(' not in content and 'input.placeholder =' not in content and 'class="user-note-delete-btn"' not in content
-        self.assert_true(pronunciation_note_inline_card_controls, f"[{lang_name}] 发音备注-读音右侧美化小加号与同排空白输入及末尾小叉删除", "列表卡片缺少独立 pronunciationNote、15px 美化＋、同排空白输入、追加保存、Esc 取消或发音备注末尾×删除")
+        self.assert_true(pronunciation_note_inline_card_controls, f"[{lang_name}] 发音备注-小加号空白追加、点击文字回填编辑及末尾小叉删除", "列表卡片缺少独立 pronunciationNote、15px 美化＋、同排空白追加、已有文字回填替换、Esc 取消或发音备注末尾×删除")
 
         pronunciation_note_inline_persistence = all(token in content for token in (
             "word.pronunciationNote = nextNote;",
@@ -4925,12 +4931,29 @@ class VocabAppTester:
                     && storedWord?.userNote === contentNote;
 
                   card = app.findWordCardById(source.id);
+                  const editButton = card?.querySelector('.pronunciation-note-edit-btn');
+                  dispatchPointerDown(editButton);
+                  input = app.findWordCardById(source.id)?.querySelector('.word-card-pronunciation-note-inline-input');
+                  const editPrefilled = input?.value === appendedNote
+                    && input?.dataset.noteEditMode === 'replace';
+                  const editedNote = '修改后的发音备注';
+                  if (input) input.value = editedNote;
+                  input?.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true, cancelable:true}));
+                  storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(source.id));
+                  card = app.findWordCardById(source.id);
+                  const existingClickReplaced = source.pronunciationNote === editedNote
+                    && storedWord?.pronunciationNote === editedNote
+                    && card?.querySelector('.pronunciation-note-text')?.textContent === editedNote
+                    && source.userNote === contentNote
+                    && storedWord?.userNote === contentNote;
+
+                  card = app.findWordCardById(source.id);
                   addButton = card?.querySelector('.word-card-pronunciation-note-add-btn');
                   dispatchPointerDown(addButton);
                   input = app.findWordCardById(source.id)?.querySelector('.word-card-pronunciation-note-inline-input');
                   if (input) input.value = '这段内容应被取消';
                   input?.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
-                  const escapeCancelled = source.pronunciationNote === appendedNote
+                  const escapeCancelled = source.pronunciationNote === editedNote
                     && source.userNote === contentNote
                     && !app.findWordCardById(source.id)?.querySelector('.word-card-pronunciation-note-inline-input');
 
@@ -4959,6 +4982,8 @@ class VocabAppTester:
                     existingNoteInputBlank,
                     emptyBlurPreserved,
                     blurModified,
+                    editPrefilled,
+                    existingClickReplaced,
                     escapeCancelled,
                     deletedInline,
                     contentNoteUnaffected,
@@ -4983,7 +5008,7 @@ class VocabAppTester:
             """)
             self.assert_true(
                 bool(pronunciation_note_crud and all(pronunciation_note_crud.values())),
-                f"[{lang_name}] 浏览器发音备注-独立于内容说明的原位增改、取消、删除及云同步字段追踪",
+                f"[{lang_name}] 浏览器发音备注-空白追加、点击已有文字回填替换、取消、删除及云同步字段追踪",
                 f"发音备注与内容说明隔离流程失败: {pronunciation_note_crud}",
             )
 

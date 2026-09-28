@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-09-29.3",
+  "contractVersion": "2026-09-29.4",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -63,6 +63,8 @@
       "editorPlacement": "same-title-row",
       "initialInputValue": "empty",
       "existingNoteBehavior": "append",
+      "existingNoteClick": "prefilled-inline-edit",
+      "existingNoteEditBehavior": "replace",
       "deletePlacement": "note-end",
       "deleteControl": "small-x",
       "directListCardEditing": true,

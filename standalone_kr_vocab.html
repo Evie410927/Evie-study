@@ -895,6 +895,11 @@ body::-webkit-scrollbar,
   box-sizing: border-box;
   outline: none;
   box-shadow: 0 0 0 2px rgba(236, 72, 153, 0.12);
+  font-family: inherit;
+  resize: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: pre;
 }
 .pronunciation-note-display {
   display: inline-flex;
@@ -914,6 +919,19 @@ body::-webkit-scrollbar,
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.pronunciation-note-edit-btn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pronunciation-note-edit-btn:hover,
+.pronunciation-note-edit-btn:focus-visible {
+  color: var(--accent-primary);
+  outline: none;
 }
 .pronunciation-note-delete-btn {
   display: inline-flex;
@@ -20780,20 +20798,21 @@ class KrVocabApp {
     if (!note) return '';
     const safeId = this.escapeHtml(String(word.id));
     const safeNote = this.escapeHtml(note);
-    return `<span class="pronunciation-note-display" data-pronunciation-note-word-id="${safeId}" title="${safeNote}"><span class="pronunciation-note-text">${safeNote}</span><button type="button" class="pronunciation-note-delete-btn" data-pronunciation-note-word-id="${safeId}" aria-label="删除发音备注" title="删除发音备注" onpointerdown="(window.app||window.vocabApp).deleteWordCardPronunciationNote(event, this.dataset.pronunciationNoteWordId)" onclick="event.stopPropagation(); if(event.detail === 0) (window.app||window.vocabApp).deleteWordCardPronunciationNote(event, this.dataset.pronunciationNoteWordId)">×</button></span>`;
+    return `<span class="pronunciation-note-display" data-pronunciation-note-word-id="${safeId}"><button type="button" class="pronunciation-note-text pronunciation-note-edit-btn" data-pronunciation-note-word-id="${safeId}" aria-label="编辑发音备注" title="点击编辑发音备注：${safeNote}" onpointerdown="(window.app||window.vocabApp).startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId, 'replace')" onclick="event.stopPropagation(); if(event.detail === 0) (window.app||window.vocabApp).startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId, 'replace')">${safeNote}</button><button type="button" class="pronunciation-note-delete-btn" data-pronunciation-note-word-id="${safeId}" aria-label="删除发音备注" title="删除发音备注" onpointerdown="(window.app||window.vocabApp).deleteWordCardPronunciationNote(event, this.dataset.pronunciationNoteWordId)" onclick="event.stopPropagation(); if(event.detail === 0) (window.app||window.vocabApp).deleteWordCardPronunciationNote(event, this.dataset.pronunciationNoteWordId)">×</button></span>`;
   }
 
   findWordCardById(wordId) {
     return Array.from(document.querySelectorAll('#wordList .word-card')).find(card => String(card.dataset.id || '') === String(wordId)) || null;
   }
 
-  startWordCardPronunciationNoteEdit(event, wordId) {
+  startWordCardPronunciationNoteEdit(event, wordId, mode = 'append') {
     if (event) {
       event.preventDefault();
       event.stopPropagation();
     }
     const word = this.words.find(item => String(item.id) === String(wordId));
     if (!word) return false;
+    const editMode = mode === 'replace' ? 'replace' : 'append';
     const openInput = Array.from(document.querySelectorAll('.word-card-pronunciation-note-inline-input')).find(input => String(input.dataset.pronunciationNoteWordId || '') === String(wordId));
     if (openInput) {
       openInput.focus();
@@ -20805,13 +20824,15 @@ class KrVocabApp {
     const card = this.findWordCardById(wordId);
     const slot = card ? card.querySelector('.word-card-pronunciation-note-editor-slot') : null;
     if (!slot) return false;
-    const input = document.createElement('input');
-    input.type = 'text';
+    const input = document.createElement('textarea');
+    input.rows = 1;
+    input.wrap = 'off';
     input.className = 'word-card-pronunciation-note-inline-input';
     input.maxLength = 500;
-    input.value = '';
-    input.setAttribute('aria-label', `${word.word || '当前单词'}的发音备注`);
+    input.value = editMode === 'replace' ? String(word.pronunciationNote || '').trim() : '';
+    input.setAttribute('aria-label', `${editMode === 'replace' ? '编辑' : '追加'}${word.word || '当前单词'}的发音备注`);
     input.dataset.pronunciationNoteWordId = String(word.id);
+    input.dataset.noteEditMode = editMode;
     input.addEventListener('pointerdown', inputEvent => inputEvent.stopPropagation());
     input.addEventListener('click', inputEvent => inputEvent.stopPropagation());
     input.addEventListener('keydown', inputEvent => {
@@ -20847,6 +20868,7 @@ class KrVocabApp {
     if (!word) return false;
     const enteredNote = String(input.value || '').trim();
     const previousNote = typeof word.pronunciationNote === 'string' ? word.pronunciationNote.trim() : '';
+    const editMode = input.dataset.noteEditMode === 'replace' ? 'replace' : 'append';
     input.dataset.committed = 'true';
     const slot = input.closest('.word-card-pronunciation-note-editor-slot');
     if (!enteredNote) {
@@ -20854,11 +20876,13 @@ class KrVocabApp {
       slot?.closest('.word-title-group')?.classList.remove('pronunciation-note-editor-open');
       return true;
     }
-    const nextNote = `${previousNote}${previousNote ? '\n' : ''}${enteredNote}`.slice(0, 500).trim();
+    const nextNote = (editMode === 'replace'
+      ? enteredNote
+      : `${previousNote}${previousNote ? '\n' : ''}${enteredNote}`).slice(0, 500).trim();
     if (nextNote === previousNote) {
       if (slot) slot.replaceChildren();
       slot?.closest('.word-title-group')?.classList.remove('pronunciation-note-editor-open');
-      this.showToast('⚠️ 发音备注已达 500 字');
+      if (editMode === 'append') this.showToast('⚠️ 发音备注已达 500 字');
       return true;
     }
     const previousState = {

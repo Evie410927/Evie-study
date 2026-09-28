@@ -3,9 +3,9 @@
 ## 问题与完成标准
 
 - 问题：上一版错误地把红色读音右侧入口绑定到 `userNote`，导致标题发音备注与下方 `【…】` 内容说明串字段。
-- 用户可观察结果：红色读音右侧的 `＋` 只维护独立发音备注；下方 `【…】` 内容说明保持原样。点击后在标题同一排出现完全空白的输入框，发音备注末尾的 `×` 只删除发音备注。
+- 用户可观察结果：红色读音右侧的 `＋` 只维护独立发音备注；下方 `【…】` 内容说明保持原样。点击 `＋` 后在标题同一排出现空白输入框用于追加，点击已有发音备注则回填全文并直接修改，末尾 `×` 只删除发音备注。
 - 明确不在范围内：不改变 `userNote` 的完整编辑器及详情、复习、相近表达展示；不改变主搜索范围。
-- 完成标准：KR/JP 双端的 `pronunciationNote` 与 `userNote` 在新增、追加、删除、本地重载、导入导出和云同步中始终互不影响。
+- 完成标准：KR/JP 双端的 `pronunciationNote` 与 `userNote` 在新增、追加、回填修改、删除、本地重载、导入导出和云同步中始终互不影响。
 
 ## 影响范围
 
@@ -27,6 +27,6 @@
 
 ## 验证计划
 
-- 新增或更新的测试：两字段隔离、15px 控件紧邻读音、输入框与标题同排且初始完全空白、已有发音备注追加、空失焦保留、Enter/失焦保存、Escape 取消、`×` 只删除发音备注、事件隔离、本地持久化与 `fieldUpdatedAt.pronunciationNote` 云同步追踪。
+- 新增或更新的测试：两字段隔离、15px 控件紧邻读音、`＋` 输入框同排且初始空白、点击已有文字回填全文并替换保存、空失焦保留、Enter/失焦保存、Escape 取消、`×` 只删除发音备注、事件隔离、本地持久化与 `fieldUpdatedAt.pronunciationNote` 云同步追踪。
 - 必须运行的质量门禁：`python scripts/run_quality_gate.py`
 - 部署后验证：确认 GitHub Pages KR/JP 均包含 `startWordCardPronunciationNoteEdit`、`saveWordCardPronunciationNote` 与 `deleteWordCardPronunciationNote`，并保留独立 `renderUserNoteHtml`。
