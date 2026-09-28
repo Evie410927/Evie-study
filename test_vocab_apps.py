@@ -1163,12 +1163,20 @@ class VocabAppTester:
             'saveWordCardUserNote(input, wordId)',
             'deleteWordCardUserNote(event, wordId)',
             "input.maxLength = 500;",
+            "input.value = '';",
             "if (inputEvent.key === 'Enter')",
             "inputEvent.key === 'Escape'",
             "input.addEventListener('blur'",
-            "this.showToast(nextNote ? '✅ 记忆备注已保存' : '✅ 记忆备注已删除')",
-        )) and 'prompt(' not in content
-        self.assert_true(user_note_inline_card_controls, f"[{lang_name}] 记忆备注-读音右侧小加号原位新增修改且备注末尾小叉删除", "列表卡片缺少紧邻读音的＋、原位输入、Enter/失焦保存、Esc 取消或备注末尾×删除")
+            "const nextNote = `${previousNote}${previousNote ? '\\n' : ''}${enteredNote}`.slice(0, 500).trim();",
+            "this.showToast('✅ 记忆备注已保存')",
+            "this.showToast('✅ 记忆备注已删除')",
+            '.word-title-group.note-editor-open {',
+            'flex-wrap: nowrap;',
+            'align-items: center;',
+            'width: 15px;',
+            'height: 15px;',
+        )) and 'prompt(' not in content and 'input.placeholder =' not in content
+        self.assert_true(user_note_inline_card_controls, f"[{lang_name}] 记忆备注-读音右侧美化小加号与同排空白输入及末尾小叉删除", "列表卡片缺少 15px 美化＋、同排空白输入、追加保存、Esc 取消或备注末尾×删除")
 
         user_note_inline_persistence = all(token in content for token in (
             "word.userNote = nextNote;",
@@ -4851,10 +4859,17 @@ class VocabAppTester:
                   let addButton = card?.querySelector('.word-card-note-add-btn');
                   const addImmediatelyAfterReading = !!reading && reading.nextElementSibling === addButton;
                   const addStyle = addButton ? getComputedStyle(addButton) : null;
-                  const addButtonCompact = !!addStyle && parseFloat(addStyle.width) <= 20 && parseFloat(addStyle.height) <= 20;
+                  const addButtonCompact = !!addStyle && parseFloat(addStyle.width) <= 16 && parseFloat(addStyle.height) <= 16;
                   dispatchPointerDown(addButton);
                   let input = card?.querySelector('.word-card-note-inline-input');
-                  const inlineOpened = !!input && input.maxLength === 500 && !document.getElementById('detailModal')?.classList.contains('active');
+                  const inputRect = input?.getBoundingClientRect();
+                  const readingRect = reading?.getBoundingClientRect();
+                  const inputStaysOnTitleRow = !!inputRect && !!readingRect
+                    && input?.closest('.word-title-group') === reading?.closest('.word-title-group')
+                    && Math.abs((inputRect.top + inputRect.height / 2) - (readingRect.top + readingRect.height / 2)) <= 6;
+                  const inlineOpened = !!input && input.maxLength === 500 && input.value === ''
+                    && input.getAttribute('placeholder') === null
+                    && !document.getElementById('detailModal')?.classList.contains('active');
                   if (input) input.value = '容易混淆：记忆方法 A';
                   input?.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true, cancelable:true}));
 
@@ -4871,11 +4886,19 @@ class VocabAppTester:
                   addButton = card?.querySelector('.word-card-note-add-btn');
                   dispatchPointerDown(addButton);
                   input = app.findWordCardById(source.id)?.querySelector('.word-card-note-inline-input');
-                  const existingNotePrefilled = input?.value === '容易混淆：记忆方法 A';
+                  const existingNoteInputBlank = input?.value === '' && input.getAttribute('placeholder') === null;
+                  input?.dispatchEvent(new Event('blur', {bubbles:false}));
+                  const emptyBlurPreserved = source.userNote === '容易混淆：记忆方法 A'
+                    && app.findWordCardById(source.id)?.querySelector('.user-note-text')?.textContent === '容易混淆：记忆方法 A';
+                  card = app.findWordCardById(source.id);
+                  addButton = card?.querySelector('.word-card-note-add-btn');
+                  dispatchPointerDown(addButton);
+                  input = app.findWordCardById(source.id)?.querySelector('.word-card-note-inline-input');
                   if (input) input.value = '容易混淆：记忆方法 B';
                   input?.dispatchEvent(new Event('blur', {bubbles:false}));
                   storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(source.id));
-                  const blurModified = source.userNote === '容易混淆：记忆方法 B' && storedWord?.userNote === '容易混淆：记忆方法 B';
+                  const appendedNote = '容易混淆：记忆方法 A\\n容易混淆：记忆方法 B';
+                  const blurModified = source.userNote === appendedNote && storedWord?.userNote === appendedNote;
 
                   card = app.findWordCardById(source.id);
                   addButton = card?.querySelector('.word-card-note-add-btn');
@@ -4883,7 +4906,7 @@ class VocabAppTester:
                   input = app.findWordCardById(source.id)?.querySelector('.word-card-note-inline-input');
                   if (input) input.value = '这段内容应被取消';
                   input?.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
-                  const escapeCancelled = source.userNote === '容易混淆：记忆方法 B'
+                  const escapeCancelled = source.userNote === appendedNote
                     && !app.findWordCardById(source.id)?.querySelector('.word-card-note-inline-input');
 
                   card = app.findWordCardById(source.id);
@@ -4900,8 +4923,10 @@ class VocabAppTester:
                     addImmediatelyAfterReading,
                     addButtonCompact,
                     inlineOpened,
+                    inputStaysOnTitleRow,
                     enterSaved,
-                    existingNotePrefilled,
+                    existingNoteInputBlank,
+                    emptyBlurPreserved,
                     blurModified,
                     escapeCancelled,
                     deletedInline,
