@@ -16656,6 +16656,11 @@ body::-webkit-scrollbar,
           </div>
 
           <div class="form-group">
+            <label class="form-label" for="inputPronunciationNote">发音备注</label>
+            <textarea id="inputPronunciationNote" class="form-textarea" maxlength="500" rows="2"></textarea>
+          </div>
+
+          <div class="form-group">
             <label class="form-label" for="inputMeaning">中文释义 *</label>
             <input type="text" id="inputMeaning" class="form-input" placeholder="如：幸福的，快乐的" required>
           </div>
@@ -21495,6 +21500,7 @@ class KrVocabApp {
     const wordIdInput = document.getElementById('wordId');
     const wordInput = document.getElementById('inputWord');
     const readingInput = document.getElementById('inputReading');
+    const pronunciationNoteInput = document.getElementById('inputPronunciationNote');
     const meaningInput = document.getElementById('inputMeaning');
     const partOfSpeechInput = document.getElementById('inputPartOfSpeech');
     const userNoteInput = document.getElementById('inputUserNote');
@@ -21502,7 +21508,7 @@ class KrVocabApp {
     const addWordRatingGroup = document.getElementById('addWordRatingGroup');
     const addWordMasteredGroup = document.getElementById('addWordMasteredGroup');
     const addWordSimilarGroup = document.getElementById('addWordSimilarGroup');
-    if (!modal || !form || !title || !wordIdInput || !wordInput || !readingInput || !meaningInput || !partOfSpeechInput || !userNoteInput || !addWordTagsGroup || !addWordRatingGroup || !addWordMasteredGroup || !addWordSimilarGroup) return;
+    if (!modal || !form || !title || !wordIdInput || !wordInput || !readingInput || !pronunciationNoteInput || !meaningInput || !partOfSpeechInput || !userNoteInput || !addWordTagsGroup || !addWordRatingGroup || !addWordMasteredGroup || !addWordSimilarGroup) return;
     this.renderPartOfSpeechOptions();
     this.closePartOfSpeechOptions();
     form.reset();
@@ -21520,12 +21526,14 @@ class KrVocabApp {
       wordIdInput.value = word.id;
       wordInput.value = word.word || '';
       readingInput.value = this.normalizeBracketedReading(word.reading);
+      pronunciationNoteInput.value = typeof word.pronunciationNote === 'string' ? word.pronunciationNote : '';
       meaningInput.value = word.meaning || '';
       partOfSpeechInput.value = this.normalizeTaxonomyText(word.partOfSpeech);
       userNoteInput.value = typeof word.userNote === 'string' ? word.userNote : '';
     } else {
       title.textContent = '添加韩语单词';
       wordIdInput.value = '';
+      pronunciationNoteInput.value = '';
       partOfSpeechInput.value = '';
     }
 
@@ -22686,14 +22694,16 @@ class KrVocabApp {
     const wordIdInput = document.getElementById('wordId');
     const wordInput = document.getElementById('inputWord');
     const readingInput = document.getElementById('inputReading');
+    const pronunciationNoteInput = document.getElementById('inputPronunciationNote');
     const meaningInput = document.getElementById('inputMeaning');
     const partOfSpeechInput = document.getElementById('inputPartOfSpeech');
     const userNoteInput = document.getElementById('inputUserNote');
-    if (!wordIdInput || !wordInput || !readingInput || !meaningInput || !partOfSpeechInput || !userNoteInput) return;
+    if (!wordIdInput || !wordInput || !readingInput || !pronunciationNoteInput || !meaningInput || !partOfSpeechInput || !userNoteInput) return;
     const id = wordIdInput.value;
     const wordText = wordInput.value.trim();
     const reading = this.normalizeBracketedReading(readingInput.value);
     readingInput.value = reading;
+    const pronunciationNote = pronunciationNoteInput.value.trim();
     const meaning = meaningInput.value.trim();
     const partOfSpeech = this.normalizeTaxonomyText(partOfSpeechInput.value);
     partOfSpeechInput.value = partOfSpeech;
@@ -22740,7 +22750,7 @@ class KrVocabApp {
         examples,
         tags,
         userNote,
-        pronunciationNote: '',
+        pronunciationNote,
         mastered: draftMastered,
         rating: draftRating,
         manualSimilarWordIds: [...draftSimilarWordIds],
@@ -22761,6 +22771,7 @@ class KrVocabApp {
         examples,
         tags,
         userNote,
+        pronunciationNote,
         mastered: draftMastered,
         rating: draftRating,
         manualSimilarWordIds: [...draftSimilarWordIds],

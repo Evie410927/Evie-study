@@ -1155,6 +1155,26 @@ class VocabAppTester:
         ))
         self.assert_true(user_note_modal_editor, f"[{lang_name}] 自定义说明-编辑弹窗说明字段支持回填、保存与清空", "编辑弹窗缺少说明字段，或 userNote 未接入新增/编辑保存流程")
 
+        pronunciation_note_modal_editor = all(token in content for token in (
+            '<label class="form-label" for="inputPronunciationNote">发音备注</label>',
+            '<textarea id="inputPronunciationNote" class="form-textarea" maxlength="500" rows="2"></textarea>',
+            "const pronunciationNoteInput = document.getElementById('inputPronunciationNote');",
+            "pronunciationNoteInput.value = typeof word.pronunciationNote === 'string' ? word.pronunciationNote : '';",
+            "const pronunciationNote = pronunciationNoteInput.value.trim();",
+            'pronunciationNote,',
+        ))
+        pronunciation_note_modal_order = (
+            content.find('id="inputReading"')
+            < content.find('id="inputPronunciationNote"')
+            < content.find('id="inputMeaning"')
+        )
+        pronunciation_note_modal_safe_save = "pronunciationNote: ''," not in content
+        self.assert_true(
+            pronunciation_note_modal_editor and pronunciation_note_modal_order and pronunciation_note_modal_safe_save,
+            f"[{lang_name}] 发音备注-完整新增编辑弹窗独立回填保存且位于读音与释义之间",
+            "完整词条弹窗缺少独立发音备注字段、字段顺序不正确，或保存时仍会强制清空 pronunciationNote",
+        )
+
         pronunciation_note_inline_card_controls = all(token in content for token in (
             'class="word-card-pronunciation-note-add-btn"',
             'class="word-card-pronunciation-note-editor-slot"',
@@ -3479,6 +3499,7 @@ class VocabAppTester:
                 const startsEmpty = app.editingModalRating === 0
                   && app.editingModalMastered === false
                   && app.editingModalSimilarWordIds.length === 0
+                  && document.getElementById('inputPronunciationNote')?.value === ''
                   && ratingWidget.querySelectorAll('.rating-star.filled').length === 0
                   && masteredButton.textContent.trim() === '🔄 学习中'
                   && masteredButton.getAttribute('aria-pressed') === 'false';
@@ -3527,6 +3548,7 @@ class VocabAppTester:
                 const pitchNumbersRemoved = ['[test-reading①]', '[test-reading]②', '⓪test-reading⑳']
                   .every(value => app.normalizeBracketedReading(value) === '[test-reading]');
                 document.getElementById('inputMeaning').value = 'n. 新增弹窗测试释义';
+                document.getElementById('inputPronunciationNote').value = '新增弹窗发音备注测试';
                 const krMeaningInput = document.getElementById('inputKrMeaning');
                 if (krMeaningInput) krMeaningInput.value = '추가 창 테스트 뜻';
                 document.querySelectorAll('#examplePairsEditor .example-pair-row').forEach((row, index) => {
@@ -3538,6 +3560,8 @@ class VocabAppTester:
                 const savedRating = newWord?.rating === 4;
                 const savedMastered = newWord?.mastered === true;
                 const savedReading = newWord?.reading === '[test-reading]';
+                const savedPronunciationNote = newWord?.pronunciationNote === '新增弹窗发音备注测试'
+                  && newWord?.tags?.includes('发音');
                 const savedPartOfSpeech = newWord?.partOfSpeech === '自定义测试词性' && !newWord?.tags?.includes('自定义测试词性');
                 const savedManualRelation = Array.isArray(newWord?.manualSimilarWordIds)
                   && newWord.manualSimilarWordIds.map(String).includes(String(target.id));
@@ -3551,6 +3575,8 @@ class VocabAppTester:
                 const persisted = storedNewWord?.rating === 4
                   && storedNewWord?.mastered === true
                   && storedNewWord?.reading === '[test-reading]'
+                  && storedNewWord?.pronunciationNote === '新增弹窗发音备注测试'
+                  && storedNewWord?.tags?.includes('发音')
                   && storedNewWord?.partOfSpeech === '自定义测试词性'
                   && !storedNewWord?.tags?.includes('自定义测试词性')
                   && storedNewWord.manualSimilarWordIds?.map(String).includes(String(target.id));
@@ -3570,13 +3596,13 @@ class VocabAppTester:
                   groupsVisible, startsEmpty, ratingSet, masteredSet, searchFound, selected,
                   selectedRendered, removed, readded, savedRating, savedManualRelation,
                   savedMastered, readingAutoBracketed, duplicateBracketsRemoved, pitchNumbersRemoved, savedReading,
-                  savedPartOfSpeech, automaticSnapshotEmpty, reverseRelation, mutualRecommendation, persisted, modalClosed
+                  savedPronunciationNote, savedPartOfSpeech, automaticSnapshotEmpty, reverseRelation, mutualRecommendation, persisted, modalClosed
                 };
             """)
             self.assert_true(
                 bool(manual_add_rating_similar and all(manual_add_rating_similar.values())),
-                f"[{lang_name}] 浏览器新增弹窗-独立词性、星级、状态、读音与相近词保存全流程",
-                f"新增弹窗独立词性、星级、状态、读音规范化或相近词交互失败: {manual_add_rating_similar}",
+                f"[{lang_name}] 浏览器新增弹窗-独立词性、星级、状态、读音、发音备注与相近词保存全流程",
+                f"新增弹窗独立词性、星级、状态、读音/发音备注规范化或相近词交互失败: {manual_add_rating_similar}",
             )
 
             shared_add_edit_modal = driver.execute_script("""
@@ -3598,8 +3624,10 @@ class VocabAppTester:
                 const addTitle = document.getElementById('modalTitle')?.textContent || '';
                 const addSignature = Array.from(form?.children || []).map(node => `${node.tagName}:${node.id || node.className}`).join('|');
                 const addGroupsVisible = sharedGroupIds.every(id => getComputedStyle(document.getElementById(id)).display !== 'none');
+                const addPronunciationNoteStartsEmpty = document.getElementById('inputPronunciationNote')?.value === '';
                 app.closeWordModal();
 
+                target.pronunciationNote = '原有弹窗发音备注';
                 app.openWordModal(target);
                 const editTitle = document.getElementById('modalTitle')?.textContent || '';
                 const editSignature = Array.from(form?.children || []).map(node => `${node.tagName}:${node.id || node.className}`).join('|');
@@ -3607,6 +3635,7 @@ class VocabAppTester:
                 const expectedSimilarIds = app.getSimilarWords(target).map(word => String(word.id));
                 const existingValuesLoaded = document.getElementById('inputWord')?.value === String(target.word || '')
                   && document.getElementById('inputReading')?.value === app.normalizeBracketedReading(target.reading)
+                  && document.getElementById('inputPronunciationNote')?.value === '原有弹窗发音备注'
                   && document.getElementById('inputMeaning')?.value === String(target.meaning || '')
                   && document.getElementById('inputPartOfSpeech')?.value === String(target.partOfSpeech || '')
                   && JSON.stringify(app.editingModalTags) === JSON.stringify(target.tags || [])
@@ -3631,6 +3660,7 @@ class VocabAppTester:
                 app.renderModalDraftRating();
                 app.renderModalDraftMastered();
                 app.renderModalSelectedSimilarWords();
+                document.getElementById('inputPronunciationNote').value = '编辑弹窗发音备注测试';
                 document.getElementById('inputUserNote').value = '编辑弹窗共用字段测试';
 
                 const similarSearch = document.getElementById('modalSimilarSearchInput');
@@ -3642,11 +3672,13 @@ class VocabAppTester:
 
                 const savedTarget = app.words.find(word => String(word.id) === String(target.id));
                 const savedCandidate = app.words.find(word => String(word.id) === String(candidate.id));
-                const sharedFieldsSaved = JSON.stringify(savedTarget?.tags || []) === JSON.stringify(editedTags)
+                const expectedEditedTags = [...editedTags, '发音'];
+                const sharedFieldsSaved = JSON.stringify(savedTarget?.tags || []) === JSON.stringify(expectedEditedTags)
                   && savedTarget?.partOfSpeech === editedPartOfSpeech
                   && !savedTarget?.tags?.includes(editedPartOfSpeech)
                   && savedTarget?.rating === editedRating
                   && Boolean(savedTarget?.mastered) === editedMastered
+                  && savedTarget?.pronunciationNote === '编辑弹窗发音备注测试'
                   && savedTarget?.userNote === '编辑弹窗共用字段测试'
                   && JSON.stringify((savedTarget?.manualSimilarWordIds || []).map(String)) === JSON.stringify([String(candidate.id)]);
                 const reverseRelationSaved = (savedCandidate?.manualSimilarWordIds || []).map(String).includes(String(target.id));
@@ -3654,7 +3686,9 @@ class VocabAppTester:
                 const persisted = storedTarget?.rating === editedRating
                   && Boolean(storedTarget?.mastered) === editedMastered
                   && storedTarget?.partOfSpeech === editedPartOfSpeech
-                  && JSON.stringify(storedTarget?.tags || []) === JSON.stringify(editedTags)
+                  && storedTarget?.pronunciationNote === '编辑弹窗发音备注测试'
+                  && storedTarget?.userNote === '编辑弹窗共用字段测试'
+                  && JSON.stringify(storedTarget?.tags || []) === JSON.stringify(expectedEditedTags)
                   && (storedTarget?.manualSimilarWordIds || []).map(String).includes(String(candidate.id));
 
                 app.words = JSON.parse(originalWords);
@@ -3666,14 +3700,14 @@ class VocabAppTester:
                 app.renderWordList();
                 app.closeWordModal();
                 return {
-                  addGroupsVisible, editGroupsVisible, onlyTitleChanges, existingValuesLoaded,
+                  addGroupsVisible, addPronunciationNoteStartsEmpty, editGroupsVisible, onlyTitleChanges, existingValuesLoaded,
                   selfExcludedFromSearch, sharedFieldsSaved, reverseRelationSaved, persisted
                 };
             """)
             self.assert_true(
                 bool(shared_add_edit_modal and all(shared_add_edit_modal.values())),
-                f"[{lang_name}] 浏览器新建/编辑弹窗-除标题外字段结构一致且旧值可编辑保存",
-                f"新建/编辑弹窗字段镜像、回填或保存失败: {shared_add_edit_modal}",
+                f"[{lang_name}] 浏览器新建/编辑弹窗-发音备注独立为空/回填且全部旧值可编辑保存",
+                f"新建/编辑弹窗字段镜像、发音备注空白新建/回填或保存失败: {shared_add_edit_modal}",
             )
 
             status_rating_persistence = driver.execute_script("""

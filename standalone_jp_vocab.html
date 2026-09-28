@@ -3317,6 +3317,11 @@ body::-webkit-scrollbar,
           </div>
 
           <div class="form-group">
+            <label class="form-label" for="inputPronunciationNote">发音备注</label>
+            <textarea id="inputPronunciationNote" class="form-textarea" maxlength="500" rows="2"></textarea>
+          </div>
+
+          <div class="form-group">
             <label class="form-label" for="inputMeaning">中文释义 *</label>
             <input type="text" id="inputMeaning" class="form-input" placeholder="如：幸福的，快乐的" required>
           </div>
@@ -8945,6 +8950,7 @@ class JpVocabApp {
     const wordIdInput = document.getElementById('wordId');
     const wordInput = document.getElementById('inputWord');
     const readingInput = document.getElementById('inputReading');
+    const pronunciationNoteInput = document.getElementById('inputPronunciationNote');
     const meaningInput = document.getElementById('inputMeaning');
     const partOfSpeechInput = document.getElementById('inputPartOfSpeech');
     const krMeaningInput = document.getElementById('inputKrMeaning');
@@ -8953,7 +8959,7 @@ class JpVocabApp {
     const addWordRatingGroup = document.getElementById('addWordRatingGroup');
     const addWordMasteredGroup = document.getElementById('addWordMasteredGroup');
     const addWordSimilarGroup = document.getElementById('addWordSimilarGroup');
-    if (!modal || !form || !title || !wordIdInput || !wordInput || !readingInput || !meaningInput || !partOfSpeechInput || !krMeaningInput || !userNoteInput || !addWordTagsGroup || !addWordRatingGroup || !addWordMasteredGroup || !addWordSimilarGroup) return;
+    if (!modal || !form || !title || !wordIdInput || !wordInput || !readingInput || !pronunciationNoteInput || !meaningInput || !partOfSpeechInput || !krMeaningInput || !userNoteInput || !addWordTagsGroup || !addWordRatingGroup || !addWordMasteredGroup || !addWordSimilarGroup) return;
     this.renderPartOfSpeechOptions();
     this.closePartOfSpeechOptions();
     form.reset();
@@ -8971,6 +8977,7 @@ class JpVocabApp {
       wordIdInput.value = word.id;
       wordInput.value = word.word || '';
       readingInput.value = this.normalizeBracketedReading(word.reading);
+      pronunciationNoteInput.value = typeof word.pronunciationNote === 'string' ? word.pronunciationNote : '';
       meaningInput.value = word.meaning || '';
       partOfSpeechInput.value = this.normalizeTaxonomyText(word.partOfSpeech);
       krMeaningInput.value = word.krMeaning || '';
@@ -8978,6 +8985,7 @@ class JpVocabApp {
     } else {
       title.textContent = '添加日语单词';
       wordIdInput.value = '';
+      pronunciationNoteInput.value = '';
       partOfSpeechInput.value = '';
     }
 
@@ -10138,15 +10146,17 @@ class JpVocabApp {
     const wordIdInput = document.getElementById('wordId');
     const wordInput = document.getElementById('inputWord');
     const readingInput = document.getElementById('inputReading');
+    const pronunciationNoteInput = document.getElementById('inputPronunciationNote');
     const meaningInput = document.getElementById('inputMeaning');
     const partOfSpeechInput = document.getElementById('inputPartOfSpeech');
     const krMeaningInput = document.getElementById('inputKrMeaning');
     const userNoteInput = document.getElementById('inputUserNote');
-    if (!wordIdInput || !wordInput || !readingInput || !meaningInput || !partOfSpeechInput || !krMeaningInput || !userNoteInput) return;
+    if (!wordIdInput || !wordInput || !readingInput || !pronunciationNoteInput || !meaningInput || !partOfSpeechInput || !krMeaningInput || !userNoteInput) return;
     const id = wordIdInput.value;
     const wordText = wordInput.value.trim();
     const reading = this.normalizeBracketedReading(readingInput.value);
     readingInput.value = reading;
+    const pronunciationNote = pronunciationNoteInput.value.trim();
     const meaning = meaningInput.value.trim();
     const partOfSpeech = this.normalizeTaxonomyText(partOfSpeechInput.value);
     partOfSpeechInput.value = partOfSpeech;
@@ -10195,7 +10205,7 @@ class JpVocabApp {
         examples,
         tags,
         userNote,
-        pronunciationNote: '',
+        pronunciationNote,
         mastered: draftMastered,
         rating: draftRating,
         manualSimilarWordIds: [...draftSimilarWordIds],
@@ -10217,6 +10227,7 @@ class JpVocabApp {
         examples,
         tags,
         userNote,
+        pronunciationNote,
         mastered: draftMastered,
         rating: draftRating,
         manualSimilarWordIds: [...draftSimilarWordIds],
