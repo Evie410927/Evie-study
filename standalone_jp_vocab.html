@@ -955,7 +955,8 @@ body::-webkit-scrollbar,
   color: #ffd0a3;
   outline: none;
 }
-.word-title-group.pronunciation-note-editor-open .pronunciation-note-display { display: none; }
+.word-title-group.pronunciation-note-editor-open .pronunciation-note-display,
+.detail-pronunciation-note-controls.pronunciation-note-editor-open .pronunciation-note-display { display: none; }
 
 .mastered-badge {
   font-size: 11px;
@@ -1684,6 +1685,14 @@ body::-webkit-scrollbar,
   align-items: baseline;
   gap: 10px;
   flex-wrap: wrap;
+  min-width: 0;
+}
+
+.detail-pronunciation-note-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .detail-word {
@@ -3373,6 +3382,7 @@ body::-webkit-scrollbar,
             <div class="detail-title-group">
               <h3 id="detailWord" class="detail-word">单词</h3>
               <span id="detailReading" class="detail-reading">[发音]</span>
+              <span id="detailPronunciationNoteControls" class="detail-pronunciation-note-controls"></span>
             </div>
           </div>
           <div class="detail-header-actions">
@@ -8260,6 +8270,14 @@ class JpVocabApp {
     return `<span class="pronunciation-note-display" data-pronunciation-note-word-id="${safeId}"><button type="button" class="pronunciation-note-text pronunciation-note-edit-btn" data-pronunciation-note-word-id="${safeId}" aria-label="编辑发音备注" title="点击编辑发音备注：${safeNote}" onpointerdown="event.stopPropagation()" onclick="(window.app||window.vocabApp).startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId, 'replace')">${safeNote}</button><button type="button" class="pronunciation-note-delete-btn" data-pronunciation-note-word-id="${safeId}" aria-label="删除发音备注" title="删除发音备注" onpointerdown="event.stopPropagation()" onclick="(window.app||window.vocabApp).deleteWordCardPronunciationNote(event, this.dataset.pronunciationNoteWordId)">×</button></span>`;
   }
 
+  renderPronunciationNoteControlsHtml(word, context = 'list') {
+    if (!word || !word.id) return '';
+    const safeId = this.escapeHtml(String(word.id));
+    const safeContext = this.escapeHtml(String(context));
+    const hasNote = Boolean(String(word.pronunciationNote || '').trim());
+    return `<button type="button" class="word-card-pronunciation-note-add-btn" data-pronunciation-note-word-id="${safeId}" data-pronunciation-note-context="${safeContext}" aria-label="${hasNote ? '追加' : '添加'}发音备注" title="${hasNote ? '追加' : '添加'}发音备注" onpointerdown="(window.app||window.vocabApp).startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId)" onclick="event.stopPropagation(); if(event.detail === 0) (window.app||window.vocabApp).startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId)">＋</button><span class="word-card-pronunciation-note-editor-slot" data-pronunciation-note-word-id="${safeId}" data-pronunciation-note-context="${safeContext}"></span>${this.renderPronunciationNoteHtml(word)}`;
+  }
+
   findWordCardById(wordId) {
     return Array.from(document.querySelectorAll('#wordList .word-card')).find(card => String(card.dataset.id || '') === String(wordId)) || null;
   }
@@ -8280,8 +8298,11 @@ class JpVocabApp {
     }
     const previousInput = document.querySelector('.word-card-pronunciation-note-inline-input');
     if (previousInput && !this.saveWordCardPronunciationNote(previousInput, previousInput.dataset.pronunciationNoteWordId)) return false;
+    const sourceControl = event?.currentTarget && typeof event.currentTarget.closest === 'function' ? event.currentTarget : null;
     const card = this.findWordCardById(wordId);
-    const slot = card ? card.querySelector('.word-card-pronunciation-note-editor-slot') : null;
+    const scope = sourceControl?.closest('.word-title-group, .detail-pronunciation-note-controls')
+      || card?.querySelector('.word-title-group');
+    const slot = scope?.querySelector('.word-card-pronunciation-note-editor-slot');
     if (!slot) return false;
     const input = document.createElement('textarea');
     input.rows = 1;
@@ -8303,15 +8324,15 @@ class JpVocabApp {
         inputEvent.preventDefault();
         input.dataset.cancelled = 'true';
         slot.replaceChildren();
-        slot.closest('.word-title-group')?.classList.remove('pronunciation-note-editor-open');
-        const addButton = this.findWordCardById(word.id)?.querySelector('.word-card-pronunciation-note-add-btn');
+        scope?.classList.remove('pronunciation-note-editor-open');
+        const addButton = scope?.querySelector('.word-card-pronunciation-note-add-btn');
         if (addButton) addButton.focus();
       }
     });
     input.addEventListener('blur', () => {
       if (input.dataset.cancelled !== 'true' && input.dataset.committed !== 'true') this.saveWordCardPronunciationNote(input, word.id);
     });
-    slot.closest('.word-title-group')?.classList.add('pronunciation-note-editor-open');
+    scope?.classList.add('pronunciation-note-editor-open');
     slot.replaceChildren(input);
     requestAnimationFrame(() => {
       if (!input.isConnected) return;
@@ -8330,9 +8351,10 @@ class JpVocabApp {
     const editMode = input.dataset.noteEditMode === 'replace' ? 'replace' : 'append';
     input.dataset.committed = 'true';
     const slot = input.closest('.word-card-pronunciation-note-editor-slot');
+    const scope = input.closest('.word-title-group, .detail-pronunciation-note-controls');
     if (!enteredNote) {
       if (slot) slot.replaceChildren();
-      slot?.closest('.word-title-group')?.classList.remove('pronunciation-note-editor-open');
+      scope?.classList.remove('pronunciation-note-editor-open');
       return true;
     }
     const nextNote = (editMode === 'replace'
@@ -8340,7 +8362,7 @@ class JpVocabApp {
       : `${previousNote}${previousNote ? '\n' : ''}${enteredNote}`).slice(0, 500).trim();
     if (nextNote === previousNote) {
       if (slot) slot.replaceChildren();
-      slot?.closest('.word-title-group')?.classList.remove('pronunciation-note-editor-open');
+      scope?.classList.remove('pronunciation-note-editor-open');
       if (editMode === 'append') this.showToast('⚠️ 发音备注已达 500 字');
       return true;
     }
@@ -8407,25 +8429,35 @@ class JpVocabApp {
   refreshWordCardPronunciationNote(wordId) {
     const word = this.words.find(item => String(item.id) === String(wordId));
     const card = this.findWordCardById(wordId);
-    if (!word || !card) return false;
-    const slot = card.querySelector('.word-card-pronunciation-note-editor-slot');
-    if (slot) slot.replaceChildren();
-    card.querySelector('.word-title-group')?.classList.remove('pronunciation-note-editor-open');
-    const addButton = card.querySelector('.word-card-pronunciation-note-add-btn');
-    const hasNote = Boolean(String(word.pronunciationNote || '').trim());
-    if (addButton) {
-      addButton.setAttribute('aria-label', `${hasNote ? '追加' : '添加'}发音备注`);
-      addButton.setAttribute('title', `${hasNote ? '追加' : '添加'}发音备注`);
+    if (!word) return false;
+    let refreshed = false;
+    if (card) {
+      const slot = card.querySelector('.word-card-pronunciation-note-editor-slot');
+      if (slot) slot.replaceChildren();
+      card.querySelector('.word-title-group')?.classList.remove('pronunciation-note-editor-open');
+      const addButton = card.querySelector('.word-card-pronunciation-note-add-btn');
+      const hasNote = Boolean(String(word.pronunciationNote || '').trim());
+      if (addButton) {
+        addButton.setAttribute('aria-label', `${hasNote ? '追加' : '添加'}发音备注`);
+        addButton.setAttribute('title', `${hasNote ? '追加' : '添加'}发音备注`);
+      }
+      const existingDisplay = card.querySelector('.pronunciation-note-display');
+      const noteHtml = this.renderPronunciationNoteHtml(word);
+      if (existingDisplay) {
+        if (noteHtml) existingDisplay.outerHTML = noteHtml;
+        else existingDisplay.remove();
+      } else if (noteHtml && slot) {
+        slot.insertAdjacentHTML('afterend', noteHtml);
+      }
+      refreshed = true;
     }
-    const existingDisplay = card.querySelector('.pronunciation-note-display');
-    const noteHtml = this.renderPronunciationNoteHtml(word);
-    if (existingDisplay) {
-      if (noteHtml) existingDisplay.outerHTML = noteHtml;
-      else existingDisplay.remove();
-    } else if (noteHtml && slot) {
-      slot.insertAdjacentHTML('afterend', noteHtml);
+    const detailControls = document.getElementById('detailPronunciationNoteControls');
+    if (detailControls && String(this.currentDetailWordId || '') === String(wordId)) {
+      detailControls.classList.remove('pronunciation-note-editor-open');
+      detailControls.innerHTML = this.renderPronunciationNoteControlsHtml(word, 'detail');
+      refreshed = true;
     }
-    return true;
+    return refreshed;
   }
 
   refreshUserNoteReadOnlyViews(wordId) {
@@ -9927,6 +9959,11 @@ class JpVocabApp {
 
     document.getElementById('detailWord').textContent = word.word;
     document.getElementById('detailReading').textContent = word.reading || '';
+    const detailPronunciationNoteControls = document.getElementById('detailPronunciationNoteControls');
+    if (detailPronunciationNoteControls) {
+      detailPronunciationNoteControls.classList.remove('pronunciation-note-editor-open');
+      detailPronunciationNoteControls.innerHTML = this.renderPronunciationNoteControlsHtml(word, 'detail');
+    }
     const detailMeaning = document.getElementById('detailMeaning');
     if (detailMeaning) detailMeaning.innerHTML = this.renderPartOfSpeechLabel(word) + this.escapeHtml(word.meaning) + (word.krMeaning ? `<span class="kr-badge" style="margin-left:12px;">${this.escapeHtml(word.krMeaning)}</span>` : '');
 
@@ -10804,9 +10841,7 @@ class JpVocabApp {
             <div class="word-title-group">
               <span class="word-text">${this.escapeHtml(w.word)}</span>
               ${w.reading ? `<span class="word-reading">${this.escapeHtml(w.reading)}</span>` : ''}
-              <button type="button" class="word-card-pronunciation-note-add-btn" data-pronunciation-note-word-id="${this.escapeHtml(String(w.id))}" aria-label="${String(w.pronunciationNote || '').trim() ? '追加' : '添加'}发音备注" title="${String(w.pronunciationNote || '').trim() ? '追加' : '添加'}发音备注" onpointerdown="(window.app||window.vocabApp).startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId)" onclick="event.stopPropagation(); if(event.detail === 0) (window.app||window.vocabApp).startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId)">＋</button>
-              <span class="word-card-pronunciation-note-editor-slot" data-pronunciation-note-word-id="${this.escapeHtml(String(w.id))}"></span>
-              ${this.renderPronunciationNoteHtml(w)}
+              ${this.renderPronunciationNoteControlsHtml(w, 'list')}
               ${w.krMeaning ? `<span class="kr-meaning-badge">${this.escapeHtml(w.krMeaning)}</span>` : ''}
             </div>
             <div class="word-header-actions">
