@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-09-29.7",
+  "contractVersion": "2026-09-29.8",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -73,6 +73,8 @@
       ],
       "crossContextRefresh": true,
       "displayColor": "soft-apricot-distinct-from-reading-and-user-note",
+      "displaySizing": "use-available-title-row-space-until-jp-krMeaning-badge-or-header-actions",
+      "fixedDisplayWidthCap": false,
       "deletePlacement": "note-end",
       "deleteControl": "small-x",
       "directListCardEditing": true,

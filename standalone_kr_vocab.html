@@ -824,9 +824,10 @@ body::-webkit-scrollbar,
   display: flex;
   align-items: baseline;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   min-width: 0;
   flex: 1 1 auto;
+  overflow: hidden;
 }
 .word-title-group.pronunciation-note-editor-open {
   flex-wrap: nowrap;
@@ -905,14 +906,17 @@ body::-webkit-scrollbar,
   display: inline-flex;
   align-items: center;
   gap: 1px;
+  flex: 1 1 0;
   min-width: 0;
-  max-width: 132px;
+  max-width: 100%;
+  overflow: hidden;
   color: #f6a96b;
 }
 .pronunciation-note-text {
   display: inline-block;
+  flex: 0 1 auto;
   min-width: 0;
-  max-width: 112px;
+  max-width: none;
   overflow: hidden;
   color: #f6a96b;
   font-size: 11.5px;
@@ -1451,15 +1455,19 @@ body::-webkit-scrollbar,
   display: flex;
   align-items: baseline;
   gap: 10px;
-  flex-wrap: wrap;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
   min-width: 0;
+  overflow: hidden;
 }
 
 .detail-pronunciation-note-controls {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  flex: 1 1 0;
   min-width: 0;
+  overflow: hidden;
 }
 
 .detail-word {
@@ -16711,7 +16719,7 @@ body::-webkit-scrollbar,
     <div id="detailModal" class="modal-overlay" onclick="if(event.target.id === 'detailModal' && window.app) window.app.closeDetailModal()">
       <div class="modal-sheet detail-sheet">
         <div class="modal-header">
-          <div style="display:flex; align-items:center; gap:10px;">
+          <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1 1 auto;">
             <button id="detailBackBtn" class="icon-btn" onclick="app.goBackDetailModal()" style="display:none;" title="返回上一个表达">←</button>
             <div class="detail-title-group">
               <h3 id="detailWord" class="detail-word">单词</h3>

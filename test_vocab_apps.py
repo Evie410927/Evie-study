@@ -1196,6 +1196,19 @@ class VocabAppTester:
         ))
         self.assert_true(pronunciation_note_inline_card_controls, f"[{lang_name}] 发音备注-小加号空白追加、点击文字回填编辑及末尾小叉删除", "列表卡片缺少独立 pronunciationNote、15px 美化＋、同排空白追加、已有文字回填替换、Esc 取消或发音备注末尾×删除")
 
+        pronunciation_display_css_start = content.find('.pronunciation-note-display {')
+        pronunciation_display_css_end = content.find('.pronunciation-note-edit-btn {', pronunciation_display_css_start)
+        pronunciation_display_css = content[pronunciation_display_css_start:pronunciation_display_css_end] if pronunciation_display_css_start >= 0 and pronunciation_display_css_end > pronunciation_display_css_start else ''
+        pronunciation_note_flexible_width = all(token in pronunciation_display_css for token in (
+            'flex: 1 1 0;',
+            'max-width: 100%;',
+            'overflow: hidden;',
+            'flex: 0 1 auto;',
+            'max-width: none;',
+            'text-overflow: ellipsis;',
+        )) and 'max-width: 132px;' not in pronunciation_display_css and 'max-width: 112px;' not in pronunciation_display_css
+        self.assert_true(pronunciation_note_flexible_width, f"[{lang_name}] 发音备注-黄色文字使用状态操作区左侧全部剩余宽度", "发音备注仍有 112/132px 固定宽度上限，或缺少弹性收缩与真实空间不足时的省略保护")
+
         pronunciation_note_inline_persistence = all(token in content for token in (
             "word.pronunciationNote = nextNote;",
             "word.userEditedAt = editTime;",
@@ -4987,6 +5000,39 @@ class VocabAppTester:
                     && source.userNote === contentNote
                     && storedWord?.userNote === contentNote;
 
+                  const longLayoutNote = '这是用于验证黄色发音备注能够一直延伸到右侧学习状态标签左边的长内容'.repeat(4);
+                  source.pronunciationNote = longLayoutNote;
+                  app.renderWordList();
+                  card = app.findWordCardById(source.id);
+                  pronunciationDisplay = card?.querySelector('.pronunciation-note-display');
+                  const longPronunciationText = pronunciationDisplay?.querySelector('.pronunciation-note-text');
+                  const cardHeaderActions = card?.querySelector('.word-header-actions');
+                  const titleGroup = card?.querySelector('.word-title-group');
+                  const wideDisplayRect = pronunciationDisplay?.getBoundingClientRect();
+                  const cardActionsRect = cardHeaderActions?.getBoundingClientRect();
+                  const titleGroupRect = titleGroup?.getBoundingClientRect();
+                  const followingTitleItem = pronunciationDisplay?.nextElementSibling;
+                  const followingTitleItemRect = followingTitleItem?.getBoundingClientRect();
+                  const titleGroupGap = titleGroup ? parseFloat(getComputedStyle(titleGroup).gap || getComputedStyle(titleGroup).columnGap || '0') : 0;
+                  const followingTitleItemMarginLeft = followingTitleItem ? parseFloat(getComputedStyle(followingTitleItem).marginLeft || '0') : 0;
+                  const availableNoteRightEdge = followingTitleItemRect ? followingTitleItemRect.left - titleGroupGap - followingTitleItemMarginLeft : titleGroupRect?.right;
+                  const wideDisplayStyle = pronunciationDisplay ? getComputedStyle(pronunciationDisplay) : null;
+                  const wideTextStyle = longPronunciationText ? getComputedStyle(longPronunciationText) : null;
+                  const listNoteHasVisibleWidth = !!wideDisplayRect && wideDisplayRect.width > 0;
+                  const listNoteDoesNotOverlapActions = !!wideDisplayRect && !!cardActionsRect && wideDisplayRect.right <= cardActionsRect.left + 1;
+                  const listNoteReachesAvailableEdge = !!wideDisplayRect && Number.isFinite(availableNoteRightEdge) && Math.abs(wideDisplayRect.right - availableNoteRightEdge) <= 2;
+                  const listDisplayHasNoFixedCap = wideDisplayStyle?.maxWidth !== '132px';
+                  const listTextHasNoFixedCap = wideTextStyle?.maxWidth === 'none';
+                  const listLongTextActuallyEllipsizes = !!longPronunciationText && longPronunciationText.scrollWidth > longPronunciationText.clientWidth;
+                  const listNoteUsesAvailableWidth = listNoteHasVisibleWidth
+                    && listNoteDoesNotOverlapActions
+                    && listNoteReachesAvailableEdge
+                    && listDisplayHasNoFixedCap
+                    && listTextHasNoFixedCap
+                    && listLongTextActuallyEllipsizes;
+                  source.pronunciationNote = editedNote;
+                  app.renderWordList();
+
                   app.showDetailModal(source.id);
                   let detailControls = document.getElementById('detailPronunciationNoteControls');
                   const detailReading = document.getElementById('detailReading');
@@ -4994,6 +5040,27 @@ class VocabAppTester:
                     && detailReading?.nextElementSibling === detailControls
                     && detailControls?.querySelector('.pronunciation-note-text')?.textContent === editedNote
                     && !!detailControls?.querySelector('.word-card-pronunciation-note-add-btn');
+
+                  source.pronunciationNote = longLayoutNote;
+                  app.refreshWordCardPronunciationNote(source.id);
+                  detailControls = document.getElementById('detailPronunciationNoteControls');
+                  const detailPronunciationDisplay = detailControls?.querySelector('.pronunciation-note-display');
+                  const detailLongText = detailPronunciationDisplay?.querySelector('.pronunciation-note-text');
+                  const detailHeaderActions = document.querySelector('#detailModal .detail-header-actions');
+                  const detailTitleGroup = document.querySelector('#detailModal .detail-title-group');
+                  const detailDisplayRect = detailPronunciationDisplay?.getBoundingClientRect();
+                  const detailActionsRect = detailHeaderActions?.getBoundingClientRect();
+                  const detailTitleRect = detailTitleGroup?.getBoundingClientRect();
+                  const detailNoteUsesAvailableWidth = !!detailDisplayRect && !!detailActionsRect && !!detailTitleRect
+                    && detailDisplayRect.width > 0
+                    && detailDisplayRect.right <= detailActionsRect.left + 1
+                    && Math.abs(detailDisplayRect.right - detailTitleRect.right) <= 2
+                    && getComputedStyle(detailPronunciationDisplay).maxWidth !== '132px'
+                    && getComputedStyle(detailLongText).maxWidth === 'none'
+                    && detailLongText.scrollWidth > detailLongText.clientWidth;
+                  source.pronunciationNote = editedNote;
+                  app.refreshWordCardPronunciationNote(source.id);
+                  detailControls = document.getElementById('detailPronunciationNoteControls');
 
                   let detailEditButton = detailControls?.querySelector('.pronunciation-note-edit-btn');
                   dispatchPointerDown(detailEditButton);
@@ -5098,7 +5165,15 @@ class VocabAppTester:
                     editPointerDownKeptTarget,
                     editPrefilled,
                     existingClickReplaced,
+                    listNoteUsesAvailableWidth,
+                    listNoteHasVisibleWidth,
+                    listNoteDoesNotOverlapActions,
+                    listNoteReachesAvailableEdge,
+                    listDisplayHasNoFixedCap,
+                    listTextHasNoFixedCap,
+                    listLongTextActuallyEllipsizes,
                     detailOpenedWithSyncedNote,
+                    detailNoteUsesAvailableWidth,
                     detailEditPointerDownKeptTarget,
                     detailEditPrefilled,
                     detailEditSavedAndSynced,
