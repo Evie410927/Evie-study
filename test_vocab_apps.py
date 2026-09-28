@@ -1183,6 +1183,8 @@ class VocabAppTester:
             'align-items: center;',
             'width: 15px;',
             'height: 15px;',
+            'color: #f6a96b;',
+            'color: rgba(246, 169, 107, 0.72);',
         )) and 'prompt(' not in content and 'input.placeholder =' not in content and 'class="user-note-delete-btn"' not in content
         self.assert_true(pronunciation_note_inline_card_controls, f"[{lang_name}] 发音备注-小加号空白追加、点击文字回填编辑及末尾小叉删除", "列表卡片缺少独立 pronunciationNote、15px 美化＋、同排空白追加、已有文字回填替换、Esc 取消或发音备注末尾×删除")
 
@@ -4899,6 +4901,12 @@ class VocabAppTester:
                   let pronunciationDisplay = card?.querySelector('.pronunciation-note-display');
                   let deleteButton = pronunciationDisplay?.querySelector('.pronunciation-note-delete-btn');
                   let contentRow = card?.querySelector('.user-note-row');
+                  const pronunciationText = pronunciationDisplay?.querySelector('.pronunciation-note-text');
+                  const contentNoteText = contentRow?.querySelector('.user-note-text');
+                  const currentReading = card?.querySelector('.word-reading');
+                  const pronunciationColorDistinct = !!pronunciationText && !!contentNoteText && !!currentReading
+                    && getComputedStyle(pronunciationText).color !== getComputedStyle(contentNoteText).color
+                    && getComputedStyle(pronunciationText).color !== getComputedStyle(currentReading).color;
                   const enterSaved = source.pronunciationNote === '容易混淆：记忆方法 A'
                     && storedWord?.pronunciationNote === '容易混淆：记忆方法 A'
                     && pronunciationDisplay?.querySelector('.pronunciation-note-text')?.textContent === '容易混淆：记忆方法 A'
@@ -4979,6 +4987,7 @@ class VocabAppTester:
                     inlineOpened,
                     inputStaysOnTitleRow,
                     enterSaved,
+                    pronunciationColorDistinct,
                     existingNoteInputBlank,
                     emptyBlurPreserved,
                     blurModified,
