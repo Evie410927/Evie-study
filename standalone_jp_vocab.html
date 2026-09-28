@@ -828,7 +828,7 @@ body::-webkit-scrollbar,
   min-width: 0;
   flex: 1 1 auto;
 }
-.word-title-group.note-editor-open {
+.word-title-group.pronunciation-note-editor-open {
   flex-wrap: nowrap;
   align-items: center;
 }
@@ -846,7 +846,7 @@ body::-webkit-scrollbar,
   font-weight: 500;
 }
 
-.word-card-note-add-btn {
+.word-card-pronunciation-note-add-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -865,23 +865,23 @@ body::-webkit-scrollbar,
   cursor: pointer;
   opacity: 0.78;
 }
-.word-card-note-add-btn:hover,
-.word-card-note-add-btn:focus-visible {
+.word-card-pronunciation-note-add-btn:hover,
+.word-card-pronunciation-note-add-btn:focus-visible {
   border-color: var(--accent-primary);
   color: var(--accent-primary);
   background: rgba(236, 72, 153, 0.16);
   opacity: 1;
   outline: none;
 }
-.word-card-note-editor-slot {
+.word-card-pronunciation-note-editor-slot {
   display: inline-flex;
   flex: 0 1 145px;
   min-width: 72px;
   max-width: 145px;
   margin: 0;
 }
-.word-card-note-editor-slot:empty { display: none; }
-.word-card-note-inline-input {
+.word-card-pronunciation-note-editor-slot:empty { display: none; }
+.word-card-pronunciation-note-inline-input {
   width: 100%;
   min-width: 0;
   height: 22px;
@@ -896,6 +896,48 @@ body::-webkit-scrollbar,
   outline: none;
   box-shadow: 0 0 0 2px rgba(236, 72, 153, 0.12);
 }
+.pronunciation-note-display {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+  max-width: 132px;
+  color: var(--text-secondary);
+}
+.pronunciation-note-text {
+  display: inline-block;
+  min-width: 0;
+  max-width: 112px;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pronunciation-note-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.pronunciation-note-delete-btn:hover,
+.pronunciation-note-delete-btn:focus-visible {
+  background: rgba(236, 72, 153, 0.14);
+  color: var(--accent-primary);
+  outline: none;
+}
+.word-title-group.pronunciation-note-editor-open .pronunciation-note-display { display: none; }
 
 .mastered-badge {
   font-size: 11px;
@@ -1581,29 +1623,6 @@ body::-webkit-scrollbar,
 }
 .user-note-text::before { content: "【"; }
 .user-note-text::after { content: "】"; }
-.user-note-delete-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
-  margin-top: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1;
-  cursor: pointer;
-}
-.user-note-delete-btn:hover,
-.user-note-delete-btn:focus-visible {
-  background: rgba(236, 72, 153, 0.14);
-  color: var(--accent-primary);
-  outline: none;
-}
 .user-note-row + .word-example-preview {
   margin-top: 3px;
   padding-top: 6px;
@@ -7191,7 +7210,7 @@ function createSupabaseSyncMethods(language) {
     },
 
     inferFieldUpdatedAt(word, field, overallAt = 0) {
-      const contentFields = new Set(['word', 'reading', 'meaning', 'partOfSpeech', 'example', 'exampleTrans', 'examples', 'notes', 'userNote']);
+      const contentFields = new Set(['word', 'reading', 'meaning', 'partOfSpeech', 'example', 'exampleTrans', 'examples', 'notes', 'userNote', 'pronunciationNote']);
       if (contentFields.has(field)) {
         return Number(word && (word.userEditedAt || word.createdAt) || overallAt || 1);
       }
@@ -7241,7 +7260,7 @@ function createSupabaseSyncMethods(language) {
       (this.words || []).forEach(word => {
         if (!word || !word.id || !word.fieldUpdatedAt || typeof word.fieldUpdatedAt !== 'object') return;
         const userEditedAt = Number(word.userEditedAt || 0);
-        const contentFields = new Set(['word', 'reading', 'meaning', 'partOfSpeech', 'example', 'exampleTrans', 'examples', 'notes', 'userNote', 'krMeaning']);
+        const contentFields = new Set(['word', 'reading', 'meaning', 'partOfSpeech', 'example', 'exampleTrans', 'examples', 'notes', 'userNote', 'pronunciationNote', 'krMeaning']);
         const fields = Object.keys(word.fieldUpdatedAt).filter(field => {
           const fieldAt = Number(word.fieldUpdatedAt[field] || 0);
           if (fieldAt <= 0) return false;
@@ -8211,61 +8230,67 @@ class JpVocabApp {
     if (!note) return '';
     const safeId = this.escapeHtml(String(word.id));
     const safeContext = this.escapeHtml(String(context));
-    const deleteControl = context === 'list'
-      ? `<button type="button" class="user-note-delete-btn" data-user-note-word-id="${safeId}" aria-label="删除记忆备注" title="删除记忆备注" onpointerdown="(window.app||window.vocabApp).deleteWordCardUserNote(event, this.dataset.userNoteWordId)" onclick="event.stopPropagation(); if(event.detail === 0) (window.app||window.vocabApp).deleteWordCardUserNote(event, this.dataset.userNoteWordId)">×</button>`
-      : '';
-    return `<div class="user-note-row" data-user-note-word-id="${safeId}" data-user-note-context="${safeContext}"><div class="user-note-display"><span class="user-note-text">${this.escapeHtml(note)}</span>${deleteControl}</div></div>`;
+    return `<div class="user-note-row" data-user-note-word-id="${safeId}" data-user-note-context="${safeContext}"><div class="user-note-display"><span class="user-note-text">${this.escapeHtml(note)}</span></div></div>`;
+  }
+
+  renderPronunciationNoteHtml(word) {
+    if (!word || !word.id) return '';
+    const note = typeof word.pronunciationNote === 'string' ? word.pronunciationNote.trim() : '';
+    if (!note) return '';
+    const safeId = this.escapeHtml(String(word.id));
+    const safeNote = this.escapeHtml(note);
+    return `<span class="pronunciation-note-display" data-pronunciation-note-word-id="${safeId}" title="${safeNote}"><span class="pronunciation-note-text">${safeNote}</span><button type="button" class="pronunciation-note-delete-btn" data-pronunciation-note-word-id="${safeId}" aria-label="删除发音备注" title="删除发音备注" onpointerdown="(window.app||window.vocabApp).deleteWordCardPronunciationNote(event, this.dataset.pronunciationNoteWordId)" onclick="event.stopPropagation(); if(event.detail === 0) (window.app||window.vocabApp).deleteWordCardPronunciationNote(event, this.dataset.pronunciationNoteWordId)">×</button></span>`;
   }
 
   findWordCardById(wordId) {
     return Array.from(document.querySelectorAll('#wordList .word-card')).find(card => String(card.dataset.id || '') === String(wordId)) || null;
   }
 
-  startWordCardUserNoteEdit(event, wordId) {
+  startWordCardPronunciationNoteEdit(event, wordId) {
     if (event) {
       event.preventDefault();
       event.stopPropagation();
     }
     const word = this.words.find(item => String(item.id) === String(wordId));
     if (!word) return false;
-    const openInput = Array.from(document.querySelectorAll('.word-card-note-inline-input')).find(input => String(input.dataset.userNoteWordId || '') === String(wordId));
+    const openInput = Array.from(document.querySelectorAll('.word-card-pronunciation-note-inline-input')).find(input => String(input.dataset.pronunciationNoteWordId || '') === String(wordId));
     if (openInput) {
       openInput.focus();
       openInput.select();
       return true;
     }
-    const previousInput = document.querySelector('.word-card-note-inline-input');
-    if (previousInput && !this.saveWordCardUserNote(previousInput, previousInput.dataset.userNoteWordId)) return false;
+    const previousInput = document.querySelector('.word-card-pronunciation-note-inline-input');
+    if (previousInput && !this.saveWordCardPronunciationNote(previousInput, previousInput.dataset.pronunciationNoteWordId)) return false;
     const card = this.findWordCardById(wordId);
-    const slot = card ? card.querySelector('.word-card-note-editor-slot') : null;
+    const slot = card ? card.querySelector('.word-card-pronunciation-note-editor-slot') : null;
     if (!slot) return false;
     const input = document.createElement('input');
     input.type = 'text';
-    input.className = 'word-card-note-inline-input';
+    input.className = 'word-card-pronunciation-note-inline-input';
     input.maxLength = 500;
     input.value = '';
-    input.setAttribute('aria-label', `${word.word || '当前单词'}的记忆备注`);
-    input.dataset.userNoteWordId = String(word.id);
+    input.setAttribute('aria-label', `${word.word || '当前单词'}的发音备注`);
+    input.dataset.pronunciationNoteWordId = String(word.id);
     input.addEventListener('pointerdown', inputEvent => inputEvent.stopPropagation());
     input.addEventListener('click', inputEvent => inputEvent.stopPropagation());
     input.addEventListener('keydown', inputEvent => {
       inputEvent.stopPropagation();
       if (inputEvent.key === 'Enter') {
         inputEvent.preventDefault();
-        this.saveWordCardUserNote(input, word.id);
+        this.saveWordCardPronunciationNote(input, word.id);
       } else if (inputEvent.key === 'Escape') {
         inputEvent.preventDefault();
         input.dataset.cancelled = 'true';
         slot.replaceChildren();
-        slot.closest('.word-title-group')?.classList.remove('note-editor-open');
-        const addButton = this.findWordCardById(word.id)?.querySelector('.word-card-note-add-btn');
+        slot.closest('.word-title-group')?.classList.remove('pronunciation-note-editor-open');
+        const addButton = this.findWordCardById(word.id)?.querySelector('.word-card-pronunciation-note-add-btn');
         if (addButton) addButton.focus();
       }
     });
     input.addEventListener('blur', () => {
-      if (input.dataset.cancelled !== 'true' && input.dataset.committed !== 'true') this.saveWordCardUserNote(input, word.id);
+      if (input.dataset.cancelled !== 'true' && input.dataset.committed !== 'true') this.saveWordCardPronunciationNote(input, word.id);
     });
-    slot.closest('.word-title-group')?.classList.add('note-editor-open');
+    slot.closest('.word-title-group')?.classList.add('pronunciation-note-editor-open');
     slot.replaceChildren(input);
     requestAnimationFrame(() => {
       if (!input.isConnected) return;
@@ -8275,24 +8300,24 @@ class JpVocabApp {
     return true;
   }
 
-  saveWordCardUserNote(input, wordId) {
+  saveWordCardPronunciationNote(input, wordId) {
     if (!input || input.dataset.committed === 'true') return false;
     const word = this.words.find(item => String(item.id) === String(wordId));
     if (!word) return false;
     const enteredNote = String(input.value || '').trim();
-    const previousNote = typeof word.userNote === 'string' ? word.userNote.trim() : '';
+    const previousNote = typeof word.pronunciationNote === 'string' ? word.pronunciationNote.trim() : '';
     input.dataset.committed = 'true';
-    const slot = input.closest('.word-card-note-editor-slot');
+    const slot = input.closest('.word-card-pronunciation-note-editor-slot');
     if (!enteredNote) {
       if (slot) slot.replaceChildren();
-      slot?.closest('.word-title-group')?.classList.remove('note-editor-open');
+      slot?.closest('.word-title-group')?.classList.remove('pronunciation-note-editor-open');
       return true;
     }
     const nextNote = `${previousNote}${previousNote ? '\n' : ''}${enteredNote}`.slice(0, 500).trim();
     if (nextNote === previousNote) {
       if (slot) slot.replaceChildren();
-      slot?.closest('.word-title-group')?.classList.remove('note-editor-open');
-      this.showToast('⚠️ 记忆备注已达 500 字');
+      slot?.closest('.word-title-group')?.classList.remove('pronunciation-note-editor-open');
+      this.showToast('⚠️ 发音备注已达 500 字');
       return true;
     }
     const previousState = {
@@ -8301,13 +8326,13 @@ class JpVocabApp {
       fieldUpdatedAt: word.fieldUpdatedAt && typeof word.fieldUpdatedAt === 'object' ? { ...word.fieldUpdatedAt } : word.fieldUpdatedAt,
       pending: this.getPendingCloudChanges ? this.getPendingCloudChanges() : null
     };
-    word.userNote = nextNote;
+    word.pronunciationNote = nextNote;
     const editTime = Math.max(Date.now(), Number(word.updatedAt || 0) + 1);
     word.userEditedAt = editTime;
     word.updatedAt = editTime;
     const persisted = this.saveData();
     if (!persisted) {
-      word.userNote = previousNote;
+      word.pronunciationNote = previousNote;
       word.userEditedAt = previousState.userEditedAt;
       word.updatedAt = previousState.updatedAt;
       word.fieldUpdatedAt = previousState.fieldUpdatedAt;
@@ -8317,33 +8342,32 @@ class JpVocabApp {
       input.focus();
       return false;
     }
-    this.refreshWordCardUserNote(word.id);
-    this.refreshUserNoteReadOnlyViews(word.id);
-    this.showToast('✅ 记忆备注已保存');
+    this.refreshWordCardPronunciationNote(word.id);
+    this.showToast('✅ 发音备注已保存');
     return true;
   }
 
-  deleteWordCardUserNote(event, wordId) {
+  deleteWordCardPronunciationNote(event, wordId) {
     if (event) {
       event.preventDefault();
       event.stopPropagation();
     }
     const word = this.words.find(item => String(item.id) === String(wordId));
-    if (!word || !String(word.userNote || '').trim()) return false;
-    const previousNote = word.userNote;
+    if (!word || !String(word.pronunciationNote || '').trim()) return false;
+    const previousNote = word.pronunciationNote;
     const previousState = {
       userEditedAt: word.userEditedAt,
       updatedAt: word.updatedAt,
       fieldUpdatedAt: word.fieldUpdatedAt && typeof word.fieldUpdatedAt === 'object' ? { ...word.fieldUpdatedAt } : word.fieldUpdatedAt,
       pending: this.getPendingCloudChanges ? this.getPendingCloudChanges() : null
     };
-    word.userNote = '';
+    word.pronunciationNote = '';
     const editTime = Math.max(Date.now(), Number(word.updatedAt || 0) + 1);
     word.userEditedAt = editTime;
     word.updatedAt = editTime;
     const persisted = this.saveData();
     if (!persisted) {
-      word.userNote = previousNote;
+      word.pronunciationNote = previousNote;
       word.userEditedAt = previousState.userEditedAt;
       word.updatedAt = previousState.updatedAt;
       word.fieldUpdatedAt = previousState.fieldUpdatedAt;
@@ -8351,33 +8375,31 @@ class JpVocabApp {
       if (this.refreshWordFingerprints) this.refreshWordFingerprints();
       return false;
     }
-    this.refreshWordCardUserNote(word.id);
-    this.refreshUserNoteReadOnlyViews(word.id);
-    this.showToast('✅ 记忆备注已删除');
+    this.refreshWordCardPronunciationNote(word.id);
+    this.showToast('✅ 发音备注已删除');
     return true;
   }
 
-  refreshWordCardUserNote(wordId) {
+  refreshWordCardPronunciationNote(wordId) {
     const word = this.words.find(item => String(item.id) === String(wordId));
     const card = this.findWordCardById(wordId);
     if (!word || !card) return false;
-    const slot = card.querySelector('.word-card-note-editor-slot');
+    const slot = card.querySelector('.word-card-pronunciation-note-editor-slot');
     if (slot) slot.replaceChildren();
-    card.querySelector('.word-title-group')?.classList.remove('note-editor-open');
-    const addButton = card.querySelector('.word-card-note-add-btn');
-    const hasNote = Boolean(String(word.userNote || '').trim());
+    card.querySelector('.word-title-group')?.classList.remove('pronunciation-note-editor-open');
+    const addButton = card.querySelector('.word-card-pronunciation-note-add-btn');
+    const hasNote = Boolean(String(word.pronunciationNote || '').trim());
     if (addButton) {
-      addButton.setAttribute('aria-label', `${hasNote ? '追加' : '添加'}记忆备注`);
-      addButton.setAttribute('title', `${hasNote ? '追加' : '添加'}记忆备注`);
+      addButton.setAttribute('aria-label', `${hasNote ? '追加' : '添加'}发音备注`);
+      addButton.setAttribute('title', `${hasNote ? '追加' : '添加'}发音备注`);
     }
-    const existingRow = card.querySelector('.user-note-row');
-    const noteHtml = this.renderUserNoteHtml(word, 'list');
-    if (existingRow) {
-      if (noteHtml) existingRow.outerHTML = noteHtml;
-      else existingRow.remove();
-    } else if (noteHtml) {
-      const meaning = card.querySelector('.word-meaning');
-      if (meaning) meaning.insertAdjacentHTML('afterend', noteHtml);
+    const existingDisplay = card.querySelector('.pronunciation-note-display');
+    const noteHtml = this.renderPronunciationNoteHtml(word);
+    if (existingDisplay) {
+      if (noteHtml) existingDisplay.outerHTML = noteHtml;
+      else existingDisplay.remove();
+    } else if (noteHtml && slot) {
+      slot.insertAdjacentHTML('afterend', noteHtml);
     }
     return true;
   }
@@ -10034,6 +10056,7 @@ class JpVocabApp {
         examples,
         tags,
         userNote,
+        pronunciationNote: '',
         mastered: draftMastered,
         rating: draftRating,
         manualSimilarWordIds: [...draftSimilarWordIds],
@@ -10757,8 +10780,9 @@ class JpVocabApp {
             <div class="word-title-group">
               <span class="word-text">${this.escapeHtml(w.word)}</span>
               ${w.reading ? `<span class="word-reading">${this.escapeHtml(w.reading)}</span>` : ''}
-              <button type="button" class="word-card-note-add-btn" data-user-note-word-id="${this.escapeHtml(String(w.id))}" aria-label="${String(w.userNote || '').trim() ? '追加' : '添加'}记忆备注" title="${String(w.userNote || '').trim() ? '追加' : '添加'}记忆备注" onpointerdown="(window.app||window.vocabApp).startWordCardUserNoteEdit(event, this.dataset.userNoteWordId)" onclick="event.stopPropagation(); if(event.detail === 0) (window.app||window.vocabApp).startWordCardUserNoteEdit(event, this.dataset.userNoteWordId)">＋</button>
-              <span class="word-card-note-editor-slot" data-user-note-word-id="${this.escapeHtml(String(w.id))}"></span>
+              <button type="button" class="word-card-pronunciation-note-add-btn" data-pronunciation-note-word-id="${this.escapeHtml(String(w.id))}" aria-label="${String(w.pronunciationNote || '').trim() ? '追加' : '添加'}发音备注" title="${String(w.pronunciationNote || '').trim() ? '追加' : '添加'}发音备注" onpointerdown="(window.app||window.vocabApp).startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId)" onclick="event.stopPropagation(); if(event.detail === 0) (window.app||window.vocabApp).startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId)">＋</button>
+              <span class="word-card-pronunciation-note-editor-slot" data-pronunciation-note-word-id="${this.escapeHtml(String(w.id))}"></span>
+              ${this.renderPronunciationNoteHtml(w)}
               ${w.krMeaning ? `<span class="kr-meaning-badge">${this.escapeHtml(w.krMeaning)}</span>` : ''}
             </div>
             <div class="word-header-actions">

@@ -1128,7 +1128,7 @@ class VocabAppTester:
         self.assert_true(detail_header_status_control and detail_status_before_rating, f"[{lang_name}] 详情弹窗-顶部星级左侧显示可直接切换的学习中/已掌握 Label", "详情标题栏缺少状态 Label、未绑定切换同步，或状态按钮没有位于星级左侧")
 
         # ---------------------------------------------------------------------
-        # 测试点 31B: 用户记忆备注支持列表卡片原位维护并按内容条件展示
+        # 测试点 31B: 内容说明与标题行发音备注使用完全独立的字段和交互
         # ---------------------------------------------------------------------
         user_note_views = all(token in content for token in (
             'id="detailUserNote"',
@@ -1155,38 +1155,45 @@ class VocabAppTester:
         ))
         self.assert_true(user_note_modal_editor, f"[{lang_name}] 自定义说明-编辑弹窗说明字段支持回填、保存与清空", "编辑弹窗缺少说明字段，或 userNote 未接入新增/编辑保存流程")
 
-        user_note_inline_card_controls = all(token in content for token in (
-            'class="word-card-note-add-btn"',
-            'class="word-card-note-editor-slot"',
-            'class="user-note-delete-btn"',
-            'startWordCardUserNoteEdit(event, this.dataset.userNoteWordId)',
-            'saveWordCardUserNote(input, wordId)',
-            'deleteWordCardUserNote(event, wordId)',
+        pronunciation_note_inline_card_controls = all(token in content for token in (
+            'class="word-card-pronunciation-note-add-btn"',
+            'class="word-card-pronunciation-note-editor-slot"',
+            'class="pronunciation-note-delete-btn"',
+            'startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId)',
+            'saveWordCardPronunciationNote(input, wordId)',
+            'deleteWordCardPronunciationNote(event, wordId)',
+            "const note = typeof word.pronunciationNote === 'string' ? word.pronunciationNote.trim() : '';",
+            'renderPronunciationNoteHtml(word)',
             "input.maxLength = 500;",
             "input.value = '';",
             "if (inputEvent.key === 'Enter')",
             "inputEvent.key === 'Escape'",
             "input.addEventListener('blur'",
             "const nextNote = `${previousNote}${previousNote ? '\\n' : ''}${enteredNote}`.slice(0, 500).trim();",
-            "this.showToast('✅ 记忆备注已保存')",
-            "this.showToast('✅ 记忆备注已删除')",
-            '.word-title-group.note-editor-open {',
+            "this.showToast('✅ 发音备注已保存')",
+            "this.showToast('✅ 发音备注已删除')",
+            '.word-title-group.pronunciation-note-editor-open {',
             'flex-wrap: nowrap;',
             'align-items: center;',
             'width: 15px;',
             'height: 15px;',
-        )) and 'prompt(' not in content and 'input.placeholder =' not in content
-        self.assert_true(user_note_inline_card_controls, f"[{lang_name}] 记忆备注-读音右侧美化小加号与同排空白输入及末尾小叉删除", "列表卡片缺少 15px 美化＋、同排空白输入、追加保存、Esc 取消或备注末尾×删除")
+        )) and 'prompt(' not in content and 'input.placeholder =' not in content and 'class="user-note-delete-btn"' not in content
+        self.assert_true(pronunciation_note_inline_card_controls, f"[{lang_name}] 发音备注-读音右侧美化小加号与同排空白输入及末尾小叉删除", "列表卡片缺少独立 pronunciationNote、15px 美化＋、同排空白输入、追加保存、Esc 取消或发音备注末尾×删除")
 
-        user_note_inline_persistence = all(token in content for token in (
-            "word.userNote = nextNote;",
+        pronunciation_note_inline_persistence = all(token in content for token in (
+            "word.pronunciationNote = nextNote;",
             "word.userEditedAt = editTime;",
             "word.updatedAt = editTime;",
             "const persisted = this.saveData();",
             "if (!persisted) {",
-            "this.refreshUserNoteReadOnlyViews(word.id);",
+            "this.refreshWordCardPronunciationNote(word.id);",
+            "'userNote', 'pronunciationNote'",
         ))
-        self.assert_true(user_note_inline_persistence, f"[{lang_name}] 记忆备注-卡片原位增删复用持久化与逐字段云同步", "原位备注未更新时间、未经过 saveData、失败时错误关闭，或未刷新只读视图")
+        save_start = content.find('saveWordCardPronunciationNote(input, wordId)')
+        save_end = content.find('deleteWordCardPronunciationNote(event, wordId)', save_start)
+        pronunciation_save_body = content[save_start:save_end] if save_start >= 0 and save_end > save_start else ''
+        pronunciation_note_field_isolation = 'word.userNote' not in pronunciation_save_body and 'refreshUserNoteReadOnlyViews' not in pronunciation_save_body
+        self.assert_true(pronunciation_note_inline_persistence and pronunciation_note_field_isolation, f"[{lang_name}] 发音备注-独立字段持久化与逐字段云同步", "发音备注未更新时间、未经过 saveData、未登记云同步字段，或错误读写了 userNote")
 
         user_note_style = all(token in content for token in (
             '.user-note-display {',
@@ -4685,7 +4692,9 @@ class VocabAppTester:
                     && after.includes('】');
                 };
                 source.userNote = '';
+                source.pronunciationNote = '';
                 target.userNote = '';
+                target.pronunciationNote = '';
                 app.currentFilter = 'all';
                 app.searchQuery = String(source.word || '').toLowerCase();
                 app.currentPage = 1;
@@ -4705,12 +4714,12 @@ class VocabAppTester:
                 app.renderCurrentCard();
                 const reviewSlot = document.getElementById('cardBackUserNote');
                 const blankReviewCollapsed = reviewSlot?.innerHTML === '' && getComputedStyle(reviewSlot).display === 'none';
-                const blankAddButton = blankListCard?.querySelector('.word-card-note-add-btn');
+                const blankAddButton = blankListCard?.querySelector('.word-card-pronunciation-note-add-btn');
                 const blankReading = blankListCard?.querySelector('.word-reading');
                 const inlineControlsScoped = !!blankAddButton
                   && blankReading?.nextElementSibling === blankAddButton
-                  && !blankListCard.querySelector('.user-note-delete-btn, .word-card-note-inline-input')
-                  && !document.querySelector('#detailModal .word-card-note-add-btn, #flashcard .word-card-note-add-btn, .similar-word-chip .word-card-note-add-btn');
+                  && !blankListCard.querySelector('.pronunciation-note-display, .pronunciation-note-delete-btn, .word-card-pronunciation-note-inline-input')
+                  && !document.querySelector('#detailModal .word-card-pronunciation-note-add-btn, #flashcard .word-card-pronunciation-note-add-btn, .similar-word-chip .word-card-pronunciation-note-add-btn');
 
                 app.showDetailModal(sourceId);
                 document.getElementById('detailEditBtn')?.click();
@@ -4810,8 +4819,8 @@ class VocabAppTester:
             """)
             self.assert_true(
                 bool(user_note_lifecycle and all(user_note_lifecycle.values())),
-                f"[{lang_name}] 浏览器记忆备注-列表原位入口与四视图条件展示及清空零占位全流程",
-                f"记忆备注列表入口、弹窗兼容或条件展示失败: {user_note_lifecycle}",
+                f"[{lang_name}] 浏览器内容说明-编辑弹窗与四视图条件展示及清空零占位全流程",
+                f"内容说明弹窗兼容或条件展示失败: {user_note_lifecycle}",
             )
             note_compact_keys = ('listCompact', 'detailCompact', 'reviewCompact', 'similarCompact')
             self.assert_true(
@@ -4826,7 +4835,7 @@ class VocabAppTester:
                 f"自定义说明与中文释义的计算后颜色不一致: {user_note_lifecycle}",
             )
 
-            inline_note_crud = driver.execute_script("""
+            pronunciation_note_crud = driver.execute_script("""
                 const app = window.app;
                 const source = app.words.find(word => word && word.id && word.reading) || app.words[0];
                 if (!source) return null;
@@ -4837,7 +4846,8 @@ class VocabAppTester:
                   searchQuery: app.searchQuery,
                   currentPage: app.currentPage,
                   selectedPartOfSpeech: Array.from(app.selectedPartOfSpeech || []),
-                  selectedTags: Array.from(app.selectedTags || [])
+                  selectedTags: Array.from(app.selectedTags || []),
+                  pendingCloudChanges: JSON.parse(JSON.stringify(app.getPendingCloudChanges()))
                 };
                 const dispatchPointerDown = element => element?.dispatchEvent(new PointerEvent('pointerdown', {
                   bubbles:true, cancelable:true, pointerId:846, pointerType:'mouse', button:0, buttons:1
@@ -4845,7 +4855,12 @@ class VocabAppTester:
                 try {
                   app.closeWordModal();
                   app.closeDetailModal();
-                  source.userNote = '';
+                  const contentNote = '下方内容解释备注';
+                  source.userNote = contentNote;
+                  source.pronunciationNote = '';
+                  app.saveData();
+                  app.savePendingCloudChanges({});
+                  app.refreshWordFingerprints();
                   app.currentFilter = 'all';
                   app.subFilter = 'all';
                   app.selectedPartOfSpeech = new Set();
@@ -4856,12 +4871,12 @@ class VocabAppTester:
 
                   let card = app.findWordCardById(source.id);
                   const reading = card?.querySelector('.word-reading');
-                  let addButton = card?.querySelector('.word-card-note-add-btn');
+                  let addButton = card?.querySelector('.word-card-pronunciation-note-add-btn');
                   const addImmediatelyAfterReading = !!reading && reading.nextElementSibling === addButton;
                   const addStyle = addButton ? getComputedStyle(addButton) : null;
                   const addButtonCompact = !!addStyle && parseFloat(addStyle.width) <= 16 && parseFloat(addStyle.height) <= 16;
                   dispatchPointerDown(addButton);
-                  let input = card?.querySelector('.word-card-note-inline-input');
+                  let input = card?.querySelector('.word-card-pronunciation-note-inline-input');
                   const inputRect = input?.getBoundingClientRect();
                   const readingRect = reading?.getBoundingClientRect();
                   const inputStaysOnTitleRow = !!inputRect && !!readingRect
@@ -4875,49 +4890,65 @@ class VocabAppTester:
 
                   let storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(source.id));
                   card = app.findWordCardById(source.id);
-                  let noteRow = card?.querySelector('.user-note-row');
-                  let deleteButton = noteRow?.querySelector('.user-note-delete-btn');
-                  const enterSaved = source.userNote === '容易混淆：记忆方法 A'
-                    && storedWord?.userNote === '容易混淆：记忆方法 A'
-                    && noteRow?.querySelector('.user-note-text')?.textContent === '容易混淆：记忆方法 A'
+                  let pronunciationDisplay = card?.querySelector('.pronunciation-note-display');
+                  let deleteButton = pronunciationDisplay?.querySelector('.pronunciation-note-delete-btn');
+                  let contentRow = card?.querySelector('.user-note-row');
+                  const enterSaved = source.pronunciationNote === '容易混淆：记忆方法 A'
+                    && storedWord?.pronunciationNote === '容易混淆：记忆方法 A'
+                    && pronunciationDisplay?.querySelector('.pronunciation-note-text')?.textContent === '容易混淆：记忆方法 A'
+                    && source.userNote === contentNote
+                    && storedWord?.userNote === contentNote
+                    && contentRow?.querySelector('.user-note-text')?.textContent === contentNote
+                    && !contentRow?.querySelector('.pronunciation-note-delete-btn')
                     && !!deleteButton
-                    && !card?.querySelector('.word-card-note-inline-input');
+                    && !card?.querySelector('.word-card-pronunciation-note-inline-input');
 
-                  addButton = card?.querySelector('.word-card-note-add-btn');
+                  addButton = card?.querySelector('.word-card-pronunciation-note-add-btn');
                   dispatchPointerDown(addButton);
-                  input = app.findWordCardById(source.id)?.querySelector('.word-card-note-inline-input');
+                  input = app.findWordCardById(source.id)?.querySelector('.word-card-pronunciation-note-inline-input');
                   const existingNoteInputBlank = input?.value === '' && input.getAttribute('placeholder') === null;
                   input?.dispatchEvent(new Event('blur', {bubbles:false}));
-                  const emptyBlurPreserved = source.userNote === '容易混淆：记忆方法 A'
-                    && app.findWordCardById(source.id)?.querySelector('.user-note-text')?.textContent === '容易混淆：记忆方法 A';
+                  const emptyBlurPreserved = source.pronunciationNote === '容易混淆：记忆方法 A'
+                    && source.userNote === contentNote
+                    && app.findWordCardById(source.id)?.querySelector('.pronunciation-note-text')?.textContent === '容易混淆：记忆方法 A';
                   card = app.findWordCardById(source.id);
-                  addButton = card?.querySelector('.word-card-note-add-btn');
+                  addButton = card?.querySelector('.word-card-pronunciation-note-add-btn');
                   dispatchPointerDown(addButton);
-                  input = app.findWordCardById(source.id)?.querySelector('.word-card-note-inline-input');
+                  input = app.findWordCardById(source.id)?.querySelector('.word-card-pronunciation-note-inline-input');
                   if (input) input.value = '容易混淆：记忆方法 B';
                   input?.dispatchEvent(new Event('blur', {bubbles:false}));
                   storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(source.id));
                   const appendedNote = '容易混淆：记忆方法 A\\n容易混淆：记忆方法 B';
-                  const blurModified = source.userNote === appendedNote && storedWord?.userNote === appendedNote;
+                  const blurModified = source.pronunciationNote === appendedNote
+                    && storedWord?.pronunciationNote === appendedNote
+                    && source.userNote === contentNote
+                    && storedWord?.userNote === contentNote;
 
                   card = app.findWordCardById(source.id);
-                  addButton = card?.querySelector('.word-card-note-add-btn');
+                  addButton = card?.querySelector('.word-card-pronunciation-note-add-btn');
                   dispatchPointerDown(addButton);
-                  input = app.findWordCardById(source.id)?.querySelector('.word-card-note-inline-input');
+                  input = app.findWordCardById(source.id)?.querySelector('.word-card-pronunciation-note-inline-input');
                   if (input) input.value = '这段内容应被取消';
                   input?.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
-                  const escapeCancelled = source.userNote === appendedNote
-                    && !app.findWordCardById(source.id)?.querySelector('.word-card-note-inline-input');
+                  const escapeCancelled = source.pronunciationNote === appendedNote
+                    && source.userNote === contentNote
+                    && !app.findWordCardById(source.id)?.querySelector('.word-card-pronunciation-note-inline-input');
 
                   card = app.findWordCardById(source.id);
-                  deleteButton = card?.querySelector('.user-note-delete-btn');
+                  deleteButton = card?.querySelector('.pronunciation-note-delete-btn');
                   dispatchPointerDown(deleteButton);
                   storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(source.id));
                   card = app.findWordCardById(source.id);
-                  const deletedInline = source.userNote === '' && storedWord?.userNote === ''
-                    && !card?.querySelector('.user-note-row, .user-note-delete-btn');
+                  contentRow = card?.querySelector('.user-note-row');
+                  const deletedInline = source.pronunciationNote === '' && storedWord?.pronunciationNote === ''
+                    && !card?.querySelector('.pronunciation-note-display, .pronunciation-note-delete-btn');
+                  const contentNoteUnaffected = source.userNote === contentNote
+                    && storedWord?.userNote === contentNote
+                    && contentRow?.querySelector('.user-note-text')?.textContent === contentNote;
                   const pendingMeta = app.getPendingCloudMeta(app.getPendingCloudChanges()[String(source.id)]);
-                  const cloudFieldTracked = pendingMeta.fields.includes('userNote') && Number(source.fieldUpdatedAt?.userNote || 0) > 0;
+                  const cloudFieldTracked = pendingMeta.fields.includes('pronunciationNote')
+                    && !pendingMeta.fields.includes('userNote')
+                    && Number(source.fieldUpdatedAt?.pronunciationNote || 0) > 0;
                   const controlsDoNotOpenDetail = !document.getElementById('detailModal')?.classList.contains('active');
                   return {
                     addImmediatelyAfterReading,
@@ -4930,6 +4961,7 @@ class VocabAppTester:
                     blurModified,
                     escapeCancelled,
                     deletedInline,
+                    contentNoteUnaffected,
                     cloudFieldTracked,
                     controlsDoNotOpenDetail
                   };
@@ -4943,14 +4975,16 @@ class VocabAppTester:
                   app.selectedPartOfSpeech = new Set(originalState.selectedPartOfSpeech);
                   app.selectedTags = new Set(originalState.selectedTags);
                   app.saveData();
+                  app.savePendingCloudChanges(originalState.pendingCloudChanges);
+                  app.refreshWordFingerprints();
                   app.renderWordList();
                   app.closeDetailModal();
                 }
             """)
             self.assert_true(
-                bool(inline_note_crud and all(inline_note_crud.values())),
-                f"[{lang_name}] 浏览器记忆备注-读音右侧加号原位增改、取消、删除及云同步字段追踪",
-                f"记忆备注卡片内完整交互失败: {inline_note_crud}",
+                bool(pronunciation_note_crud and all(pronunciation_note_crud.values())),
+                f"[{lang_name}] 浏览器发音备注-独立于内容说明的原位增改、取消、删除及云同步字段追踪",
+                f"发音备注与内容说明隔离流程失败: {pronunciation_note_crud}",
             )
 
             detail_scroll_reset = driver.execute_script("""
