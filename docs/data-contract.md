@@ -12,6 +12,7 @@
 | `examples` | `{example, trans}` 数组；两列必须成对出现。AI 新建词条初始至少三组，用户可随后删除至零组 |
 | `example` / `exampleTrans` | 与 `examples` 同步的兼容字段 |
 | `tags` | 用户管理的自定义标签数组 |
+| `userNote` | 用户自己的记忆备注；列表卡片可在读音右侧通过 `＋` 原位新增或修改，并从备注末尾通过 `×` 删除；最大 500 字符 |
 | `manualSimilarWordIds` | 用户手动维护的双向相近表达关系；数组顺序是当前源词条的自定义展示顺序；对话上下文不得自动写入 |
 | `hiddenSimilarWordIds` | 删除关系的持久记忆，防止旧迁移恢复 |
 | `mastered` / `rating` | 学习状态和 0～5 星级 |
@@ -29,6 +30,7 @@
 - KR 与 JP 使用隔离的存储键和云端 `language` 值。
 - `autoSimilarWordIds` 在装载时统一清空，展示层只读取人工双向关系。
 - 拖动相近表达卡片只重排当前源词条的 `manualSimilarWordIds`，不得连带覆盖反向词条各自的顺序；新增关系追加到当前顺序末尾。
+- 列表卡片对 `userNote` 的原位新增、修改和删除必须更新 `userEditedAt`、`updatedAt` 与 `fieldUpdatedAt.userNote`，持久化失败时不得显示成功反馈。
 
 ## 云同步契约
 

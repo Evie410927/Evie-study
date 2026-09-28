@@ -1128,7 +1128,7 @@ class VocabAppTester:
         self.assert_true(detail_header_status_control and detail_status_before_rating, f"[{lang_name}] 详情弹窗-顶部星级左侧显示可直接切换的学习中/已掌握 Label", "详情标题栏缺少状态 Label、未绑定切换同步，或状态按钮没有位于星级左侧")
 
         # ---------------------------------------------------------------------
-        # 测试点 31B: 用户自定义说明仅在卡片编辑弹窗维护并按内容条件展示
+        # 测试点 31B: 用户记忆备注支持列表卡片原位维护并按内容条件展示
         # ---------------------------------------------------------------------
         user_note_views = all(token in content for token in (
             'id="detailUserNote"',
@@ -1155,20 +1155,30 @@ class VocabAppTester:
         ))
         self.assert_true(user_note_modal_editor, f"[{lang_name}] 自定义说明-编辑弹窗说明字段支持回填、保存与清空", "编辑弹窗缺少说明字段，或 userNote 未接入新增/编辑保存流程")
 
-        user_note_external_controls_removed = all(token not in content for token in (
-            'user-note-add-btn',
-            'user-note-edit-btn',
-            'user-note-delete-btn',
-            'user-note-input',
-            'startUserNoteEdit',
-            'saveUserNoteFromEditor',
-            'deleteUserNote',
-            '>【+】</button>',
-            '自定义说明已保存',
-            '自定义说明已清空',
-            '自定义说明已删除',
+        user_note_inline_card_controls = all(token in content for token in (
+            'class="word-card-note-add-btn"',
+            'class="word-card-note-editor-slot"',
+            'class="user-note-delete-btn"',
+            'startWordCardUserNoteEdit(event, this.dataset.userNoteWordId)',
+            'saveWordCardUserNote(input, wordId)',
+            'deleteWordCardUserNote(event, wordId)',
+            "input.maxLength = 500;",
+            "if (inputEvent.key === 'Enter')",
+            "inputEvent.key === 'Escape'",
+            "input.addEventListener('blur'",
+            "this.showToast(nextNote ? '✅ 记忆备注已保存' : '✅ 记忆备注已删除')",
+        )) and 'prompt(' not in content
+        self.assert_true(user_note_inline_card_controls, f"[{lang_name}] 记忆备注-读音右侧小加号原位新增修改且备注末尾小叉删除", "列表卡片缺少紧邻读音的＋、原位输入、Enter/失焦保存、Esc 取消或备注末尾×删除")
+
+        user_note_inline_persistence = all(token in content for token in (
+            "word.userNote = nextNote;",
+            "word.userEditedAt = editTime;",
+            "word.updatedAt = editTime;",
+            "const persisted = this.saveData();",
+            "if (!persisted) {",
+            "this.refreshUserNoteReadOnlyViews(word.id);",
         ))
-        self.assert_true(user_note_external_controls_removed, f"[{lang_name}] 自定义说明-四种展示视图无【+】、编辑删除按钮及专属提醒", "展示层仍残留说明新增/编辑/删除控件或说明专属 Toast")
+        self.assert_true(user_note_inline_persistence, f"[{lang_name}] 记忆备注-卡片原位增删复用持久化与逐字段云同步", "原位备注未更新时间、未经过 saveData、失败时错误关闭，或未刷新只读视图")
 
         user_note_style = all(token in content for token in (
             '.user-note-display {',
@@ -4687,7 +4697,12 @@ class VocabAppTester:
                 app.renderCurrentCard();
                 const reviewSlot = document.getElementById('cardBackUserNote');
                 const blankReviewCollapsed = reviewSlot?.innerHTML === '' && getComputedStyle(reviewSlot).display === 'none';
-                const noExternalControls = !document.querySelector('.user-note-add-btn, .user-note-edit-btn, .user-note-delete-btn, .user-note-input');
+                const blankAddButton = blankListCard?.querySelector('.word-card-note-add-btn');
+                const blankReading = blankListCard?.querySelector('.word-reading');
+                const inlineControlsScoped = !!blankAddButton
+                  && blankReading?.nextElementSibling === blankAddButton
+                  && !blankListCard.querySelector('.user-note-delete-btn, .word-card-note-inline-input')
+                  && !document.querySelector('#detailModal .word-card-note-add-btn, #flashcard .word-card-note-add-btn, .similar-word-chip .word-card-note-add-btn');
 
                 app.showDetailModal(sourceId);
                 document.getElementById('detailEditBtn')?.click();
@@ -4778,7 +4793,7 @@ class VocabAppTester:
                 app.closeDetailModal();
                 return {
                   blankListCollapsed, blankDetailCollapsed, blankSimilarCollapsed, blankReviewCollapsed,
-                  noExternalControls, editorOpenedBlank, savedViaModal, persisted,
+                  inlineControlsScoped, editorOpenedBlank, savedViaModal, persisted,
                   listDisplayed, detailDisplayed, reviewDisplayed, similarDisplayed,
                   existingNotePreloaded, sourceCleared, clearedDetailCollapsed, clearedSimilarCollapsed,
                   listCompact, detailCompact, reviewCompact, similarCompact,
@@ -4787,8 +4802,8 @@ class VocabAppTester:
             """)
             self.assert_true(
                 bool(user_note_lifecycle and all(user_note_lifecycle.values())),
-                f"[{lang_name}] 浏览器自定义说明-仅编辑弹窗维护、四视图条件展示与清空零占位全流程",
-                f"自定义说明弹窗维护或条件展示失败: {user_note_lifecycle}",
+                f"[{lang_name}] 浏览器记忆备注-列表原位入口与四视图条件展示及清空零占位全流程",
+                f"记忆备注列表入口、弹窗兼容或条件展示失败: {user_note_lifecycle}",
             )
             note_compact_keys = ('listCompact', 'detailCompact', 'reviewCompact', 'similarCompact')
             self.assert_true(
@@ -4801,6 +4816,116 @@ class VocabAppTester:
                 bool(user_note_lifecycle and all(user_note_lifecycle.get(key) for key in note_color_keys)),
                 f"[{lang_name}] 浏览器自定义说明-实际文字颜色与中文释义灰色完全一致",
                 f"自定义说明与中文释义的计算后颜色不一致: {user_note_lifecycle}",
+            )
+
+            inline_note_crud = driver.execute_script("""
+                const app = window.app;
+                const source = app.words.find(word => word && word.id && word.reading) || app.words[0];
+                if (!source) return null;
+                const originalWord = JSON.parse(JSON.stringify(source));
+                const originalState = {
+                  currentFilter: app.currentFilter,
+                  subFilter: app.subFilter,
+                  searchQuery: app.searchQuery,
+                  currentPage: app.currentPage,
+                  selectedPartOfSpeech: Array.from(app.selectedPartOfSpeech || []),
+                  selectedTags: Array.from(app.selectedTags || [])
+                };
+                const dispatchPointerDown = element => element?.dispatchEvent(new PointerEvent('pointerdown', {
+                  bubbles:true, cancelable:true, pointerId:846, pointerType:'mouse', button:0, buttons:1
+                }));
+                try {
+                  app.closeWordModal();
+                  app.closeDetailModal();
+                  source.userNote = '';
+                  app.currentFilter = 'all';
+                  app.subFilter = 'all';
+                  app.selectedPartOfSpeech = new Set();
+                  app.selectedTags = new Set();
+                  app.searchQuery = String(source.word || '').toLowerCase();
+                  app.currentPage = 1;
+                  app.renderWordList();
+
+                  let card = app.findWordCardById(source.id);
+                  const reading = card?.querySelector('.word-reading');
+                  let addButton = card?.querySelector('.word-card-note-add-btn');
+                  const addImmediatelyAfterReading = !!reading && reading.nextElementSibling === addButton;
+                  const addStyle = addButton ? getComputedStyle(addButton) : null;
+                  const addButtonCompact = !!addStyle && parseFloat(addStyle.width) <= 20 && parseFloat(addStyle.height) <= 20;
+                  dispatchPointerDown(addButton);
+                  let input = card?.querySelector('.word-card-note-inline-input');
+                  const inlineOpened = !!input && input.maxLength === 500 && !document.getElementById('detailModal')?.classList.contains('active');
+                  if (input) input.value = '容易混淆：记忆方法 A';
+                  input?.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true, cancelable:true}));
+
+                  let storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(source.id));
+                  card = app.findWordCardById(source.id);
+                  let noteRow = card?.querySelector('.user-note-row');
+                  let deleteButton = noteRow?.querySelector('.user-note-delete-btn');
+                  const enterSaved = source.userNote === '容易混淆：记忆方法 A'
+                    && storedWord?.userNote === '容易混淆：记忆方法 A'
+                    && noteRow?.querySelector('.user-note-text')?.textContent === '容易混淆：记忆方法 A'
+                    && !!deleteButton
+                    && !card?.querySelector('.word-card-note-inline-input');
+
+                  addButton = card?.querySelector('.word-card-note-add-btn');
+                  dispatchPointerDown(addButton);
+                  input = app.findWordCardById(source.id)?.querySelector('.word-card-note-inline-input');
+                  const existingNotePrefilled = input?.value === '容易混淆：记忆方法 A';
+                  if (input) input.value = '容易混淆：记忆方法 B';
+                  input?.dispatchEvent(new Event('blur', {bubbles:false}));
+                  storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(source.id));
+                  const blurModified = source.userNote === '容易混淆：记忆方法 B' && storedWord?.userNote === '容易混淆：记忆方法 B';
+
+                  card = app.findWordCardById(source.id);
+                  addButton = card?.querySelector('.word-card-note-add-btn');
+                  dispatchPointerDown(addButton);
+                  input = app.findWordCardById(source.id)?.querySelector('.word-card-note-inline-input');
+                  if (input) input.value = '这段内容应被取消';
+                  input?.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
+                  const escapeCancelled = source.userNote === '容易混淆：记忆方法 B'
+                    && !app.findWordCardById(source.id)?.querySelector('.word-card-note-inline-input');
+
+                  card = app.findWordCardById(source.id);
+                  deleteButton = card?.querySelector('.user-note-delete-btn');
+                  dispatchPointerDown(deleteButton);
+                  storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(source.id));
+                  card = app.findWordCardById(source.id);
+                  const deletedInline = source.userNote === '' && storedWord?.userNote === ''
+                    && !card?.querySelector('.user-note-row, .user-note-delete-btn');
+                  const pendingMeta = app.getPendingCloudMeta(app.getPendingCloudChanges()[String(source.id)]);
+                  const cloudFieldTracked = pendingMeta.fields.includes('userNote') && Number(source.fieldUpdatedAt?.userNote || 0) > 0;
+                  const controlsDoNotOpenDetail = !document.getElementById('detailModal')?.classList.contains('active');
+                  return {
+                    addImmediatelyAfterReading,
+                    addButtonCompact,
+                    inlineOpened,
+                    enterSaved,
+                    existingNotePrefilled,
+                    blurModified,
+                    escapeCancelled,
+                    deletedInline,
+                    cloudFieldTracked,
+                    controlsDoNotOpenDetail
+                  };
+                } finally {
+                  Object.keys(source).forEach(key => delete source[key]);
+                  Object.assign(source, originalWord);
+                  app.currentFilter = originalState.currentFilter;
+                  app.subFilter = originalState.subFilter;
+                  app.searchQuery = originalState.searchQuery;
+                  app.currentPage = originalState.currentPage;
+                  app.selectedPartOfSpeech = new Set(originalState.selectedPartOfSpeech);
+                  app.selectedTags = new Set(originalState.selectedTags);
+                  app.saveData();
+                  app.renderWordList();
+                  app.closeDetailModal();
+                }
+            """)
+            self.assert_true(
+                bool(inline_note_crud and all(inline_note_crud.values())),
+                f"[{lang_name}] 浏览器记忆备注-读音右侧加号原位增改、取消、删除及云同步字段追踪",
+                f"记忆备注卡片内完整交互失败: {inline_note_crud}",
             )
 
             detail_scroll_reset = driver.execute_script("""

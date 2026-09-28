@@ -840,6 +840,50 @@ body::-webkit-scrollbar,
   font-weight: 500;
 }
 
+.word-card-note-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  margin-left: -4px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.word-card-note-add-btn:hover,
+.word-card-note-add-btn:focus-visible {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  outline: none;
+}
+.word-card-note-editor-slot {
+  width: 100%;
+  margin: 0 0 5px;
+}
+.word-card-note-editor-slot:empty { display: none; }
+.word-card-note-inline-input {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 5px 9px;
+  border: 1px solid var(--accent-primary);
+  border-radius: 7px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.3;
+  box-sizing: border-box;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(236, 72, 153, 0.12);
+}
+
 .mastered-badge {
   font-size: 11px;
   padding: 2px 8px;
@@ -1502,6 +1546,9 @@ body::-webkit-scrollbar,
   text-align: left;
 }
 .user-note-display {
+  display: flex;
+  align-items: flex-start;
+  gap: 3px;
   width: 100%;
   padding: 0;
   border: 0;
@@ -1511,6 +1558,8 @@ body::-webkit-scrollbar,
 }
 .user-note-text {
   display: inline;
+  min-width: 0;
+  flex: 0 1 auto;
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.35;
@@ -1519,6 +1568,29 @@ body::-webkit-scrollbar,
 }
 .user-note-text::before { content: "【"; }
 .user-note-text::after { content: "】"; }
+.user-note-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.user-note-delete-btn:hover,
+.user-note-delete-btn:focus-visible {
+  background: rgba(236, 72, 153, 0.14);
+  color: var(--accent-primary);
+  outline: none;
+}
 .user-note-row + .word-example-preview {
   margin-top: 3px;
   padding-top: 6px;
@@ -8126,7 +8198,164 @@ class JpVocabApp {
     if (!note) return '';
     const safeId = this.escapeHtml(String(word.id));
     const safeContext = this.escapeHtml(String(context));
-    return `<div class="user-note-row" data-user-note-word-id="${safeId}" data-user-note-context="${safeContext}"><div class="user-note-display"><span class="user-note-text">${this.escapeHtml(note)}</span></div></div>`;
+    const deleteControl = context === 'list'
+      ? `<button type="button" class="user-note-delete-btn" data-user-note-word-id="${safeId}" aria-label="删除记忆备注" title="删除记忆备注" onpointerdown="(window.app||window.vocabApp).deleteWordCardUserNote(event, this.dataset.userNoteWordId)" onclick="event.stopPropagation(); if(event.detail === 0) (window.app||window.vocabApp).deleteWordCardUserNote(event, this.dataset.userNoteWordId)">×</button>`
+      : '';
+    return `<div class="user-note-row" data-user-note-word-id="${safeId}" data-user-note-context="${safeContext}"><div class="user-note-display"><span class="user-note-text">${this.escapeHtml(note)}</span>${deleteControl}</div></div>`;
+  }
+
+  findWordCardById(wordId) {
+    return Array.from(document.querySelectorAll('#wordList .word-card')).find(card => String(card.dataset.id || '') === String(wordId)) || null;
+  }
+
+  startWordCardUserNoteEdit(event, wordId) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    const word = this.words.find(item => String(item.id) === String(wordId));
+    if (!word) return false;
+    const openInput = Array.from(document.querySelectorAll('.word-card-note-inline-input')).find(input => String(input.dataset.userNoteWordId || '') === String(wordId));
+    if (openInput) {
+      openInput.focus();
+      openInput.select();
+      return true;
+    }
+    const previousInput = document.querySelector('.word-card-note-inline-input');
+    if (previousInput && !this.saveWordCardUserNote(previousInput, previousInput.dataset.userNoteWordId)) return false;
+    const card = this.findWordCardById(wordId);
+    const slot = card ? card.querySelector('.word-card-note-editor-slot') : null;
+    if (!slot) return false;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'word-card-note-inline-input';
+    input.maxLength = 500;
+    input.value = typeof word.userNote === 'string' ? word.userNote : '';
+    input.placeholder = '输入记忆备注，Enter 或点空白处保存';
+    input.setAttribute('aria-label', `${word.word || '当前单词'}的记忆备注`);
+    input.dataset.userNoteWordId = String(word.id);
+    input.addEventListener('pointerdown', inputEvent => inputEvent.stopPropagation());
+    input.addEventListener('click', inputEvent => inputEvent.stopPropagation());
+    input.addEventListener('keydown', inputEvent => {
+      inputEvent.stopPropagation();
+      if (inputEvent.key === 'Enter') {
+        inputEvent.preventDefault();
+        this.saveWordCardUserNote(input, word.id);
+      } else if (inputEvent.key === 'Escape') {
+        inputEvent.preventDefault();
+        input.dataset.cancelled = 'true';
+        slot.replaceChildren();
+        const addButton = this.findWordCardById(word.id)?.querySelector('.word-card-note-add-btn');
+        if (addButton) addButton.focus();
+      }
+    });
+    input.addEventListener('blur', () => {
+      if (input.dataset.cancelled !== 'true' && input.dataset.committed !== 'true') this.saveWordCardUserNote(input, word.id);
+    });
+    slot.replaceChildren(input);
+    requestAnimationFrame(() => {
+      if (!input.isConnected) return;
+      input.focus();
+      input.select();
+    });
+    return true;
+  }
+
+  saveWordCardUserNote(input, wordId) {
+    if (!input || input.dataset.committed === 'true') return false;
+    const word = this.words.find(item => String(item.id) === String(wordId));
+    if (!word) return false;
+    const nextNote = String(input.value || '').trim().slice(0, 500);
+    const previousNote = typeof word.userNote === 'string' ? word.userNote : '';
+    input.dataset.committed = 'true';
+    if (nextNote === previousNote.trim()) {
+      const slot = input.closest('.word-card-note-editor-slot');
+      if (slot) slot.replaceChildren();
+      return true;
+    }
+    const previousState = {
+      userEditedAt: word.userEditedAt,
+      updatedAt: word.updatedAt,
+      fieldUpdatedAt: word.fieldUpdatedAt && typeof word.fieldUpdatedAt === 'object' ? { ...word.fieldUpdatedAt } : word.fieldUpdatedAt,
+      pending: this.getPendingCloudChanges ? this.getPendingCloudChanges() : null
+    };
+    word.userNote = nextNote;
+    const editTime = Math.max(Date.now(), Number(word.updatedAt || 0) + 1);
+    word.userEditedAt = editTime;
+    word.updatedAt = editTime;
+    const persisted = this.saveData();
+    if (!persisted) {
+      word.userNote = previousNote;
+      word.userEditedAt = previousState.userEditedAt;
+      word.updatedAt = previousState.updatedAt;
+      word.fieldUpdatedAt = previousState.fieldUpdatedAt;
+      if (previousState.pending && this.savePendingCloudChanges) this.savePendingCloudChanges(previousState.pending);
+      if (this.refreshWordFingerprints) this.refreshWordFingerprints();
+      delete input.dataset.committed;
+      input.focus();
+      return false;
+    }
+    this.refreshWordCardUserNote(word.id);
+    this.refreshUserNoteReadOnlyViews(word.id);
+    this.showToast(nextNote ? '✅ 记忆备注已保存' : '✅ 记忆备注已删除');
+    return true;
+  }
+
+  deleteWordCardUserNote(event, wordId) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    const word = this.words.find(item => String(item.id) === String(wordId));
+    if (!word || !String(word.userNote || '').trim()) return false;
+    const card = this.findWordCardById(word.id);
+    const slot = card ? card.querySelector('.word-card-note-editor-slot') : null;
+    let input = slot ? slot.querySelector('.word-card-note-inline-input') : null;
+    if (!input) {
+      input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'word-card-note-inline-input';
+      input.dataset.userNoteWordId = String(word.id);
+      input.value = '';
+      if (slot) slot.appendChild(input);
+    } else {
+      input.value = '';
+    }
+    return this.saveWordCardUserNote(input, word.id);
+  }
+
+  refreshWordCardUserNote(wordId) {
+    const word = this.words.find(item => String(item.id) === String(wordId));
+    const card = this.findWordCardById(wordId);
+    if (!word || !card) return false;
+    const slot = card.querySelector('.word-card-note-editor-slot');
+    if (slot) slot.replaceChildren();
+    const addButton = card.querySelector('.word-card-note-add-btn');
+    const hasNote = Boolean(String(word.userNote || '').trim());
+    if (addButton) {
+      addButton.setAttribute('aria-label', `${hasNote ? '修改' : '添加'}记忆备注`);
+      addButton.setAttribute('title', `${hasNote ? '修改' : '添加'}记忆备注`);
+    }
+    const existingRow = card.querySelector('.user-note-row');
+    const noteHtml = this.renderUserNoteHtml(word, 'list');
+    if (existingRow) {
+      if (noteHtml) existingRow.outerHTML = noteHtml;
+      else existingRow.remove();
+    } else if (noteHtml) {
+      const meaning = card.querySelector('.word-meaning');
+      if (meaning) meaning.insertAdjacentHTML('afterend', noteHtml);
+    }
+    return true;
+  }
+
+  refreshUserNoteReadOnlyViews(wordId) {
+    const word = this.words.find(item => String(item.id) === String(wordId));
+    if (!word) return;
+    const detailUserNote = document.getElementById('detailUserNote');
+    if (detailUserNote && String(this.currentDetailWordId || '') === String(wordId)) detailUserNote.innerHTML = this.renderUserNoteHtml(word, 'detail');
+    const reviewWord = this.reviewList?.[this.currentReviewIndex];
+    const cardBackUserNote = document.getElementById('cardBackUserNote');
+    if (cardBackUserNote && reviewWord && String(reviewWord.id) === String(wordId)) cardBackUserNote.innerHTML = this.renderUserNoteHtml(word, 'review');
   }
 
   setWordRating(wordId, value, options = {}) {
@@ -10494,6 +10723,7 @@ class JpVocabApp {
             <div class="word-title-group">
               <span class="word-text">${this.escapeHtml(w.word)}</span>
               ${w.reading ? `<span class="word-reading">${this.escapeHtml(w.reading)}</span>` : ''}
+              <button type="button" class="word-card-note-add-btn" data-user-note-word-id="${this.escapeHtml(String(w.id))}" aria-label="${String(w.userNote || '').trim() ? '修改' : '添加'}记忆备注" title="${String(w.userNote || '').trim() ? '修改' : '添加'}记忆备注" onpointerdown="(window.app||window.vocabApp).startWordCardUserNoteEdit(event, this.dataset.userNoteWordId)" onclick="event.stopPropagation(); if(event.detail === 0) (window.app||window.vocabApp).startWordCardUserNoteEdit(event, this.dataset.userNoteWordId)">＋</button>
               ${w.krMeaning ? `<span class="kr-meaning-badge">${this.escapeHtml(w.krMeaning)}</span>` : ''}
             </div>
             <div class="word-header-actions">
@@ -10501,6 +10731,8 @@ class JpVocabApp {
               ${this.renderStarRating(w, 'word-card-rating')}
             </div>
           </div>
+
+          <div class="word-card-note-editor-slot" data-user-note-word-id="${this.escapeHtml(String(w.id))}"></div>
 
           <div class="word-meaning">${this.renderPartOfSpeechLabel(w)}${this.escapeHtml(w.meaning)}</div>
 
