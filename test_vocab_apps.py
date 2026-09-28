@@ -1162,6 +1162,8 @@ class VocabAppTester:
             'class="pronunciation-note-delete-btn"',
             'startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId)',
             "startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId, 'replace')",
+            "onpointerdown=\"event.stopPropagation()\" onclick=\"(window.app||window.vocabApp).startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId, 'replace')\"",
+            'onpointerdown="event.stopPropagation()" onclick="(window.app||window.vocabApp).deleteWordCardPronunciationNote(event, this.dataset.pronunciationNoteWordId)"',
             'saveWordCardPronunciationNote(input, wordId)',
             'deleteWordCardPronunciationNote(event, wordId)',
             "const note = typeof word.pronunciationNote === 'string' ? word.pronunciationNote.trim() : '';",
@@ -1185,7 +1187,13 @@ class VocabAppTester:
             'height: 15px;',
             'color: #f6a96b;',
             'color: rgba(246, 169, 107, 0.72);',
-        )) and 'prompt(' not in content and 'input.placeholder =' not in content and 'class="user-note-delete-btn"' not in content
+        )) and all(token not in content for token in (
+            "onpointerdown=\"(window.app||window.vocabApp).startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId, 'replace')\"",
+            'onpointerdown="(window.app||window.vocabApp).deleteWordCardPronunciationNote',
+            'prompt(',
+            'input.placeholder =',
+            'class="user-note-delete-btn"',
+        ))
         self.assert_true(pronunciation_note_inline_card_controls, f"[{lang_name}] 发音备注-小加号空白追加、点击文字回填编辑及末尾小叉删除", "列表卡片缺少独立 pronunciationNote、15px 美化＋、同排空白追加、已有文字回填替换、Esc 取消或发音备注末尾×删除")
 
         pronunciation_note_inline_persistence = all(token in content for token in (
@@ -4941,9 +4949,14 @@ class VocabAppTester:
                   card = app.findWordCardById(source.id);
                   const editButton = card?.querySelector('.pronunciation-note-edit-btn');
                   dispatchPointerDown(editButton);
+                  const editPointerDownKeptTarget = !!editButton?.isConnected
+                    && !app.findWordCardById(source.id)?.querySelector('.word-card-pronunciation-note-inline-input')
+                    && !document.getElementById('detailModal')?.classList.contains('active');
+                  editButton?.click();
                   input = app.findWordCardById(source.id)?.querySelector('.word-card-pronunciation-note-inline-input');
                   const editPrefilled = input?.value === appendedNote
-                    && input?.dataset.noteEditMode === 'replace';
+                    && input?.dataset.noteEditMode === 'replace'
+                    && !document.getElementById('detailModal')?.classList.contains('active');
                   const editedNote = '修改后的发音备注';
                   if (input) input.value = editedNote;
                   input?.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true, cancelable:true}));
@@ -4968,6 +4981,10 @@ class VocabAppTester:
                   card = app.findWordCardById(source.id);
                   deleteButton = card?.querySelector('.pronunciation-note-delete-btn');
                   dispatchPointerDown(deleteButton);
+                  const deletePointerDownKeptTarget = !!deleteButton?.isConnected
+                    && source.pronunciationNote === editedNote
+                    && !document.getElementById('detailModal')?.classList.contains('active');
+                  deleteButton?.click();
                   storedWord = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(source.id));
                   card = app.findWordCardById(source.id);
                   contentRow = card?.querySelector('.user-note-row');
@@ -4981,6 +4998,8 @@ class VocabAppTester:
                     && !pendingMeta.fields.includes('userNote')
                     && Number(source.fieldUpdatedAt?.pronunciationNote || 0) > 0;
                   const controlsDoNotOpenDetail = !document.getElementById('detailModal')?.classList.contains('active');
+                  card?.querySelector('.word-meaning')?.click();
+                  const otherCardAreaOpensDetail = document.getElementById('detailModal')?.classList.contains('active') === true;
                   return {
                     addImmediatelyAfterReading,
                     addButtonCompact,
@@ -4991,13 +5010,16 @@ class VocabAppTester:
                     existingNoteInputBlank,
                     emptyBlurPreserved,
                     blurModified,
+                    editPointerDownKeptTarget,
                     editPrefilled,
                     existingClickReplaced,
                     escapeCancelled,
+                    deletePointerDownKeptTarget,
                     deletedInline,
                     contentNoteUnaffected,
                     cloudFieldTracked,
-                    controlsDoNotOpenDetail
+                    controlsDoNotOpenDetail,
+                    otherCardAreaOpensDetail
                   };
                 } finally {
                   Object.keys(source).forEach(key => delete source[key]);
