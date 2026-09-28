@@ -1183,6 +1183,13 @@ body::-webkit-scrollbar,
   box-sizing: border-box;
   transition: all 0.2s ease;
 }
+.similar-word-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
 .similar-word-chip {
   width: 100%;
   box-sizing: border-box;
@@ -1197,10 +1204,25 @@ body::-webkit-scrollbar,
   text-align: left;
   position: relative;
   padding-right: 40px;
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 .similar-word-chip:active {
   transform: scale(0.98);
   background: var(--bg-input);
+}
+.similar-word-chip.similar-sort-dragging,
+.similar-word-chip.similar-sort-dragging:active {
+  cursor: grabbing;
+  opacity: 0.76;
+  transform: scale(1.01);
+  border-color: var(--accent-primary);
+  background: var(--bg-input);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  z-index: 4;
 }
 .similar-word-chip .similar-ex-text {
   font-size: 12.5px !important;
@@ -9173,7 +9195,7 @@ class JpVocabApp {
       const cleanReading = w.reading ? w.reading.replace(/^[\[\(]+/, '').replace(/[\]\)]+$/, '') : '';
 
       return `
-        <div class="similar-word-chip" onclick="event.stopPropagation(); (window.app||window.vocabApp).showDetailModal('${w.id}')" style="cursor:pointer; width:100%; box-sizing:border-box; text-align:left;" title="点击查看此相近表达详情">
+        <div class="similar-word-chip" data-similar-word-id="${this.escapeHtml(String(w.id))}" data-similar-target-id="${this.escapeHtml(String(targetWord.id))}" tabindex="0" role="button" aria-label="${this.escapeHtml(w.word)}，可直接拖动排序" onpointerdown="(window.app||window.vocabApp).startSimilarWordSort(event, '${targetWord.id}')" ontouchstart="(window.app||window.vocabApp).startSimilarWordTouchSort(event, '${targetWord.id}')" onkeydown="(window.app||window.vocabApp).handleSimilarWordSortKey(event, '${targetWord.id}')" onclick="(window.app||window.vocabApp).handleSimilarWordCardClick(event, '${w.id}')" style="width:100%; box-sizing:border-box; text-align:left;" title="直接拖动卡片排序；点击查看详情">
           <button type="button" class="similar-word-remove-btn" onclick="event.stopPropagation(); (window.app||window.vocabApp).removeSimilarWord('${targetWord.id}', '${w.id}')" aria-label="从当前词的相近表达中删除 ${this.escapeHtml(w.word)}" title="从当前面板删除">×</button>
           <div class="similar-word-header">
             <div class="similar-word-title">
@@ -9210,11 +9232,194 @@ class JpVocabApp {
           <input type="search" class="similar-word-search-input" placeholder="搜索当前词库中的日语表达" autocomplete="off" onkeydown="(window.app||window.vocabApp).protectSimilarSearchBackspace(event, '${targetWord.id}')" onkeyup="(window.app||window.vocabApp).protectSimilarSearchBackspace(event, '${targetWord.id}')" oninput="(window.app||window.vocabApp).searchSimilarWordOptions(this, '${targetWord.id}')">
           <div class="similar-word-search-results"><div class="similar-word-search-hint">输入单词、读音或释义进行搜索</div></div>
         </div>
-        <div style="display:flex; flex-direction:column; gap:8px; width:100%; box-sizing:border-box;">
+        <div class="similar-word-list" data-similar-target-id="${this.escapeHtml(String(targetWord.id))}">
           ${itemsHtml || '<div class="similar-word-empty">暂无相近表达，可点击右上角＋添加</div>'}
         </div>
       </div>
     `;
+  }
+
+  isSimilarWordSortInteractiveTarget(target) {
+    return Boolean(target && typeof target.closest === 'function' && target.closest('button, input, textarea, select, a, .star-rating, .rating-star, [contenteditable="true"]'));
+  }
+
+  getSimilarWordSortState(event, targetWordId, inputType) {
+    const card = event && event.currentTarget && typeof event.currentTarget.closest === 'function'
+      ? event.currentTarget.closest('.similar-word-chip') : null;
+    const container = card ? card.closest('.similar-word-list') : null;
+    if (!card || !container || String(container.dataset.similarTargetId || '') !== String(targetWordId)) return null;
+    const point = inputType === 'touch' ? event.touches && event.touches[0] : event;
+    if (!point) return null;
+    return {
+      inputType,
+      targetWordId: String(targetWordId),
+      card,
+      container,
+      pointerId: event.pointerId,
+      touchId: inputType === 'touch' ? point.identifier : null,
+      startX: Number(point.clientX || 0),
+      startY: Number(point.clientY || 0),
+      active: inputType !== 'touch',
+      hasDragged: false,
+      reordered: false
+    };
+  }
+
+  startSimilarWordSort(event, targetWordId) {
+    if (!event || event.pointerType === 'touch' || (typeof event.button === 'number' && event.button !== 0)) return false;
+    if (this.isSimilarWordSortInteractiveTarget(event.target)) return false;
+    if (this._similarWordSortState) this.finishSimilarWordSort(null, true);
+    const state = this.getSimilarWordSortState(event, targetWordId, 'pointer');
+    if (!state) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    state.moveHandler = moveEvent => this.moveSimilarWordSort(moveEvent);
+    state.endHandler = endEvent => this.finishSimilarWordSort(endEvent);
+    state.cancelHandler = cancelEvent => this.finishSimilarWordSort(cancelEvent, true);
+    this._similarWordSortState = state;
+    state.card.classList.add('similar-sort-dragging');
+    if (state.card.setPointerCapture && event.pointerId !== undefined) {
+      try { state.card.setPointerCapture(event.pointerId); } catch (error) { console.warn('相近表达拖动指针捕获失败:', error); }
+    }
+    window.addEventListener('pointermove', state.moveHandler, { passive: false });
+    window.addEventListener('pointerup', state.endHandler);
+    window.addEventListener('pointercancel', state.cancelHandler);
+    return true;
+  }
+
+  startSimilarWordTouchSort(event, targetWordId) {
+    if (!event || !event.touches || event.touches.length !== 1 || this.isSimilarWordSortInteractiveTarget(event.target)) return false;
+    if (this._similarWordSortState) this.finishSimilarWordSort(null, true);
+    const state = this.getSimilarWordSortState(event, targetWordId, 'touch');
+    if (!state) return false;
+    state.moveHandler = moveEvent => this.moveSimilarWordSort(moveEvent);
+    state.endHandler = endEvent => this.finishSimilarWordSort(endEvent);
+    state.cancelHandler = cancelEvent => this.finishSimilarWordSort(cancelEvent, true);
+    state.activationTimer = setTimeout(() => {
+      if (this._similarWordSortState !== state) return;
+      state.active = true;
+      state.hasDragged = true;
+      state.card.classList.add('similar-sort-dragging');
+      if (navigator.vibrate) navigator.vibrate(10);
+    }, 240);
+    this._similarWordSortState = state;
+    window.addEventListener('touchmove', state.moveHandler, { passive: false });
+    window.addEventListener('touchend', state.endHandler);
+    window.addEventListener('touchcancel', state.cancelHandler);
+    return true;
+  }
+
+  getSimilarWordSortPoint(event, state) {
+    if (!state || state.inputType !== 'touch') return event;
+    const touches = [...Array.from(event.touches || []), ...Array.from(event.changedTouches || [])];
+    return touches.find(touch => touch.identifier === state.touchId) || touches[0] || null;
+  }
+
+  autoScrollSimilarWordSort(state, clientY) {
+    const scrollHost = state && state.container ? state.container.closest('.detail-body, .card-face-back') : null;
+    if (!scrollHost) return;
+    const rect = scrollHost.getBoundingClientRect();
+    const edge = Math.min(64, rect.height * 0.16);
+    if (clientY < rect.top + edge) scrollHost.scrollTop -= 18;
+    else if (clientY > rect.bottom - edge) scrollHost.scrollTop += 18;
+  }
+
+  moveSimilarWordSort(event) {
+    const state = this._similarWordSortState;
+    if (!state) return false;
+    if (state.inputType === 'pointer' && state.pointerId !== undefined && event.pointerId !== undefined && state.pointerId !== event.pointerId) return false;
+    const point = this.getSimilarWordSortPoint(event, state);
+    if (!point) return false;
+    const distance = Math.hypot(Number(point.clientX || 0) - state.startX, Number(point.clientY || 0) - state.startY);
+    if (!state.active) {
+      if (distance > 10) this.finishSimilarWordSort(null, true);
+      return false;
+    }
+    if (distance > 5) state.hasDragged = true;
+    if (!state.hasDragged) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    this.autoScrollSimilarWordSort(state, Number(point.clientY || 0));
+    const hovered = document.elementFromPoint ? document.elementFromPoint(Number(point.clientX || 0), Number(point.clientY || 0)) : null;
+    const target = hovered && typeof hovered.closest === 'function' ? hovered.closest('.similar-word-chip') : null;
+    if (!target || target === state.card || !state.container.contains(target)) return false;
+    const rect = target.getBoundingClientRect();
+    const insertAfter = Number(point.clientY || 0) > rect.top + rect.height / 2;
+    state.container.insertBefore(state.card, insertAfter ? target.nextSibling : target);
+    state.reordered = true;
+    return true;
+  }
+
+  finishSimilarWordSort(event = null, cancelled = false) {
+    const state = this._similarWordSortState;
+    if (!state) return false;
+    if (state.inputType === 'pointer' && event && state.pointerId !== undefined && event.pointerId !== undefined && state.pointerId !== event.pointerId) return false;
+    if (state.activationTimer) clearTimeout(state.activationTimer);
+    if (state.inputType === 'touch') {
+      window.removeEventListener('touchmove', state.moveHandler);
+      window.removeEventListener('touchend', state.endHandler);
+      window.removeEventListener('touchcancel', state.cancelHandler);
+    } else {
+      window.removeEventListener('pointermove', state.moveHandler);
+      window.removeEventListener('pointerup', state.endHandler);
+      window.removeEventListener('pointercancel', state.cancelHandler);
+      if (state.card.releasePointerCapture && state.pointerId !== undefined) {
+        try { state.card.releasePointerCapture(state.pointerId); } catch (error) {}
+      }
+    }
+    state.card.classList.remove('similar-sort-dragging');
+    this._similarWordSortState = null;
+    if (state.active && state.hasDragged) this._suppressSimilarWordClickUntil = Date.now() + 500;
+    if (cancelled || !state.active || !state.reordered) return state.active;
+    return this.persistSimilarWordOrder(state.targetWordId, state.container);
+  }
+
+  handleSimilarWordSortKey(event, targetWordId) {
+    if (!event || !['ArrowUp', 'ArrowDown'].includes(event.key) || this.isSimilarWordSortInteractiveTarget(event.target)) return false;
+    const card = event.currentTarget?.closest('.similar-word-chip');
+    const container = card?.closest('.similar-word-list');
+    if (!card || !container) return false;
+    const cards = Array.from(container.querySelectorAll('.similar-word-chip'));
+    const currentIndex = cards.indexOf(card);
+    const nextIndex = event.key === 'ArrowUp' ? currentIndex - 1 : currentIndex + 1;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= cards.length) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === 'ArrowUp') container.insertBefore(card, cards[nextIndex]);
+    else container.insertBefore(cards[nextIndex], card);
+    const movedId = card.dataset.similarWordId;
+    const persisted = this.persistSimilarWordOrder(targetWordId, container);
+    setTimeout(() => Array.from(document.querySelectorAll('.similar-word-chip')).find(item => String(item.dataset.similarTargetId) === String(targetWordId) && String(item.dataset.similarWordId) === String(movedId))?.focus(), 0);
+    return persisted;
+  }
+
+  persistSimilarWordOrder(targetWordId, container) {
+    const targetWord = this.words.find(word => String(word.id) === String(targetWordId));
+    if (!targetWord || !container) return false;
+    const displayedIds = [...new Set(Array.from(container.querySelectorAll('.similar-word-chip')).map(card => String(card.dataset.similarWordId || '')).filter(Boolean))];
+    const currentIds = [...new Set((Array.isArray(targetWord.manualSimilarWordIds) ? targetWord.manualSimilarWordIds : []).map(String))];
+    const displayedSet = new Set(displayedIds);
+    const nextIds = displayedIds.concat(currentIds.filter(id => !displayedSet.has(id)));
+    if (nextIds.length === currentIds.length && nextIds.every((id, index) => id === currentIds[index])) return true;
+    targetWord.manualSimilarWordIds = nextIds;
+    const editTime = Math.max(Date.now(), Number(targetWord.updatedAt || 0) + 1);
+    targetWord.userEditedAt = editTime;
+    targetWord.updatedAt = editTime;
+    const persisted = this.saveData();
+    this.refreshSimilarWordPanels(targetWord.id);
+    if (persisted) this.showToast('✅ 相近表达顺序已保存');
+    return persisted;
+  }
+
+  handleSimilarWordCardClick(event, wordId) {
+    if (event) event.stopPropagation();
+    if (this.isSimilarWordSortInteractiveTarget(event && event.target)) return false;
+    if (Date.now() < Number(this._suppressSimilarWordClickUntil || 0)) {
+      if (event) event.preventDefault();
+      return false;
+    }
+    this.showDetailModal(wordId);
+    return true;
   }
 
   toggleSimilarWordPicker(event, targetWordId) {

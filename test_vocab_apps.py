@@ -1004,6 +1004,28 @@ class VocabAppTester:
         ))
         self.assert_true(similar_word_persistence, f"[{lang_name}] 相近表达-仅按人工关系不限量读取、去重并持久化", "相近表达未严格读取 manualSimilarWordIds，或缺少人工关系持久化")
 
+        similar_word_direct_card_sort = all(token in content for token in (
+            '.similar-word-list {',
+            'data-similar-word-id=',
+            'onpointerdown="(window.app||window.vocabApp).startSimilarWordSort',
+            'ontouchstart="(window.app||window.vocabApp).startSimilarWordTouchSort',
+            'handleSimilarWordSortKey(event, targetWordId)',
+            'persistSimilarWordOrder(targetWordId, container)',
+            "targetWord.manualSimilarWordIds = nextIds;",
+            "this.showToast('✅ 相近表达顺序已保存')",
+        )) and 'similar-word-drag-handle' not in content
+        self.assert_true(similar_word_direct_card_sort, f"[{lang_name}] 相近表达排序-整张卡片支持鼠标与触屏拖动且不增加按钮", "相近表达未绑定整卡 Pointer/Touch 排序、未持久化 manualSimilarWordIds，或错误增加了拖拽按钮")
+
+        similar_word_sort_guards = all(token in content for token in (
+            'isSimilarWordSortInteractiveTarget(target)',
+            "target.closest('button, input, textarea, select, a, .star-rating, .rating-star",
+            "state.activationTimer = setTimeout(() => {",
+            "if (distance > 10) this.finishSimilarWordSort(null, true);",
+            "this._suppressSimilarWordClickUntil = Date.now() + 500;",
+            "this.autoScrollSimilarWordSort(state, Number(point.clientY || 0));",
+        ))
+        self.assert_true(similar_word_sort_guards, f"[{lang_name}] 相近表达排序-触屏长按、滚动取消、内部控件隔离与拖后防误点", "整卡拖拽可能抢占手机滚动、误触状态/星级/删除按钮或拖完误开详情")
+
         automatic_similarity_disabled = all(token in content for token in (
             'newWord.autoSimilarWordIds = [];',
             'w.autoSimilarWordIds = [];',
@@ -4390,6 +4412,118 @@ class VocabAppTester:
                 bool(similar_manual_crud and all(similar_manual_crud.values())),
                 f"[{lang_name}] 浏览器相近表达-自动快照失效、删除留空、＋库内搜索及人工添加不限量全流程",
                 f"相近表达手动增删真实交互失败: {similar_manual_crud}",
+            )
+
+            similar_card_sort = driver.execute_script("""
+                const app = window.app;
+                const source = app.words[0];
+                const candidates = app.words.filter(word => word && source && word.id !== source.id).slice(0, 3);
+                if (!source || candidates.length < 3) return null;
+                const snapshots = [source, ...candidates].map(word => ({word, data:JSON.parse(JSON.stringify(word))}));
+                const originalReviewList = app.reviewList;
+                const originalReviewIndex = app.currentReviewIndex;
+                const restoreWord = ({word, data}) => {
+                  Object.keys(word).forEach(key => delete word[key]);
+                  Object.assign(word, data);
+                };
+                try {
+                  source.manualSimilarWordIds = candidates.map(word => String(word.id));
+                  source.hiddenSimilarWordIds = [];
+                  candidates.forEach(word => {
+                    word.manualSimilarWordIds = [...new Set([...(word.manualSimilarWordIds || []).map(String), String(source.id)])];
+                    word.hiddenSimilarWordIds = (word.hiddenSimilarWordIds || []).map(String).filter(id => id !== String(source.id));
+                  });
+                  app.saveData();
+                  const reverseOrderBefore = candidates.map(word => JSON.stringify(word.manualSimilarWordIds || []));
+                  app.showDetailModal(source.id);
+                  const detailList = document.querySelector('#detailSimilarBlock .similar-word-list');
+                  const initialCards = Array.from(detailList?.querySelectorAll('.similar-word-chip') || []);
+                  if (!detailList || initialCards.length !== 3) return null;
+                  detailList.scrollIntoView({block:'center'});
+                  const first = initialCards[0];
+                  const second = initialCards[1];
+                  const firstRect = first.getBoundingClientRect();
+                  const secondRect = second.getBoundingClientRect();
+                  const directCardWiring = first.getAttribute('onpointerdown')?.includes('startSimilarWordSort')
+                    && first.getAttribute('ontouchstart')?.includes('startSimilarWordTouchSort')
+                    && !detailList.querySelector('.similar-word-drag-handle, .similar-drag-handle');
+                  first.dispatchEvent(new PointerEvent('pointerdown', {
+                    bubbles:true, pointerId:731, pointerType:'mouse', button:0, buttons:1,
+                    clientX:firstRect.left + Math.min(24, firstRect.width / 2), clientY:firstRect.top + Math.min(24, firstRect.height / 2)
+                  }));
+                  const pointerStateCreated = !!app._similarWordSortState && app._similarWordSortState.card === first;
+                  const pointerMoved = app.moveSimilarWordSort({
+                    pointerId:731,
+                    clientX:secondRect.left + Math.min(24, secondRect.width / 2),
+                    clientY:secondRect.bottom - 2,
+                    preventDefault(){}, stopPropagation(){}
+                  });
+                  const pointerFinished = app.finishSimilarWordSort({pointerId:731});
+                  const expectedDetailOrder = [String(candidates[1].id), String(candidates[0].id), String(candidates[2].id)];
+                  const detailOrder = Array.from(document.querySelectorAll('#detailSimilarBlock .similar-word-chip')).map(card => String(card.dataset.similarWordId));
+                  const detailDragPersisted = pointerStateCreated && pointerMoved && pointerFinished
+                    && JSON.stringify(detailOrder) === JSON.stringify(expectedDetailOrder)
+                    && JSON.stringify((source.manualSimilarWordIds || []).map(String)) === JSON.stringify(expectedDetailOrder);
+
+                  const storedAfterDetail = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(source.id));
+                  const localStoragePersisted = JSON.stringify((storedAfterDetail?.manualSimilarWordIds || []).map(String)) === JSON.stringify(expectedDetailOrder);
+                  const refreshedDetailKeptOrder = JSON.stringify(app.getSimilarWords(source).map(word => String(word.id))) === JSON.stringify(expectedDetailOrder);
+                  const detailStatusButton = document.querySelector('#detailSimilarBlock .similar-word-status-btn');
+                  const statusCard = detailStatusButton?.closest('.similar-word-chip');
+                  const internalControlBlocked = !!detailStatusButton && app.startSimilarWordSort({
+                    target:detailStatusButton, currentTarget:statusCard, pointerType:'mouse', button:0,
+                    preventDefault(){}, stopPropagation(){}
+                  }, source.id) === false && !app._similarWordSortState;
+
+                  const touchCard = document.querySelector('#detailSimilarBlock .similar-word-chip');
+                  const touchStarted = !!touchCard && app.startSimilarWordTouchSort({
+                    target:touchCard.querySelector('.similar-word-text'), currentTarget:touchCard,
+                    touches:[{identifier:912, clientX:10, clientY:10}]
+                  }, source.id) === true && app._similarWordSortState?.inputType === 'touch';
+                  app.finishSimilarWordSort(null, true);
+                  const touchCancelledCleanly = !app._similarWordSortState;
+
+                  app.reviewList = [source];
+                  app.currentReviewIndex = 0;
+                  app.renderCurrentCard();
+                  const reviewList = document.querySelector('#cardBackSimilarBlock .similar-word-list');
+                  const reviewBefore = Array.from(reviewList?.querySelectorAll('.similar-word-chip') || []).map(card => String(card.dataset.similarWordId));
+                  const reviewFirst = reviewList?.querySelector('.similar-word-chip');
+                  reviewFirst?.dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowDown', bubbles:true, cancelable:true}));
+                  const expectedReviewOrder = [String(candidates[0].id), String(candidates[1].id), String(candidates[2].id)];
+                  const reviewAfter = Array.from(document.querySelectorAll('#cardBackSimilarBlock .similar-word-chip')).map(card => String(card.dataset.similarWordId));
+                  const detailAfterReview = Array.from(document.querySelectorAll('#detailSimilarBlock .similar-word-chip')).map(card => String(card.dataset.similarWordId));
+                  const reviewAndDetailSynchronized = JSON.stringify(reviewBefore) === JSON.stringify(expectedDetailOrder)
+                    && JSON.stringify(reviewAfter) === JSON.stringify(expectedReviewOrder)
+                    && JSON.stringify(detailAfterReview) === JSON.stringify(expectedReviewOrder)
+                    && JSON.stringify((source.manualSimilarWordIds || []).map(String)) === JSON.stringify(expectedReviewOrder);
+                  const reverseOrderIndependent = candidates.every((word, index) => JSON.stringify(word.manualSimilarWordIds || []) === reverseOrderBefore[index]);
+                  return {
+                    directCardWiring:!!directCardWiring,
+                    pointerStateCreated,
+                    detailDragPersisted,
+                    localStoragePersisted,
+                    refreshedDetailKeptOrder,
+                    internalControlBlocked,
+                    touchStarted,
+                    touchCancelledCleanly,
+                    reviewAndDetailSynchronized,
+                    reverseOrderIndependent
+                  };
+                } finally {
+                  snapshots.forEach(restoreWord);
+                  app.reviewList = originalReviewList;
+                  app.currentReviewIndex = originalReviewIndex;
+                  app.finishSimilarWordSort(null, true);
+                  app.saveData();
+                  app.closeDetailModal();
+                  app.renderWordList();
+                }
+            """)
+            self.assert_true(
+                bool(similar_card_sort and all(similar_card_sort.values())),
+                f"[{lang_name}] 浏览器相近表达排序-详情整卡拖动、复习重排、持久化与双视图同步",
+                f"相近表达整卡排序全流程失败: {similar_card_sort}",
             )
 
             backspace_search_guard = None

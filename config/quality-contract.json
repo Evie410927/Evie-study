@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-09-28",
+  "contractVersion": "2026-09-29",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -8,7 +8,8 @@
     "decisions": [
       "docs/decisions/ADR-001-pagination-layout.md",
       "docs/decisions/ADR-002-review-order.md",
-      "docs/decisions/ADR-003-mobile-durable-snapshot-recovery.md"
+      "docs/decisions/ADR-003-mobile-durable-snapshot-recovery.md",
+      "docs/decisions/ADR-004-similar-word-manual-order.md"
     ]
   },
   "mirroredApps": [
@@ -61,7 +62,11 @@
       "mode": "manual-only",
       "bidirectional": true,
       "clearLegacyAutomaticSnapshots": true,
-      "conversationContextDoesNotAutoPersist": true
+      "conversationContextDoesNotAutoPersist": true,
+      "orderStorage": "manualSimilarWordIds-array-order",
+      "orderScope": "per-source-word",
+      "directCardDrag": true,
+      "extraDragButton": false
     },
     "localPersistence": {
       "primary": "localStorage",
