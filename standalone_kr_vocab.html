@@ -20010,6 +20010,7 @@ function createSupabaseSyncMethods(language) {
         if (snapshot.cloudBaselineRevision !== null && snapshot.cloudBaselineRevision !== undefined) {
           SafeStorage.setItem(this.CLOUD_BASE_REVISION_KEY, String(snapshot.cloudBaselineRevision));
         }
+        if (this.backfillPronunciationNoteTags) this.backfillPronunciationNoteTags(this.words, { trackCloud: true });
         this.words.forEach(word => {
           if (!word) return;
           this.normalizeWordTaxonomy(word);
@@ -20022,6 +20023,7 @@ function createSupabaseSyncMethods(language) {
             word.exampleTrans = parsed.map(item => item.trans).filter(Boolean).join('\n');
           }
         });
+        SafeStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.words));
         this._hadDurableLocalWords = true;
         this._indexedDbDurabilityConfirmed = true;
         this.loadSampleData(false);
@@ -20117,6 +20119,7 @@ function createSupabaseSyncMethods(language) {
         nextWords.push(payload);
       });
       this.words = nextWords;
+      if (this.backfillPronunciationNoteTags) this.backfillPronunciationNoteTags(this.words, { trackCloud: false, touchMetadata: false });
       this.saveDeletedRecords(nextDeleted);
       this.savePendingCloudChanges({});
       if (!await this.persistSyncedData()) throw new Error('云端数据已载入，但浏览器的 localStorage 与 IndexedDB 均未能持久保存，请检查无痕模式或站点存储权限后重试');
@@ -20237,9 +20240,13 @@ function createSupabaseSyncMethods(language) {
           }
         }
       });
-      this.words = Array.from(localMap.values()).map(word => this.normalizeWordTaxonomy ? this.normalizeWordTaxonomy(word) : word);
+      this.words = Array.from(localMap.values());
       this.saveDeletedRecords(deleted);
       this.savePendingCloudChanges(pending);
+      const pronunciationTagBackfills = this.backfillPronunciationNoteTags
+        ? this.backfillPronunciationNoteTags(this.words, { trackCloud: true })
+        : [];
+      changedCount += pronunciationTagBackfills.length;
       if (!await this.persistSyncedData()) {
         throw new Error('云端数据已载入，但浏览器的 localStorage 与 IndexedDB 均未能持久保存，请检查无痕模式或站点存储权限后重试');
       }
@@ -20662,6 +20669,8 @@ class KrVocabApp {
     // Always reconcile built-in cards so a non-empty browser cache also receives newly shipped words.
     this.loadSampleData(false);
 
+    if (this.backfillPronunciationNoteTags) this.backfillPronunciationNoteTags(this.words, { trackCloud: true });
+
     // 强制全量修复/归一化例句结构：确保所有例句与翻译对应精准无脱节
     if (Array.isArray(this.words)) {
       this.words.forEach(w => {
@@ -20918,10 +20927,12 @@ class KrVocabApp {
     const previousState = {
       userEditedAt: word.userEditedAt,
       updatedAt: word.updatedAt,
+      tags: Array.isArray(word.tags) ? [...word.tags] : [],
       fieldUpdatedAt: word.fieldUpdatedAt && typeof word.fieldUpdatedAt === 'object' ? { ...word.fieldUpdatedAt } : word.fieldUpdatedAt,
       pending: this.getPendingCloudChanges ? this.getPendingCloudChanges() : null
     };
     word.pronunciationNote = nextNote;
+    this.ensurePronunciationNoteTag(word);
     const editTime = Math.max(Date.now(), Number(word.updatedAt || 0) + 1);
     word.userEditedAt = editTime;
     word.updatedAt = editTime;
@@ -20930,6 +20941,7 @@ class KrVocabApp {
       word.pronunciationNote = previousNote;
       word.userEditedAt = previousState.userEditedAt;
       word.updatedAt = previousState.updatedAt;
+      word.tags = previousState.tags;
       word.fieldUpdatedAt = previousState.fieldUpdatedAt;
       if (previousState.pending && this.savePendingCloudChanges) this.savePendingCloudChanges(previousState.pending);
       if (this.refreshWordFingerprints) this.refreshWordFingerprints();
@@ -20938,6 +20950,7 @@ class KrVocabApp {
       return false;
     }
     this.refreshWordCardPronunciationNote(word.id);
+    this.refreshPronunciationNoteTagViews(word.id);
     this.showToast('✅ 发音备注已保存');
     return true;
   }
@@ -21048,6 +21061,47 @@ class KrVocabApp {
     return String(value || '').replace(/^#/, '').trim();
   }
 
+  ensurePronunciationNoteTag(word) {
+    if (!word || typeof word !== 'object' || !String(word.pronunciationNote || '').trim()) return false;
+    const pronunciationTag = '发音';
+    const tags = Array.isArray(word.tags)
+      ? word.tags.map(tag => this.normalizeTaxonomyText(tag)).filter(Boolean)
+      : [];
+    word.tags = [...new Set(tags)];
+    if (word.tags.includes(pronunciationTag)) return false;
+    word.tags.push(pronunciationTag);
+    return true;
+  }
+
+  backfillPronunciationNoteTags(words = this.words, options = {}) {
+    const changedIds = [];
+    (Array.isArray(words) ? words : []).forEach(word => {
+      if (!word || !word.id) return;
+      const hadPronunciationTag = Array.isArray(word.tags)
+        && word.tags.some(tag => this.normalizeTaxonomyText(tag) === '发音');
+      this.normalizeWordTaxonomy(word);
+      if (!hadPronunciationTag && Array.isArray(word.tags) && word.tags.includes('发音')) changedIds.push(String(word.id));
+    });
+    if (changedIds.length === 0 || options.touchMetadata === false) return changedIds;
+    const migrationTime = Math.max(Date.now(), ...changedIds.map(id => {
+      const word = (Array.isArray(words) ? words : []).find(item => String(item?.id || '') === id);
+      return Number(word?.updatedAt || 0) + 1;
+    }));
+    const fieldsById = {};
+    changedIds.forEach(id => {
+      const word = (Array.isArray(words) ? words : []).find(item => String(item?.id || '') === id);
+      if (!word) return;
+      word.updatedAt = Math.max(migrationTime, Number(word.updatedAt || 0));
+      word.fieldUpdatedAt = word.fieldUpdatedAt && typeof word.fieldUpdatedAt === 'object' ? { ...word.fieldUpdatedAt } : {};
+      word.fieldUpdatedAt.tags = migrationTime;
+      fieldsById[id] = ['tags'];
+    });
+    if (options.trackCloud !== false && this.markPendingCloudChanges) {
+      this.markPendingCloudChanges(changedIds, migrationTime, 'system', fieldsById);
+    }
+    return changedIds;
+  }
+
   normalizeWordTaxonomy(word) {
     if (!word || typeof word !== 'object') return word;
     const sourceTags = Array.isArray(word.tags)
@@ -21058,7 +21112,23 @@ class KrVocabApp {
     const customTagSource = existingPartOfSpeech ? sourceTags : sourceTags.slice(1);
     word.partOfSpeech = partOfSpeech;
     word.tags = [...new Set(customTagSource.filter(tag => tag !== partOfSpeech && tag !== '\u6613\u6df7'))];
+    this.ensurePronunciationNoteTag(word);
     return word;
+  }
+
+  refreshPronunciationNoteTagViews(wordId) {
+    const word = this.words.find(item => String(item.id) === String(wordId));
+    if (!word) return false;
+    const card = this.findWordCardById(wordId);
+    const currentTags = card?.querySelector('.word-tags');
+    if (currentTags) {
+      const holder = document.createElement('div');
+      holder.innerHTML = this.renderWordTagsHtml(word).trim();
+      const replacement = holder.firstElementChild;
+      if (replacement) currentTags.replaceWith(replacement);
+    }
+    this.refreshRatingTagViews(wordId);
+    return true;
   }
 
   renderPartOfSpeechLabel(word) {

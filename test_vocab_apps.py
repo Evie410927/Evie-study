@@ -1224,6 +1224,24 @@ class VocabAppTester:
         pronunciation_note_field_isolation = 'word.userNote' not in pronunciation_save_body and 'refreshUserNoteReadOnlyViews' not in pronunciation_save_body
         self.assert_true(pronunciation_note_inline_persistence and pronunciation_note_field_isolation, f"[{lang_name}] 发音备注-独立字段持久化与逐字段云同步", "发音备注未更新时间、未经过 saveData、未登记云同步字段，或错误读写了 userNote")
 
+        pronunciation_note_automatic_tag = all(token in content for token in (
+            "const pronunciationTag = '发音';",
+            'ensurePronunciationNoteTag(word) {',
+            'backfillPronunciationNoteTags(words = this.words, options = {}) {',
+            "word.tags.includes('发音')",
+            "word.fieldUpdatedAt.tags = migrationTime;",
+            "fieldsById[id] = ['tags'];",
+            "this.ensurePronunciationNoteTag(word);",
+            "this.refreshPronunciationNoteTagViews(word.id);",
+            "this.backfillPronunciationNoteTags(this.words, { trackCloud: true })",
+            "this.backfillPronunciationNoteTags(this.words, { trackCloud: false, touchMetadata: false })",
+        ))
+        delete_pronunciation_start = content.find('deleteWordCardPronunciationNote(event, wordId)')
+        delete_pronunciation_end = content.find('refreshWordCardPronunciationNote(wordId)', delete_pronunciation_start)
+        delete_pronunciation_body = content[delete_pronunciation_start:delete_pronunciation_end] if delete_pronunciation_start >= 0 and delete_pronunciation_end > delete_pronunciation_start else ''
+        pronunciation_tag_survives_note_delete = 'word.tags =' not in delete_pronunciation_body and '.filter(tag =>' not in delete_pronunciation_body
+        self.assert_true(pronunciation_note_automatic_tag and pronunciation_tag_survives_note_delete, f"[{lang_name}] 发音备注-非空备注自动补齐发音 Tag 且删除备注后保留", "新旧发音备注未自动去重加入发音 Tag、未登记 tags 云同步字段，或删除备注时错误移除了自动 Tag")
+
         detail_pronunciation_note_controls = all(token in content for token in (
             'id="detailPronunciationNoteControls" class="detail-pronunciation-note-controls"',
             "this.renderPronunciationNoteControlsHtml(w, 'list')",
@@ -4905,7 +4923,18 @@ class VocabAppTester:
                   app.closeDetailModal();
                   const contentNote = '下方内容解释备注';
                   source.userNote = contentNote;
+                  source.pronunciationNote = '已有发音备注迁移测试';
+                  source.tags = (Array.isArray(source.tags) ? source.tags : []).filter(tag => String(tag).replace(/^#/, '').trim() !== '发音');
+                  app.savePendingCloudChanges({});
+                  app.refreshWordFingerprints();
+                  const backfilledPronunciationTagIds = app.backfillPronunciationNoteTags([source], {trackCloud:true});
+                  const backfillPendingMeta = app.getPendingCloudMeta(app.getPendingCloudChanges()[String(source.id)]);
+                  const existingPronunciationTagBackfilled = backfilledPronunciationTagIds.includes(String(source.id))
+                    && source.tags.includes('发音')
+                    && Number(source.fieldUpdatedAt?.tags || 0) > 0
+                    && backfillPendingMeta.fields.includes('tags');
                   source.pronunciationNote = '';
+                  source.tags = source.tags.filter(tag => tag !== '发音');
                   app.saveData();
                   app.savePendingCloudChanges({});
                   app.refreshWordFingerprints();
@@ -4944,12 +4973,17 @@ class VocabAppTester:
                   const pronunciationText = pronunciationDisplay?.querySelector('.pronunciation-note-text');
                   const contentNoteText = contentRow?.querySelector('.user-note-text');
                   const currentReading = card?.querySelector('.word-reading');
+                  const pronunciationTagVisible = [...(card?.querySelectorAll('.word-tags .tag-badge') || [])]
+                    .some(tag => tag.textContent.replace('×', '').replace(/^#/, '').trim() === '发音');
                   const pronunciationColorDistinct = !!pronunciationText && !!contentNoteText && !!currentReading
                     && getComputedStyle(pronunciationText).color !== getComputedStyle(contentNoteText).color
                     && getComputedStyle(pronunciationText).color !== getComputedStyle(currentReading).color;
                   const enterSaved = source.pronunciationNote === '容易混淆：记忆方法 A'
                     && storedWord?.pronunciationNote === '容易混淆：记忆方法 A'
                     && pronunciationDisplay?.querySelector('.pronunciation-note-text')?.textContent === '容易混淆：记忆方法 A'
+                    && source.tags.includes('发音')
+                    && storedWord?.tags?.includes('发音')
+                    && pronunciationTagVisible
                     && source.userNote === contentNote
                     && storedWord?.userNote === contentNote
                     && contentRow?.querySelector('.user-note-text')?.textContent === contentNote
@@ -5141,20 +5175,25 @@ class VocabAppTester:
                   card = app.findWordCardById(source.id);
                   contentRow = card?.querySelector('.user-note-row');
                   const deletedInline = source.pronunciationNote === '' && storedWord?.pronunciationNote === ''
-                    && !card?.querySelector('.pronunciation-note-display, .pronunciation-note-delete-btn');
+                    && !card?.querySelector('.pronunciation-note-display, .pronunciation-note-delete-btn')
+                    && source.tags.includes('发音')
+                    && storedWord?.tags?.includes('发音');
                   const contentNoteUnaffected = source.userNote === contentNote
                     && storedWord?.userNote === contentNote
                     && contentRow?.querySelector('.user-note-text')?.textContent === contentNote;
                   const pendingMeta = app.getPendingCloudMeta(app.getPendingCloudChanges()[String(source.id)]);
                   const cloudFieldTracked = pendingMeta.fields.includes('pronunciationNote')
+                    && pendingMeta.fields.includes('tags')
                     && !pendingMeta.fields.includes('userNote')
-                    && Number(source.fieldUpdatedAt?.pronunciationNote || 0) > 0;
+                    && Number(source.fieldUpdatedAt?.pronunciationNote || 0) > 0
+                    && Number(source.fieldUpdatedAt?.tags || 0) > 0;
                   const controlsDoNotOpenDetail = !document.getElementById('detailModal')?.classList.contains('active');
                   card?.querySelector('.word-meaning')?.click();
                   const otherCardAreaOpensDetail = document.getElementById('detailModal')?.classList.contains('active') === true;
                   return {
                     addImmediatelyAfterReading,
                     addButtonCompact,
+                    existingPronunciationTagBackfilled,
                     inlineOpened,
                     inputStaysOnTitleRow,
                     enterSaved,
