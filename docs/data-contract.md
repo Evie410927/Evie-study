@@ -32,7 +32,7 @@
 - `autoSimilarWordIds` 在装载时统一清空，展示层只读取人工双向关系。
 - 详情或复习视图拖动相近表达卡片只重排当前源词条的 `manualSimilarWordIds`，不得连带覆盖反向词条各自的顺序；新增/编辑词条弹窗中的整卡拖动先只重排 `editingModalSimilarWordIds`，不更新时间、不写本地存储也不进入云同步，点击保存词条后才按该草稿顺序写入当前源词条；关闭弹窗则丢弃草稿排序。新增关系追加到当前草稿或正式顺序末尾。
 - 列表卡片或详情弹窗对 `pronunciationNote` 的原位新增、全文替换和删除必须更新 `userEditedAt`、`updatedAt` 与 `fieldUpdatedAt.pronunciationNote`，持久化失败时不得显示成功反馈；点击已有备注编辑时必须回填当前全文，点击 `＋` 时仍保持空白；保存后同步刷新列表标题组件与详情独立发音行；该流程不得修改 `userNote` 或刷新其内容。
-- 完整新增/编辑词条弹窗必须以 `inputPronunciationNote` 独立维护 `pronunciationNote`：字段排列在 `reading` 后、`meaning` 前，新建时为空，编辑时回填当前全文，保存时原样替换（允许用户清空）；不得以默认空字符串覆盖未显示或未读取的既有值，也不得读写 `userNote`。
+- 完整新增/编辑词条弹窗必须以 `inputPronunciationNote` 独立维护 `pronunciationNote`：字段排列在 `reading` 后、`meaning` 前，新建时为空，编辑时回填当前全文，保存时原样替换（允许用户清空）；非空输入必须在同一次 `input` 事件中把 `发音` 去重加入 `editingModalTags` 并立即刷新下方标签草稿，但正式保存前不得改写词库、持久化存储或云同步待办；不得以默认空字符串覆盖未显示或未读取的既有值，也不得读写 `userNote`。
 - 新增或修改为非空 `pronunciationNote` 时，必须在同一持久化事务中向自定义 `tags` 去重加入 `发音`，同步更新时间与 `fieldUpdatedAt.tags`，并立即刷新列表、详情及复习 Tag 视图。装载旧本地数据、IndexedDB 备用快照、导入数据或云端合并结果时须对所有非空发音备注执行同样的全量补齐；删除发音备注不自动移除 `发音` Tag。
 
 ## 云同步契约

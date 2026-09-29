@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-09-29.22",
+  "contractVersion": "2026-09-29.23",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -79,6 +79,8 @@
       "fullEditorNewValue": "empty",
       "fullEditorEditValue": "prefilled-current-pronunciationNote",
       "fullEditorSaveBehavior": "replace",
+      "fullEditorAutomaticTagPreview": "input-event-immediate-in-modal-tag-draft",
+      "fullEditorAutomaticTagPersistence": "word-save-only",
       "existingNotePointerDown": "stop-propagation-without-dom-mutation",
       "existingNoteActivation": "click-before-opening-editor",
       "contexts": [

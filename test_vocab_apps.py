@@ -1317,6 +1317,10 @@ class VocabAppTester:
 
         pronunciation_note_automatic_tag = all(token in content for token in (
             "const pronunciationTag = '发音';",
+            "pronunciationNoteInput.oninput = () => this.syncModalPronunciationNoteTag();",
+            'syncModalPronunciationNoteTag() {',
+            "const added = Boolean(String(pronunciationNoteInput.value || '').trim()) && !tags.includes(pronunciationTag);",
+            "this.editingModalTags.push('发音');",
             'ensurePronunciationNoteTag(word) {',
             'backfillPronunciationNoteTags(words = this.words, options = {}) {',
             "word.tags.includes('发音')",
@@ -1331,7 +1335,7 @@ class VocabAppTester:
         delete_pronunciation_end = content.find('refreshWordCardPronunciationNote(wordId)', delete_pronunciation_start)
         delete_pronunciation_body = content[delete_pronunciation_start:delete_pronunciation_end] if delete_pronunciation_start >= 0 and delete_pronunciation_end > delete_pronunciation_start else ''
         pronunciation_tag_survives_note_delete = 'word.tags =' not in delete_pronunciation_body and '.filter(tag =>' not in delete_pronunciation_body
-        self.assert_true(pronunciation_note_automatic_tag and pronunciation_tag_survives_note_delete, f"[{lang_name}] 发音备注-非空备注自动补齐发音 Tag 且删除备注后保留", "新旧发音备注未自动去重加入发音 Tag、未登记 tags 云同步字段，或删除备注时错误移除了自动 Tag")
+        self.assert_true(pronunciation_note_automatic_tag and pronunciation_tag_survives_note_delete, f"[{lang_name}] 发音备注-编辑弹窗即时预览并持久化补齐发音 Tag，删除备注后保留", "编辑弹窗输入未即时刷新发音 Tag 草稿、新旧发音备注未自动去重补齐、未登记 tags 云同步字段，或删除备注时错误移除了自动 Tag")
 
         detail_pronunciation_note_controls = all(token in content for token in (
             'id="detailPronunciationNoteControls" class="detail-pronunciation-note-controls"',
@@ -3592,6 +3596,47 @@ class VocabAppTester:
                 f"[{lang_name}] 浏览器新增编辑弹窗-发音备注单行等高且三个必填字段提示清晰",
                 f"发音备注高度或必填胶囊、虚线边框、可选字段隔离存在异常: {required_field_visuals}",
             )
+            pronunciation_tag_live_preview = driver.execute_script("""
+                const app = window.app;
+                const input = document.getElementById('inputPronunciationNote');
+                const container = document.getElementById('modalTagsContainer');
+                const modal = document.getElementById('wordModal');
+                if (!app || !input || !container || !modal) return null;
+                const originalDraftTags = Array.isArray(app.editingModalTags) ? [...app.editingModalTags] : [];
+                const originalInputValue = input.value;
+                const wordsBefore = JSON.stringify(app.words);
+                const storageBefore = localStorage.getItem(app.STORAGE_KEY);
+                app.editingModalTags = originalDraftTags.filter(tag => tag !== '发音');
+                input.value = '';
+                app.renderModalTags();
+                const absentBeforeInput = !app.editingModalTags.includes('发音')
+                  && !Array.from(container.querySelectorAll('.tag-badge')).some(tag => tag.textContent.includes('发音'));
+                input.value = '实时发音备注标签测试';
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                const draftUpdatedImmediately = app.editingModalTags.includes('发音');
+                const tagVisibleImmediately = Array.from(container.querySelectorAll('.tag-badge'))
+                  .some(tag => tag.textContent.includes('发音'));
+                const noPrematurePersistence = JSON.stringify(app.words) === wordsBefore
+                  && localStorage.getItem(app.STORAGE_KEY) === storageBefore;
+                const inputHandlerBound = typeof input.oninput === 'function';
+                const modalStayedOpen = modal.classList.contains('active');
+                input.value = originalInputValue;
+                app.editingModalTags = originalDraftTags;
+                app.renderModalTags();
+                return {
+                  absentBeforeInput,
+                  draftUpdatedImmediately,
+                  tagVisibleImmediately,
+                  noPrematurePersistence,
+                  inputHandlerBound,
+                  modalStayedOpen,
+                };
+            """)
+            self.assert_true(
+                bool(pronunciation_tag_live_preview and all(pronunciation_tag_live_preview.values())),
+                f"[{lang_name}] 浏览器编辑弹窗-输入发音备注立即显示发音 Tag 且保存前不落库",
+                f"发音备注与标签草稿未即时联动或提前持久化: {pronunciation_tag_live_preview}",
+            )
             dynamic_example_pair_editor = driver.execute_script("""
                 const app = window.app;
                 const addButton = document.getElementById('addExamplePairBtn');
@@ -3916,12 +3961,13 @@ class VocabAppTester:
                 const editSignature = Array.from(form?.children || []).map(node => `${node.tagName}:${node.id || node.className}`).join('|');
                 const editGroupsVisible = sharedGroupIds.every(id => getComputedStyle(document.getElementById(id)).display !== 'none');
                 const expectedSimilarIds = app.getSimilarWords(target).map(word => String(word.id));
+                const expectedLoadedTags = [...new Set([...(target.tags || []), '发音'])];
                 const existingValuesLoaded = document.getElementById('inputWord')?.value === String(target.word || '')
                   && document.getElementById('inputReading')?.value === app.normalizeBracketedReading(target.reading)
                   && document.getElementById('inputPronunciationNote')?.value === '原有弹窗发音备注'
                   && document.getElementById('inputMeaning')?.value === String(target.meaning || '')
                   && document.getElementById('inputPartOfSpeech')?.value === String(target.partOfSpeech || '')
-                  && JSON.stringify(app.editingModalTags) === JSON.stringify(target.tags || [])
+                  && JSON.stringify(app.editingModalTags) === JSON.stringify(expectedLoadedTags)
                   && app.editingModalRating === app.normalizeRating(target.rating)
                   && app.editingModalMastered === Boolean(target.mastered)
                   && JSON.stringify(app.editingModalSimilarWordIds) === JSON.stringify(expectedSimilarIds);

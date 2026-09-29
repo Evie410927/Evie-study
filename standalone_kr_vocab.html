@@ -21683,6 +21683,7 @@ class KrVocabApp {
     const addWordMasteredGroup = document.getElementById('addWordMasteredGroup');
     const addWordSimilarGroup = document.getElementById('addWordSimilarGroup');
     if (!modal || !form || !title || !wordIdInput || !wordInput || !readingInput || !pronunciationNoteInput || !meaningInput || !partOfSpeechInput || !userNoteInput || !addWordTagsGroup || !addWordRatingGroup || !addWordMasteredGroup || !addWordSimilarGroup) return;
+    pronunciationNoteInput.oninput = () => this.syncModalPronunciationNoteTag();
     this.renderPartOfSpeechOptions();
     this.closePartOfSpeechOptions();
     form.reset();
@@ -21773,12 +21774,28 @@ class KrVocabApp {
     }
   }
 
+  syncModalPronunciationNoteTag() {
+    const pronunciationNoteInput = document.getElementById('inputPronunciationNote');
+    if (!pronunciationNoteInput) return false;
+    const pronunciationTag = '发音';
+    const tags = [...new Set((this.editingModalTags || []).map(tag => this.normalizeTaxonomyText(tag)).filter(Boolean))];
+    const added = Boolean(String(pronunciationNoteInput.value || '').trim()) && !tags.includes(pronunciationTag);
+    if (added) tags.push(pronunciationTag);
+    this.editingModalTags = tags;
+    this.renderModalTags();
+    return added;
+  }
+
   renderModalTags() {
     const container = document.getElementById('modalTagsContainer');
     if (!container) return;
     const partOfSpeechInput = document.getElementById('inputPartOfSpeech');
     const partOfSpeech = this.normalizeTaxonomyText(partOfSpeechInput && partOfSpeechInput.value);
     this.editingModalTags = [...new Set((this.editingModalTags || []).map(tag => this.normalizeTaxonomyText(tag)).filter(tag => tag && tag !== partOfSpeech))];
+    const pronunciationNoteInput = document.getElementById('inputPronunciationNote');
+    if (String(pronunciationNoteInput?.value || '').trim() && !this.editingModalTags.includes('发音')) {
+      this.editingModalTags.push('发音');
+    }
     const tagsHtml = (this.editingModalTags || []).map(tag => {
       const safeTag = this.escapeHtml(String(tag));
       return `<span class="tag-badge custom-tag modal-editable-tag" onclick="event.stopPropagation(); (window.app||window.vocabApp).editModalTag(event, '${safeTag}')" title="点击编辑标签">#${safeTag}<i class="remove-tag-x" onclick="event.stopPropagation(); (window.app||window.vocabApp).removeModalTag('${safeTag}')" title="删除标签">×</i></span>`;
