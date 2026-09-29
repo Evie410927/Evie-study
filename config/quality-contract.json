@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-09-29.19",
+  "contractVersion": "2026-09-29.20",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -86,6 +86,7 @@
       "detailModalPlacement": "dedicated-second-row-above-meaning",
       "detailModalReadingPlacement": "same-dedicated-row-before-note-controls",
       "detailModalWidth": "full-content-row",
+      "detailModalAddControlGap": "8px-without-negative-offset",
       "detailModalVisibleContentAlignment": "title-reading-part-of-speech-and-user-note-share-left-edge",
       "detailModalHistoryAlignment": "when-back-button-is-visible-pronunciation-row-aligns-with-word-left-edge",
       "crossContextRefresh": true,

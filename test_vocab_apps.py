@@ -1347,6 +1347,24 @@ class VocabAppTester:
         detail_note_immediately_after_reading = detail_reading_pos >= 0 and detail_note_pos > detail_reading_pos
         self.assert_true(detail_pronunciation_note_controls and detail_note_immediately_after_reading, f"[{lang_name}] 发音备注-详情标题读音后支持新建编辑删除并与列表即时同步", "详情标题缺少发音备注组件、没有紧邻读音、未复用同一交互，或保存后未同步刷新列表与详情")
 
+        detail_pronunciation_add_button_clearance = (
+            bool(re.search(
+                r'\.detail-pronunciation-row\s*\{[^}]*gap:\s*8px;',
+                content,
+                re.S,
+            ))
+            and bool(re.search(
+                r'\.detail-pronunciation-note-controls\s*>\s*\.word-card-pronunciation-note-add-btn\s*\{[^}]*margin-left:\s*0;',
+                content,
+                re.S,
+            ))
+        )
+        self.assert_true(
+            detail_pronunciation_add_button_clearance,
+            f"[{lang_name}] 发音备注-详情加号取消负偏移并与读音保留8px间隔",
+            "详情发音备注加号仍继承列表负左边距，可能与左侧读音产生遮挡或粘连",
+        )
+
         detail_title_start = content.find('<div class="detail-title-group">')
         detail_title_end = content.find('</div>', detail_title_start)
         detail_title_html = content[detail_title_start:detail_title_end] if detail_title_start >= 0 and detail_title_end > detail_title_start else ''
@@ -4093,6 +4111,31 @@ class VocabAppTester:
                 ),
                 f"[{lang_name}] 浏览器详情弹窗高度-占用约92%视口且顶部仅留约8%",
                 f"详情弹窗没有向上扩展或已脱离底部安全边界: {detail_modal_viewport_usage}",
+            )
+            detail_pronunciation_add_clearance = driver.execute_script("""
+                const row = document.querySelector('#detailModal .detail-pronunciation-row');
+                const reading = document.getElementById('detailReading');
+                const addButton = document.querySelector('#detailPronunciationNoteControls > .word-card-pronunciation-note-add-btn');
+                if (!row || !reading || !addButton) return null;
+                const readingRect = reading.getBoundingClientRect();
+                const addRect = addButton.getBoundingClientRect();
+                return {
+                  horizontalGap: addRect.left - readingRect.right,
+                  rowGap: parseFloat(getComputedStyle(row).columnGap || getComputedStyle(row).gap || '0'),
+                  buttonMarginLeft: parseFloat(getComputedStyle(addButton).marginLeft || '0'),
+                  noOverlap: addRect.left >= readingRect.right
+                };
+            """)
+            self.assert_true(
+                bool(
+                    detail_pronunciation_add_clearance
+                    and detail_pronunciation_add_clearance.get('horizontalGap', 0) >= 7
+                    and detail_pronunciation_add_clearance.get('rowGap') == 8
+                    and detail_pronunciation_add_clearance.get('buttonMarginLeft') == 0
+                    and detail_pronunciation_add_clearance.get('noOverlap')
+                ),
+                f"[{lang_name}] 浏览器详情发音备注加号-与读音保持完整间距且无重叠",
+                f"详情加号仍贴住或遮挡左侧读音: {detail_pronunciation_add_clearance}",
             )
             detail_visible_content_alignment = driver.execute_script("""
                 const title = document.getElementById('detailWord');
