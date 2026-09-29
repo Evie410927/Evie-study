@@ -1197,6 +1197,7 @@ class VocabAppTester:
             'class="pronunciation-note-delete-btn"',
             'startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId)',
             "startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId, 'replace')",
+            'onpointerdown="event.stopPropagation()" onclick="(window.app||window.vocabApp).startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId)"',
             "onpointerdown=\"event.stopPropagation()\" onclick=\"(window.app||window.vocabApp).startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId, 'replace')\"",
             'onpointerdown="event.stopPropagation()" onclick="(window.app||window.vocabApp).deleteWordCardPronunciationNote(event, this.dataset.pronunciationNoteWordId)"',
             'saveWordCardPronunciationNote(input, wordId)',
@@ -1222,7 +1223,9 @@ class VocabAppTester:
             'height: 15px;',
             'color: #f6a96b;',
             'color: rgba(246, 169, 107, 0.72);',
+            "if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();",
         )) and all(token not in content for token in (
+            'onpointerdown="(window.app||window.vocabApp).startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId)"',
             "onpointerdown=\"(window.app||window.vocabApp).startWordCardPronunciationNoteEdit(event, this.dataset.pronunciationNoteWordId, 'replace')\"",
             'onpointerdown="(window.app||window.vocabApp).deleteWordCardPronunciationNote',
             'prompt(',
@@ -5239,6 +5242,10 @@ class VocabAppTester:
                   const addStyle = addButton ? getComputedStyle(addButton) : null;
                   const addButtonCompact = !!addStyle && parseFloat(addStyle.width) <= 16 && parseFloat(addStyle.height) <= 16;
                   dispatchPointerDown(addButton);
+                  const addPointerDownKeptTarget = !!addButton?.isConnected
+                    && !card?.querySelector('.word-card-pronunciation-note-inline-input')
+                    && !document.getElementById('detailModal')?.classList.contains('active');
+                  addButton?.click();
                   let input = card?.querySelector('.word-card-pronunciation-note-inline-input');
                   const inputRect = input?.getBoundingClientRect();
                   const readingRect = reading?.getBoundingClientRect();
@@ -5307,6 +5314,7 @@ class VocabAppTester:
 
                   addButton = card?.querySelector('.word-card-pronunciation-note-add-btn');
                   dispatchPointerDown(addButton);
+                  addButton?.click();
                   input = app.findWordCardById(source.id)?.querySelector('.word-card-pronunciation-note-inline-input');
                   const existingNoteInputBlank = input?.value === '' && input.getAttribute('placeholder') === null;
                   input?.dispatchEvent(new Event('blur', {bubbles:false}));
@@ -5316,6 +5324,7 @@ class VocabAppTester:
                   card = app.findWordCardById(source.id);
                   addButton = card?.querySelector('.word-card-pronunciation-note-add-btn');
                   dispatchPointerDown(addButton);
+                  addButton?.click();
                   input = app.findWordCardById(source.id)?.querySelector('.word-card-pronunciation-note-inline-input');
                   if (input) input.value = '容易混淆：记忆方法 B';
                   input?.dispatchEvent(new Event('blur', {bubbles:false}));
@@ -5468,6 +5477,7 @@ class VocabAppTester:
 
                   const detailAddButton = detailControls?.querySelector('.word-card-pronunciation-note-add-btn');
                   dispatchPointerDown(detailAddButton);
+                  detailAddButton?.click();
                   detailControls = document.getElementById('detailPronunciationNoteControls');
                   input = detailControls?.querySelector('.word-card-pronunciation-note-inline-input');
                   const detailAddOpenedBlank = input?.value === ''
@@ -5489,6 +5499,7 @@ class VocabAppTester:
                   card = app.findWordCardById(source.id);
                   addButton = card?.querySelector('.word-card-pronunciation-note-add-btn');
                   dispatchPointerDown(addButton);
+                  addButton?.click();
                   input = app.findWordCardById(source.id)?.querySelector('.word-card-pronunciation-note-inline-input');
                   if (input) input.value = '这段内容应被取消';
                   input?.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
@@ -5525,6 +5536,7 @@ class VocabAppTester:
                   return {
                     addImmediatelyAfterReading,
                     addButtonCompact,
+                    addPointerDownKeptTarget,
                     existingPronunciationTagBackfilled,
                     inlineOpened,
                     inputStaysOnTitleRow,
@@ -5579,6 +5591,15 @@ class VocabAppTester:
                   app.closeDetailModal();
                 }
             """)
+            self.assert_true(
+                bool(
+                    pronunciation_note_crud
+                    and pronunciation_note_crud.get('addPointerDownKeptTarget')
+                    and pronunciation_note_crud.get('inlineOpened')
+                ),
+                f"[{lang_name}] 浏览器发音备注＋-按下不改 DOM 且点击只打开原位编辑器",
+                f"发音备注＋仍在 pointerdown 阶段改变 DOM，或 click 穿透打开详情弹窗: {pronunciation_note_crud}",
+            )
             self.assert_true(
                 bool(pronunciation_note_crud and all(pronunciation_note_crud.values())),
                 f"[{lang_name}] 浏览器发音备注-空白追加、点击已有文字回填替换、取消、删除及云同步字段追踪",

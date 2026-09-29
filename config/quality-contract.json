@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-09-29.14",
+  "contractVersion": "2026-09-29.15",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -59,6 +59,8 @@
       "pronunciationNotePurpose": "pronunciation-or-memory-hint",
       "addPlacement": "immediately-after-reading",
       "addControl": "small-plus",
+      "addControlPointerDown": "stop-propagation-without-dom-mutation",
+      "addControlActivation": "click-opens-inline-editor-without-detail-modal",
       "editor": "in-card-inline-input",
       "editorPlacement": "same-title-row",
       "editorWidth": "flex-to-right-action-boundary",
