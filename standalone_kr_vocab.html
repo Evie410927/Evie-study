@@ -1026,13 +1026,44 @@ body::-webkit-scrollbar,
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 10px;
-  padding-top: 8px;
+  margin-top: 6px;
+  padding-top: 4px;
   border-top: 1px dashed var(--border-color);
   font-size: 12px;
   color: var(--text-muted);
-  gap: 12px;
+  gap: 8px;
   width: 100%;
+}
+
+.word-footer .word-tags {
+  gap: 4px;
+}
+
+.word-footer .tag-badge {
+  padding: 1px 6px;
+  line-height: 1.25;
+}
+
+.word-footer .remove-tag-x {
+  width: 12px;
+  height: 12px;
+  margin-left: 1px;
+  font-size: 10px;
+}
+
+.word-footer .add-tag-btn {
+  width: 18px;
+  height: 18px;
+  font-size: 11px;
+}
+
+.word-footer .card-actions {
+  gap: 10px;
+}
+
+.word-footer .action-btn {
+  padding: 2px;
+  line-height: 1;
 }
 
 /* 单词列表滚动轨道两端箭头：顶部向上、底部向下 */
@@ -1938,9 +1969,12 @@ body::-webkit-scrollbar,
 }
 .user-note-text::before { content: "【"; }
 .user-note-text::after { content: "】"; }
-.user-note-row + .word-example-preview {
-  margin-top: 3px;
-  padding-top: 6px;
+.word-card > .word-meaning + .user-note-row {
+  margin-top: 8px;
+}
+.word-card > .user-note-row + .word-example-preview {
+  margin-top: 10px;
+  padding-top: 8px;
 }
 .similar-word-chip .user-note-row {
   margin-bottom: 0;

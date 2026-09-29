@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-09-29.21",
+  "contractVersion": "2026-09-29.22",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -10,7 +10,8 @@
       "docs/decisions/ADR-002-review-order.md",
       "docs/decisions/ADR-003-mobile-durable-snapshot-recovery.md",
       "docs/decisions/ADR-004-similar-word-manual-order.md",
-      "docs/decisions/ADR-005-inline-memory-note.md"
+      "docs/decisions/ADR-005-inline-memory-note.md",
+      "docs/decisions/ADR-006-list-card-vertical-rhythm.md"
     ]
   },
   "mirroredApps": [
@@ -137,6 +138,15 @@
       "controlStyle": "soft-rose-dashed-border",
       "focusStyle": "solid-accent-border",
       "optionalFieldsExcluded": true
+    },
+    "listCardVerticalRhythm": {
+      "meaningToUserNote": "8px",
+      "userNoteToExample": "10px",
+      "footerDensity": "compact-low-frequency-row",
+      "footerMarginTop": "6px",
+      "footerPaddingTop": "4px",
+      "footerBaseControlHeight": "18-to-22px",
+      "footerRequiredContentsPreserved": true
     }
   },
   "dataContracts": {

@@ -1482,10 +1482,13 @@ class VocabAppTester:
         ))
         self.assert_true(user_note_style, f"[{lang_name}] 自定义说明-无背景中括号小字展示且空内容完全隐藏不占位", "自定义说明缺少紧凑纯文本样式，或详情/复习空插槽没有自适应隐藏")
 
-        user_note_compact_spacing = all(token in content for token in (
+        user_note_spacing_hierarchy = all(token in content for token in (
             'margin: 0 0 3px;',
-            '.user-note-row + .word-example-preview {',
-            'margin-top: 3px;',
+            '.word-card > .word-meaning + .user-note-row {',
+            'margin-top: 8px;',
+            '.word-card > .user-note-row + .word-example-preview {',
+            'margin-top: 10px;',
+            'padding-top: 8px;',
             '.similar-word-chip .user-note-row + .similar-word-example {',
             'margin-top: 0 !important;',
             '.detail-sheet .modal-header {',
@@ -1494,7 +1497,7 @@ class VocabAppTester:
             'padding: 0 0 8px;',
             'gap: 6px;',
         ))
-        self.assert_true(user_note_compact_spacing, f"[{lang_name}] 自定义说明-列表、详情与相近词卡片使用紧凑间距", "自定义说明与释义、例句之间仍保留过大的垂直间距")
+        self.assert_true(user_note_spacing_hierarchy, f"[{lang_name}] 自定义说明-列表内容间距舒展且详情与相近词保持紧凑", "列表释义、说明、例句缺少清晰层级，或详情与相近词间距发生回归")
 
         user_note_readable_color = bool(re.search(
             r'\.user-note-text\s*\{[^}]*color:\s*var\(--text-secondary\);',
@@ -1981,6 +1984,31 @@ class VocabAppTester:
         # ---------------------------------------------------------------------
         word_footer_alignment = 'word-footer' in content and 'word-tags' in content
         self.assert_true(word_footer_alignment, f"[{lang_name}] 布局-单词卡片底部采用 .word-footer 结构，保障 Tag 标签与操作按钮 100% 独占同一排", "缺少 word-footer 包裹，导致 Tag 栏与操作按钮折行拆成两排")
+
+        compact_low_frequency_footer = (
+            bool(re.search(
+                r'\.word-footer\s*\{(?=[^}]*margin-top:\s*6px;)(?=[^}]*padding-top:\s*4px;)(?=[^}]*gap:\s*8px;)[^}]*\}',
+                content,
+                re.S,
+            ))
+            and all(token in content for token in (
+                '.word-footer .word-tags {',
+                '.word-footer .tag-badge {',
+                '.word-footer .remove-tag-x {',
+                '.word-footer .add-tag-btn {',
+                'width: 18px;',
+                'height: 18px;',
+                '.word-footer .card-actions {',
+                '.word-footer .action-btn {',
+                'padding: 2px;',
+                'line-height: 1;',
+            ))
+        )
+        self.assert_true(
+            compact_low_frequency_footer,
+            f"[{lang_name}] 列表卡片底栏-低频Tag与操作区采用紧凑单行高度",
+            "列表卡片底栏仍保留过大的上间距、内距或控件尺寸",
+        )
 
         # ---------------------------------------------------------------------
         # 测试点 51: 列表卡片例句预览必须包含中文翻译 (.word-example-trans)
@@ -5299,6 +5327,7 @@ class VocabAppTester:
                 };
                 source.userNote = '';
                 source.pronunciationNote = '';
+                source.tags = [];
                 target.userNote = '';
                 target.pronunciationNote = '';
                 app.currentFilter = 'all';
@@ -5356,9 +5385,21 @@ class VocabAppTester:
                 const listNoteText = listRow && listRow.querySelector('.user-note-text');
                 const listColorMatchesMeaning = !!listMeaning && !!listNoteText
                   && getComputedStyle(listMeaning).color === getComputedStyle(listNoteText).color;
-                const listCompact = isCompactNote(listRow)
-                  && verticalGap(listMeaning, listRow) <= 6
-                  && (!listExample || verticalGap(listRow, listExample) <= 6);
+                const meaningToNoteGap = verticalGap(listMeaning, listRow);
+                const noteToExampleGap = listExample ? verticalGap(listRow, listExample) : 10;
+                const listComfortableSpacing = isCompactNote(listRow)
+                  && meaningToNoteGap >= 7 && meaningToNoteGap <= 9
+                  && noteToExampleGap >= 9 && noteToExampleGap <= 11;
+                const listFooter = listCard && listCard.querySelector('.word-footer');
+                const listFooterStyle = listFooter && getComputedStyle(listFooter);
+                const listAddTag = listFooter && listFooter.querySelector('.add-tag-btn');
+                const listAction = listFooter && listFooter.querySelector('.action-btn');
+                const listFooterCompact = !!listFooter && !!listFooterStyle && !!listAddTag && !!listAction
+                  && listFooter.getBoundingClientRect().height <= 27
+                  && Math.abs(parseFloat(listFooterStyle.marginTop || '0') - 6) <= 0.5
+                  && Math.abs(parseFloat(listFooterStyle.paddingTop || '0') - 4) <= 0.5
+                  && listAddTag.getBoundingClientRect().height <= 19
+                  && listAction.getBoundingClientRect().height <= 22;
                 app.showDetailModal(sourceId);
                 const detailRow = detailSlot && detailSlot.querySelector('.user-note-row');
                 const detailDisplayed = document.getElementById('detailMeaning')?.nextElementSibling === detailSlot && detailRow?.querySelector('.user-note-text')?.textContent === '我的自定义说明';
@@ -5429,7 +5470,7 @@ class VocabAppTester:
                   inlineControlsScoped, editorOpenedBlank, savedViaModal, persisted,
                   listDisplayed, detailDisplayed, reviewDisplayed, similarDisplayed,
                   existingNotePreloaded, sourceCleared, clearedDetailCollapsed, clearedSimilarCollapsed,
-                  listCompact, detailCompact, reviewCompact, similarCompact,
+                  listComfortableSpacing, listFooterCompact, detailCompact, reviewCompact, similarCompact,
                   listColorMatchesMeaning, similarColorMatchesMeaning
                 };
             """)
@@ -5438,11 +5479,11 @@ class VocabAppTester:
                 f"[{lang_name}] 浏览器内容说明-编辑弹窗与四视图条件展示及清空零占位全流程",
                 f"内容说明弹窗兼容或条件展示失败: {user_note_lifecycle}",
             )
-            note_compact_keys = ('listCompact', 'detailCompact', 'reviewCompact', 'similarCompact')
+            note_layout_keys = ('listComfortableSpacing', 'listFooterCompact', 'detailCompact', 'reviewCompact', 'similarCompact')
             self.assert_true(
-                bool(user_note_lifecycle and all(user_note_lifecycle.get(key) for key in note_compact_keys)),
-                f"[{lang_name}] 浏览器自定义说明-四视图无背景中括号展示且释义/例句间距紧凑",
-                f"自定义说明实际渲染尺寸或间距过大: {user_note_lifecycle}",
+                bool(user_note_lifecycle and all(user_note_lifecycle.get(key) for key in note_layout_keys)),
+                f"[{lang_name}] 浏览器列表卡片-阅读间距舒展且低频Tag底栏紧凑",
+                f"列表释义、说明、例句间距或底栏基础高度不符合新层级: {user_note_lifecycle}",
             )
             note_color_keys = ('listColorMatchesMeaning', 'similarColorMatchesMeaning')
             self.assert_true(
