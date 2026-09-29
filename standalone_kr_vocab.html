@@ -1485,6 +1485,10 @@ body::-webkit-scrollbar,
   overflow: hidden;
 }
 
+.detail-modal-header.detail-history-visible .detail-pronunciation-row {
+  padding-left: 48px;
+}
+
 .detail-pronunciation-note-controls {
   display: inline-flex;
   align-items: center;
@@ -22743,14 +22747,17 @@ class KrVocabApp {
       this.syncMasteredWidgets(word.id);
     }
 
+    const hasDetailHistory = this.detailModalHistory.length > 0;
     const backBtn = document.getElementById('detailBackBtn');
     if (backBtn) {
-      if (this.detailModalHistory.length > 0) {
+      if (hasDetailHistory) {
         backBtn.style.display = 'inline-flex';
       } else {
         backBtn.style.display = 'none';
       }
     }
+    const detailModalHeader = backBtn?.closest('.detail-modal-header');
+    if (detailModalHeader) detailModalHeader.classList.toggle('detail-history-visible', hasDetailHistory);
 
     document.getElementById('detailWord').textContent = word.word;
     document.getElementById('detailReading').textContent = word.reading || '';
@@ -22820,6 +22827,8 @@ class KrVocabApp {
     if (backBtn) {
       backBtn.style.display = 'none';
     }
+    const detailModalHeader = backBtn?.closest('.detail-modal-header');
+    if (detailModalHeader) detailModalHeader.classList.remove('detail-history-visible');
   }
 
   syncModalManualSimilarRelations(targetWord, previousSimilarWordIds, nextSimilarWordIds, updatedAt = Date.now()) {

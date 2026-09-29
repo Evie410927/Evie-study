@@ -1363,6 +1363,19 @@ class VocabAppTester:
             "详情词性释义行仍有背景卡片、左侧强调边或额外左内边距，导致正文可见内容缩进不一致",
         )
 
+        detail_history_pronunciation_alignment = all(token in content for token in (
+            '.detail-modal-header.detail-history-visible .detail-pronunciation-row {',
+            'padding-left: 48px;',
+            'const hasDetailHistory = this.detailModalHistory.length > 0;',
+            "detailModalHeader.classList.toggle('detail-history-visible', hasDetailHistory)",
+            "detailModalHeader.classList.remove('detail-history-visible')",
+        ))
+        self.assert_true(
+            detail_history_pronunciation_alignment,
+            f"[{lang_name}] 详情弹窗排版-显示返回箭头时发音行同步对齐词条左边线",
+            "详情弹窗缺少返回历史状态类、48px 返回按钮槽位缩进，或关闭时未恢复常规对齐",
+        )
+
         user_note_style = all(token in content for token in (
             '.user-note-display {',
             '.user-note-text {',
@@ -3963,6 +3976,38 @@ class VocabAppTester:
                 bool(detail_visible_content_alignment and all(detail_visible_content_alignment.values())),
                 f"[{lang_name}] 浏览器详情弹窗排版-标题、读音、词性标签与说明共用左边线",
                 f"详情弹窗可见内容仍存在额外缩进或词性释义背景未移除: {detail_visible_content_alignment}",
+            )
+
+            detail_history_pronunciation_alignment = driver.execute_script("""
+                const app = window.app;
+                const sourceId = app?.currentDetailWordId;
+                const target = app?.words?.find(word => sourceId && String(word.id) !== String(sourceId));
+                const modal = document.getElementById('detailModal');
+                const header = modal?.querySelector('.detail-modal-header');
+                const backButton = document.getElementById('detailBackBtn');
+                const title = document.getElementById('detailWord');
+                const reading = document.getElementById('detailReading');
+                const pronunciationRow = modal?.querySelector('.detail-pronunciation-row');
+                if (!app || !sourceId || !target || !modal || !header || !backButton || !title || !reading || !pronunciationRow) return null;
+                app.showDetailModal(target.id);
+                const historyRowStyle = getComputedStyle(pronunciationRow);
+                const historyAligned = Math.abs(title.getBoundingClientRect().left - reading.getBoundingClientRect().left) <= 1;
+                const historyStateApplied = header.classList.contains('detail-history-visible')
+                  && getComputedStyle(backButton).display !== 'none'
+                  && Math.abs(parseFloat(historyRowStyle.paddingLeft || '0') - 48) <= 0.5;
+                app.goBackDetailModal();
+                const restoredRowStyle = getComputedStyle(pronunciationRow);
+                const restoredAlignment = Math.abs(title.getBoundingClientRect().left - reading.getBoundingClientRect().left) <= 1;
+                const historyStateCleared = !header.classList.contains('detail-history-visible')
+                  && getComputedStyle(backButton).display === 'none'
+                  && parseFloat(restoredRowStyle.paddingLeft || '0') === 0
+                  && String(app.currentDetailWordId) === String(sourceId);
+                return {historyAligned, historyStateApplied, restoredAlignment, historyStateCleared};
+            """)
+            self.assert_true(
+                bool(detail_history_pronunciation_alignment and all(detail_history_pronunciation_alignment.values())),
+                f"[{lang_name}] 浏览器详情弹窗排版-有返回箭头时发音与词条左对齐且返回后恢复",
+                f"详情弹窗显示返回箭头时读音未随词条缩进，或返回后未恢复常规对齐: {detail_history_pronunciation_alignment}",
             )
 
             detail_modal_scroll_reset = driver.execute_async_script("""
