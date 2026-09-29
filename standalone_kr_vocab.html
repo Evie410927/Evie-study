@@ -1458,6 +1458,12 @@ body::-webkit-scrollbar,
   flex-direction: column;
 }
 
+.modal-sheet.detail-sheet {
+  height: 85vh;
+  max-height: 85vh;
+  overflow: hidden;
+}
+
 .detail-title-group {
   display: flex;
   align-items: baseline;
@@ -1517,11 +1523,31 @@ body::-webkit-scrollbar,
 }
 
 .detail-body {
-  overflow-y: auto;
-  padding: 4px 0 8px;
+  overflow: hidden;
+  padding: 4px 0 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.detail-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.detail-scroll-content {
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .detail-sheet .modal-header {
@@ -1531,6 +1557,7 @@ body::-webkit-scrollbar,
   row-gap: 5px;
   align-items: center;
   margin-bottom: 4px;
+  flex: 0 0 auto;
 }
 
 .detail-meaning {
@@ -1654,6 +1681,7 @@ body::-webkit-scrollbar,
   margin-top: 14px;
   padding-top: 10px;
   border-top: 1px solid var(--border-color);
+  flex: 0 0 auto;
 }
 
 .card-actions {
@@ -16787,11 +16815,15 @@ body::-webkit-scrollbar,
           </div>
         </div>
         <div class="detail-body">
-          <div id="detailMeaning" class="detail-meaning">词性与释义</div>
-          <div id="detailUserNote" class="detail-user-note-slot"></div>
-          <div id="detailTags" class="detail-tags"></div>
-          <div id="detailExamplesList" class="detail-examples-list"></div>
-          <div id="detailSimilarBlock"></div>
+          <div class="detail-summary">
+            <div id="detailMeaning" class="detail-meaning">词性与释义</div>
+            <div id="detailUserNote" class="detail-user-note-slot"></div>
+            <div id="detailTags" class="detail-tags"></div>
+          </div>
+          <div class="detail-scroll-content">
+            <div id="detailExamplesList" class="detail-examples-list"></div>
+            <div id="detailSimilarBlock"></div>
+          </div>
         </div>
         <div class="detail-footer">
           <button id="detailSpeakBtn" class="btn-secondary" style="flex: 1;">🔊 发音</button>
@@ -21630,10 +21662,10 @@ class KrVocabApp {
     const detailModal = document.getElementById('detailModal');
     const wordId = this.currentDetailWordId;
     if (!detailModal || !wordId) return;
-    const detailBody = detailModal.querySelector('.detail-body');
+    const detailScrollContent = detailModal.querySelector('.detail-scroll-content');
     this.wordModalReturnContext = {
       wordId,
-      scrollTop: detailBody ? detailBody.scrollTop : 0,
+      scrollTop: detailScrollContent ? detailScrollContent.scrollTop : 0,
       history: Array.isArray(this.detailModalHistory) ? [...this.detailModalHistory] : []
     };
     detailModal.classList.remove('active');
@@ -21650,12 +21682,12 @@ class KrVocabApp {
     this.currentDetailWordId = returnContext.wordId;
     this.showDetailModal(returnContext.wordId, true);
     const detailModal = document.getElementById('detailModal');
-    const detailBody = detailModal ? detailModal.querySelector('.detail-body') : null;
+    const detailScrollContent = detailModal ? detailModal.querySelector('.detail-scroll-content') : null;
     const savedScrollTop = Math.max(0, Number(returnContext.scrollTop || 0));
-    if (detailBody) {
+    if (detailScrollContent) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          if (detailBody.isConnected) detailBody.scrollTop = savedScrollTop;
+          if (detailScrollContent.isConnected) detailScrollContent.scrollTop = savedScrollTop;
         });
       });
     }
@@ -22421,7 +22453,7 @@ class KrVocabApp {
   }
 
   autoScrollSimilarWordSort(state, clientY) {
-    const scrollHost = state && state.container ? state.container.closest('.detail-body, .card-face-back, .modal-sheet') : null;
+    const scrollHost = state && state.container ? state.container.closest('.detail-scroll-content, .card-face-back, .modal-sheet') : null;
     if (!scrollHost) return;
     const rect = scrollHost.getBoundingClientRect();
     const edge = Math.min(64, rect.height * 0.16);
@@ -22798,7 +22830,7 @@ class KrVocabApp {
     if (modalEl) modalEl.classList.add('active');
 
     // A newly opened or newly selected word must start at the top of the reused detail scroller.
-    if (shouldResetDetailScroll && modalEl) this.resetModalScrollToTop(modalEl, '.detail-body');
+    if (shouldResetDetailScroll && modalEl) this.resetModalScrollToTop(modalEl, '.detail-scroll-content');
   }
 
   renderDetailTags(word) {

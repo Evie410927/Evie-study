@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-09-29.16",
+  "contractVersion": "2026-09-29.17",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -102,6 +102,22 @@
       "deleteControl": "small-x",
       "directListCardEditing": true,
       "promptDialog": false
+    },
+    "detailModalScroll": {
+      "fixedRegion": [
+        "title-actions",
+        "pronunciation-row",
+        "meaning",
+        "user-note",
+        "tags"
+      ],
+      "scrollRegionStartsAt": "examples",
+      "scrollRegionIncludes": [
+        "examples",
+        "similar-words"
+      ],
+      "scrollHostClass": "detail-scroll-content",
+      "outerSheetScroll": false
     }
   },
   "dataContracts": {

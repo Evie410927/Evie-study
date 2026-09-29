@@ -815,7 +815,7 @@ class VocabAppTester:
             'this.restoreDetailAfterWordModal();',
             'restoreDetailAfterWordModal() {',
             'this.showDetailModal(returnContext.wordId, true);',
-            'detailBody.scrollTop = savedScrollTop;',
+            'detailScrollContent.scrollTop = savedScrollTop;',
             'editWord(id, preserveDetailReturn = false)',
         )) and 'window.app.closeDetailModal(); window.app.editWord(id);' not in content
         self.assert_true(detail_editor_returns_to_detail, f"[{lang_name}] 详情→编辑-保存或×关闭编辑层后恢复原详情、历史与滚动位置", "详情编辑仍直接销毁详情弹窗，或编辑层关闭后未恢复原卡片上下文")
@@ -1352,6 +1352,35 @@ class VocabAppTester:
             "详情读音或发音备注仍挤在标题第一行、没有位于词性释义之前，或独立行没有横跨弹窗可用宽度",
         )
 
+        detail_summary_pos = content.find('<div class="detail-summary">')
+        detail_scroll_pos = content.find('<div class="detail-scroll-content">')
+        detail_examples_pos = content.find('id="detailExamplesList"')
+        detail_similar_pos = content.find('id="detailSimilarBlock"')
+        detail_fixed_summary_scroll_contract = (
+            detail_summary_pos >= 0
+            and detail_summary_pos < detail_meaning_pos < content.find('id="detailUserNote"') < content.find('id="detailTags"')
+            and detail_scroll_pos > content.find('id="detailTags"')
+            and detail_scroll_pos < detail_examples_pos < detail_similar_pos
+            and bool(re.search(
+                r'\.detail-body\s*\{(?=[^}]*overflow:\s*hidden;)(?=[^}]*flex:\s*1\s+1\s+0;)(?=[^}]*min-height:\s*0;)[^}]*\}',
+                content,
+                re.S,
+            ))
+            and bool(re.search(
+                r'\.detail-scroll-content\s*\{(?=[^}]*overflow-y:\s*auto;)(?=[^}]*flex:\s*1\s+1\s+0;)(?=[^}]*min-height:\s*0;)[^}]*\}',
+                content,
+                re.S,
+            ))
+            and bool(re.search(r'\.modal-sheet\.detail-sheet\s*\{[^}]*overflow:\s*hidden;', content, re.S))
+            and "this.resetModalScrollToTop(modalEl, '.detail-scroll-content')" in content
+            and "closest('.detail-scroll-content, .card-face-back, .modal-sheet')" in content
+        )
+        self.assert_true(
+            detail_fixed_summary_scroll_contract,
+            f"[{lang_name}] 详情弹窗滚动区-词性、内容备注与Tag固定，滑动条从例句开始",
+            "详情顶部摘要未与例句/相近表达滚动区分离，外层仍可滚动，或置顶与拖拽仍操作旧容器",
+        )
+
         detail_visible_content_left_aligned = bool(re.search(
             r'\.detail-meaning\s*\{(?=[^}]*background:\s*transparent;)(?=[^}]*padding:\s*6px\s+0;)(?=[^}]*border-radius:\s*0;)(?=[^}]*border-left:\s*0;)[^}]*\}',
             content,
@@ -1398,7 +1427,9 @@ class VocabAppTester:
             '.similar-word-chip .user-note-row + .similar-word-example {',
             'margin-top: 0 !important;',
             '.detail-sheet .modal-header {',
-            'padding: 4px 0 8px;',
+            '.detail-summary {',
+            '.detail-scroll-content {',
+            'padding: 0 0 8px;',
             'gap: 6px;',
         ))
         self.assert_true(user_note_compact_spacing, f"[{lang_name}] 自定义说明-列表、详情与相近词卡片使用紧凑间距", "自定义说明与释义、例句之间仍保留过大的垂直间距")
@@ -1553,11 +1584,11 @@ class VocabAppTester:
         # ---------------------------------------------------------------------
         detail_navigation_scroll_reset = all(token in content for token in (
             'shouldResetDetailScroll',
-            "this.resetModalScrollToTop(modalEl, '.detail-body')",
+            "this.resetModalScrollToTop(modalEl, '.detail-scroll-content')",
             'resetModalScrollToTop(modal, scrollSelector',
             'target.scrollTop = 0',
         ))
-        self.assert_true(detail_navigation_scroll_reset, f"[{lang_name}] 交互-详情弹窗点击相近表达或返回上一词条后正文自动置顶", "showDetailModal 切换词条后未把复用的 .detail-body 滚动位置重置为顶部")
+        self.assert_true(detail_navigation_scroll_reset, f"[{lang_name}] 交互-详情弹窗点击相近表达或返回上一词条后正文自动置顶", "showDetailModal 切换词条后未把复用的 .detail-scroll-content 滚动位置重置为顶部")
 
         # ---------------------------------------------------------------------
         # 测试点 34B: 所有可滚动弹窗每次重新打开均从顶部开始
@@ -1859,7 +1890,10 @@ class VocabAppTester:
         # ---------------------------------------------------------------------
         # 测试点 46: 页面垂直滚动条畅通性 (绝对禁止锁定 html/body overflow:hidden)
         # ---------------------------------------------------------------------
-        body_scroll_unlocked = 'body {\n  overflow: hidden' not in content and 'html, body {\n  overflow: hidden' not in content
+        body_scroll_unlocked = (
+            bool(re.search(r'html\s*,\s*body\s*\{[^}]*overflow-y:\s*auto\s*!important;', content, re.S))
+            and not bool(re.search(r'(?m)^\s*(?:html\s*,\s*)?body\s*\{[^}]*overflow(?:-y)?:\s*hidden', content, re.S))
+        )
         self.assert_true(body_scroll_unlocked, f"[{lang_name}] 布局-页面 html/body 垂直滚动条畅通 (无 overflow:hidden 强行锁定)", "页面设置了 overflow:hidden 锁定高度")
 
         # ---------------------------------------------------------------------
@@ -4014,25 +4048,53 @@ class VocabAppTester:
                 const done = arguments[arguments.length - 1];
                 const app = window.app;
                 const modal = document.getElementById('detailModal');
+                const sheet = modal?.querySelector('.detail-sheet');
                 const body = modal?.querySelector('.detail-body');
+                const summary = modal?.querySelector('.detail-summary');
+                const scroller = modal?.querySelector('.detail-scroll-content');
+                const meaning = document.getElementById('detailMeaning');
+                const tags = document.getElementById('detailTags');
+                const examples = document.getElementById('detailExamplesList');
                 const wordId = app?.currentDetailWordId;
-                if (!app || !modal || !body || !wordId) { done(null); return; }
+                if (!app || !modal || !sheet || !body || !summary || !scroller || !meaning || !tags || !examples || !wordId) { done(null); return; }
                 const scrollProbe = document.createElement('div');
                 scrollProbe.style.cssText = 'height:2000px;min-height:2000px;flex:none;';
                 scrollProbe.setAttribute('data-scroll-reset-probe', '');
-                body.appendChild(scrollProbe);
-                body.scrollTop = body.scrollHeight;
-                const reachedBottom = body.scrollTop > 0;
-                app.closeDetailModal();
-                app.showDetailModal(wordId);
                 requestAnimationFrame(() => requestAnimationFrame(() => {
-                  const result = {
-                    reachedBottom,
-                    reopenedAtTop: body.scrollTop === 0,
-                    stillOpen: modal.classList.contains('active')
-                  };
-                  scrollProbe.remove();
-                  done(result);
+                  scroller.appendChild(scrollProbe);
+                  const summaryRect = summary.getBoundingClientRect();
+                  const scrollerRect = scroller.getBoundingClientRect();
+                  const meaningTopBefore = meaning.getBoundingClientRect().top;
+                  const tagsTopBefore = tags.getBoundingClientRect().top;
+                  const examplesTopBefore = examples.getBoundingClientRect().top;
+                  scroller.scrollTop = scroller.scrollHeight;
+                  requestAnimationFrame(() => {
+                    const reachedBottom = scroller.scrollTop > 0;
+                    const fixedMetadataStable = Math.abs(meaning.getBoundingClientRect().top - meaningTopBefore) <= 1
+                      && Math.abs(tags.getBoundingClientRect().top - tagsTopBefore) <= 1;
+                    const examplesMoved = examples.getBoundingClientRect().top < examplesTopBefore - 1;
+                    const startsAfterSummary = scrollerRect.top >= summaryRect.bottom - 1
+                      && scrollerRect.top <= summaryRect.bottom + 12;
+                    const onlyInnerScroller = body.scrollTop === 0
+                      && getComputedStyle(body).overflowY === 'hidden'
+                      && getComputedStyle(sheet).overflowY === 'hidden'
+                      && getComputedStyle(scroller).overflowY === 'auto';
+                    app.closeDetailModal();
+                    app.showDetailModal(wordId);
+                    requestAnimationFrame(() => requestAnimationFrame(() => {
+                      const result = {
+                        reachedBottom,
+                        fixedMetadataStable,
+                        examplesMoved,
+                        startsAfterSummary,
+                        onlyInnerScroller,
+                        reopenedAtTop: scroller.scrollTop === 0,
+                        stillOpen: modal.classList.contains('active')
+                      };
+                      scrollProbe.remove();
+                      done(result);
+                    }));
+                  });
                 }));
             """)
             self.assert_true(
@@ -5656,27 +5718,27 @@ class VocabAppTester:
                 const source = app.words.find(word => app.getSimilarWords(word, 1).length > 0) || app.words[0];
                 const target = (source && app.getSimilarWords(source, 1)[0]) || app.words.find(word => source && word.id !== source.id);
                 const modal = document.getElementById('detailModal');
-                const body = modal && modal.querySelector('.detail-body');
-                if (!source || !target || !body) return null;
-                const oldHeight = body.style.height;
-                const oldMaxHeight = body.style.maxHeight;
-                body.style.height = '120px';
-                body.style.maxHeight = '120px';
+                const scroller = modal && modal.querySelector('.detail-scroll-content');
+                if (!source || !target || !scroller) return null;
+                const oldHeight = scroller.style.height;
+                const oldMaxHeight = scroller.style.maxHeight;
+                scroller.style.height = '120px';
+                scroller.style.maxHeight = '120px';
                 app.showDetailModal(source.id);
-                body.scrollTop = body.scrollHeight;
-                const wasScrolled = body.scrollTop > 0;
+                scroller.scrollTop = scroller.scrollHeight;
+                const wasScrolled = scroller.scrollTop > 0;
                 app.showDetailModal(target.id);
-                const resetToTop = body.scrollTop === 0;
+                const resetToTop = scroller.scrollTop === 0;
                 const switchedWord = app.currentDetailWordId === target.id;
-                body.style.height = oldHeight;
-                body.style.maxHeight = oldMaxHeight;
+                scroller.style.height = oldHeight;
+                scroller.style.maxHeight = oldMaxHeight;
                 app.closeDetailModal();
                 return {wasScrolled, resetToTop, switchedWord};
             """)
             self.assert_true(
                 bool(detail_scroll_reset and detail_scroll_reset.get('wasScrolled') and detail_scroll_reset.get('resetToTop') and detail_scroll_reset.get('switchedWord')),
                 f"[{lang_name}] 浏览器相近表达跳转-旧滚动位置清零并从新词条顶部展示",
-                "详情弹窗滚动到底部后切换相近表达，.detail-body 仍保留旧 scrollTop",
+                "详情弹窗滚动到底部后切换相近表达，.detail-scroll-content 仍保留旧 scrollTop",
             )
             driver.execute_script("document.getElementById('detailModal')?.classList.remove('active')")
 
