@@ -1217,7 +1217,7 @@ class VocabAppTester:
             "this.showToast('✅ 发音备注已删除')",
             '.word-title-group.pronunciation-note-editor-open {',
             'flex-wrap: nowrap;',
-            'align-items: center;',
+            'align-items: flex-start;',
             'width: 15px;',
             'height: 15px;',
             'color: #f6a96b;',
@@ -1243,6 +1243,33 @@ class VocabAppTester:
             'text-overflow: ellipsis;',
         )) and 'max-width: 132px;' not in pronunciation_display_css and 'max-width: 112px;' not in pronunciation_display_css
         self.assert_true(pronunciation_note_flexible_width, f"[{lang_name}] 发音备注-黄色文字使用状态操作区左侧全部剩余宽度", "发音备注仍有 112/132px 固定宽度上限，或缺少弹性收缩与真实空间不足时的省略保护")
+
+        pronunciation_editor_css_start = content.find('.word-card-pronunciation-note-editor-slot {')
+        pronunciation_editor_css_end = content.find('.pronunciation-note-display {', pronunciation_editor_css_start)
+        pronunciation_editor_css = content[pronunciation_editor_css_start:pronunciation_editor_css_end] if pronunciation_editor_css_start >= 0 and pronunciation_editor_css_end > pronunciation_editor_css_start else ''
+        pronunciation_editor_adaptive_layout = all(token in pronunciation_editor_css for token in (
+            'flex: 1 1 0;',
+            'max-width: none;',
+            'min-height: 22px;',
+            'overflow: hidden;',
+            'white-space: pre-wrap;',
+            'overflow-wrap: anywhere;',
+            'scrollbar-width: none;',
+            '.word-card-pronunciation-note-inline-input::-webkit-scrollbar { display: none; }',
+        )) and all(token in content for token in (
+            'resizeWordCardPronunciationNoteInput(input)',
+            '.word-title-group.pronunciation-note-editor-open .kr-meaning-badge { display: none; }',
+            "input.wrap = 'soft';",
+            "input.style.height = '22px';",
+            "const borderHeight = computedStyle",
+            "input.style.height = `${Math.max(22, Math.ceil((input.scrollHeight || 0) + borderHeight))}px`;",
+            "input.addEventListener('input', () => this.resizeWordCardPronunciationNoteInput(input));",
+        )) and 'max-width: 145px;' not in pronunciation_editor_css and 'overflow-x: auto;' not in pronunciation_editor_css and "input.wrap = 'off';" not in content
+        self.assert_true(
+            pronunciation_editor_adaptive_layout,
+            f"[{lang_name}] 发音备注编辑框-弹性延伸至状态区左侧、自动换行增高且无滚动条",
+            "发音备注原位编辑框仍有固定宽度上限、可见滚动条，或缺少按内容自动增高逻辑",
+        )
 
         pronunciation_note_inline_persistence = all(token in content for token in (
             "word.pronunciationNote = nextNote;",
@@ -5221,6 +5248,34 @@ class VocabAppTester:
                   const inlineOpened = !!input && input.maxLength === 500 && input.value === ''
                     && input.getAttribute('placeholder') === null
                     && !document.getElementById('detailModal')?.classList.contains('active');
+                  const inputSlot = input?.closest('.word-card-pronunciation-note-editor-slot');
+                  const editorTitleGroup = input?.closest('.word-title-group');
+                  const editorHeaderActions = card?.querySelector('.word-header-actions');
+                  const editorRect = input?.getBoundingClientRect();
+                  const editorTitleGroupRect = editorTitleGroup?.getBoundingClientRect();
+                  const editorHeaderActionsRect = editorHeaderActions?.getBoundingClientRect();
+                  const inputSlotStyle = inputSlot ? getComputedStyle(inputSlot) : null;
+                  const editorUsesAvailableWidth = !!editorRect && !!editorTitleGroupRect && !!editorHeaderActionsRect && !!inputSlotStyle
+                    && Math.abs(editorRect.right - editorTitleGroupRect.right) <= 2
+                    && editorRect.right <= editorHeaderActionsRect.left + 1
+                    && parseFloat(inputSlotStyle.flexGrow || '0') >= 1
+                    && inputSlotStyle.maxWidth === 'none';
+                  let editorAutoGrowsWithoutScrollbars = false;
+                  if (input) {
+                    const initialEditorHeight = input.getBoundingClientRect().height;
+                    input.value = 'wrap-visible-text-'.repeat(18);
+                    input.dispatchEvent(new Event('input', {bubbles:true}));
+                    const grownStyle = getComputedStyle(input);
+                    const grownRect = input.getBoundingClientRect();
+                    editorAutoGrowsWithoutScrollbars = grownRect.height > initialEditorHeight + 5
+                      && input.clientHeight >= input.scrollHeight - 1
+                      && grownStyle.overflowX === 'hidden'
+                      && grownStyle.overflowY === 'hidden'
+                      && grownStyle.whiteSpace === 'pre-wrap'
+                      && grownStyle.scrollbarWidth === 'none';
+                    input.value = '';
+                    input.dispatchEvent(new Event('input', {bubbles:true}));
+                  }
                   if (input) input.value = '容易混淆：记忆方法 A';
                   input?.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true, cancelable:true}));
 
@@ -5376,6 +5431,14 @@ class VocabAppTester:
                   const detailEditPrefilled = input?.value === editedNote
                     && input?.dataset.noteEditMode === 'replace'
                     && input?.closest('.detail-pronunciation-note-controls') === detailControls;
+                  const detailEditorRect = input?.getBoundingClientRect();
+                  const detailControlsRect = detailControls?.getBoundingClientRect();
+                  const detailInputSlot = input?.closest('.word-card-pronunciation-note-editor-slot');
+                  const detailInputSlotStyle = detailInputSlot ? getComputedStyle(detailInputSlot) : null;
+                  const detailEditorUsesAvailableWidth = !!detailEditorRect && !!detailControlsRect && !!detailInputSlotStyle
+                    && Math.abs(detailEditorRect.right - detailControlsRect.right) <= 2
+                    && parseFloat(detailInputSlotStyle.flexGrow || '0') >= 1
+                    && detailInputSlotStyle.maxWidth === 'none';
                   const detailEditedNote = '详情修改后的发音备注';
                   if (input) input.value = detailEditedNote;
                   input?.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true, cancelable:true}));
@@ -5465,6 +5528,8 @@ class VocabAppTester:
                     existingPronunciationTagBackfilled,
                     inlineOpened,
                     inputStaysOnTitleRow,
+                    editorUsesAvailableWidth,
+                    editorAutoGrowsWithoutScrollbars,
                     enterSaved,
                     pronunciationColorDistinct,
                     existingNoteInputBlank,
@@ -5484,6 +5549,7 @@ class VocabAppTester:
                     detailNoteUsesAvailableWidth,
                     detailEditPointerDownKeptTarget,
                     detailEditPrefilled,
+                    detailEditorUsesAvailableWidth,
                     detailEditSavedAndSynced,
                     detailDeletePointerDownKeptTarget,
                     detailDeleteSynced,

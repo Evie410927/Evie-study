@@ -831,7 +831,7 @@ body::-webkit-scrollbar,
 }
 .word-title-group.pronunciation-note-editor-open {
   flex-wrap: nowrap;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .word-text {
@@ -876,15 +876,17 @@ body::-webkit-scrollbar,
 }
 .word-card-pronunciation-note-editor-slot {
   display: inline-flex;
-  flex: 0 1 145px;
+  flex: 1 1 0;
   min-width: 72px;
-  max-width: 145px;
+  max-width: none;
   margin: 0;
 }
 .word-card-pronunciation-note-editor-slot:empty { display: none; }
 .word-card-pronunciation-note-inline-input {
+  display: block;
   width: 100%;
   min-width: 0;
+  min-height: 22px;
   height: 22px;
   padding: 2px 6px;
   border: 1px solid var(--accent-primary);
@@ -898,10 +900,12 @@ body::-webkit-scrollbar,
   box-shadow: 0 0 0 2px rgba(236, 72, 153, 0.12);
   font-family: inherit;
   resize: none;
-  overflow-x: auto;
-  overflow-y: hidden;
-  white-space: pre;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  scrollbar-width: none;
 }
+.word-card-pronunciation-note-inline-input::-webkit-scrollbar { display: none; }
 .pronunciation-note-display {
   display: inline-flex;
   align-items: center;
@@ -961,6 +965,7 @@ body::-webkit-scrollbar,
 }
 .word-title-group.pronunciation-note-editor-open .pronunciation-note-display,
 .detail-pronunciation-note-controls.pronunciation-note-editor-open .pronunciation-note-display { display: none; }
+.word-title-group.pronunciation-note-editor-open .kr-meaning-badge { display: none; }
 
 .mastered-badge {
   font-size: 11px;
@@ -20884,6 +20889,17 @@ class KrVocabApp {
     return Array.from(document.querySelectorAll('#wordList .word-card')).find(card => String(card.dataset.id || '') === String(wordId)) || null;
   }
 
+  resizeWordCardPronunciationNoteInput(input) {
+    if (!input || !input.classList?.contains('word-card-pronunciation-note-inline-input')) return false;
+    input.style.height = '22px';
+    const computedStyle = window.getComputedStyle ? window.getComputedStyle(input) : null;
+    const borderHeight = computedStyle
+      ? (parseFloat(computedStyle.borderTopWidth || '0') + parseFloat(computedStyle.borderBottomWidth || '0'))
+      : 0;
+    input.style.height = `${Math.max(22, Math.ceil((input.scrollHeight || 0) + borderHeight))}px`;
+    return true;
+  }
+
   startWordCardPronunciationNoteEdit(event, wordId, mode = 'append') {
     if (event) {
       event.preventDefault();
@@ -20908,7 +20924,7 @@ class KrVocabApp {
     if (!slot) return false;
     const input = document.createElement('textarea');
     input.rows = 1;
-    input.wrap = 'off';
+    input.wrap = 'soft';
     input.className = 'word-card-pronunciation-note-inline-input';
     input.maxLength = 500;
     input.value = editMode === 'replace' ? String(word.pronunciationNote || '').trim() : '';
@@ -20917,6 +20933,7 @@ class KrVocabApp {
     input.dataset.noteEditMode = editMode;
     input.addEventListener('pointerdown', inputEvent => inputEvent.stopPropagation());
     input.addEventListener('click', inputEvent => inputEvent.stopPropagation());
+    input.addEventListener('input', () => this.resizeWordCardPronunciationNoteInput(input));
     input.addEventListener('keydown', inputEvent => {
       inputEvent.stopPropagation();
       if (inputEvent.key === 'Enter') {
@@ -20938,6 +20955,7 @@ class KrVocabApp {
     slot.replaceChildren(input);
     requestAnimationFrame(() => {
       if (!input.isConnected) return;
+      this.resizeWordCardPronunciationNoteInput(input);
       input.focus();
       input.select();
     });

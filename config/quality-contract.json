@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-09-29.13",
+  "contractVersion": "2026-09-29.14",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -61,6 +61,9 @@
       "addControl": "small-plus",
       "editor": "in-card-inline-input",
       "editorPlacement": "same-title-row",
+      "editorWidth": "flex-to-right-action-boundary",
+      "editorOverflow": "soft-wrap-auto-height-without-visible-scrollbars",
+      "jpKrMeaningDuringEditing": "temporarily-hidden-to-release-editor-width",
       "initialInputValue": "empty",
       "existingNoteBehavior": "append",
       "existingNoteClick": "prefilled-inline-edit",
