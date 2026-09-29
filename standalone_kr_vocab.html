@@ -817,7 +817,7 @@ body::-webkit-scrollbar,
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 6px;
+  margin-bottom: 2px;
 }
 
 .word-title-group {
@@ -829,7 +829,17 @@ body::-webkit-scrollbar,
   flex: 1 1 auto;
   overflow: hidden;
 }
-.word-title-group.pronunciation-note-editor-open {
+.word-pronunciation-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: nowrap;
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+.word-pronunciation-row.pronunciation-note-editor-open {
   flex-wrap: nowrap;
   align-items: flex-end;
 }
@@ -854,7 +864,7 @@ body::-webkit-scrollbar,
   width: 15px;
   height: 15px;
   min-width: 15px;
-  margin-left: -5px;
+  margin-left: 0;
   padding: 0;
   border: 1px solid rgba(236, 72, 153, 0.28);
   border-radius: 50%;
@@ -963,9 +973,8 @@ body::-webkit-scrollbar,
   color: #ffd0a3;
   outline: none;
 }
-.word-title-group.pronunciation-note-editor-open .pronunciation-note-display,
+.word-pronunciation-row.pronunciation-note-editor-open .pronunciation-note-display,
 .detail-pronunciation-note-controls.pronunciation-note-editor-open .pronunciation-note-display { display: none; }
-.word-title-group.pronunciation-note-editor-open .kr-meaning-badge { display: none; }
 
 .mastered-badge {
   font-size: 11px;
@@ -21035,8 +21044,8 @@ class KrVocabApp {
     if (previousInput && !this.saveWordCardPronunciationNote(previousInput, previousInput.dataset.pronunciationNoteWordId)) return false;
     const sourceControl = event?.currentTarget && typeof event.currentTarget.closest === 'function' ? event.currentTarget : null;
     const card = this.findWordCardById(wordId);
-    const scope = sourceControl?.closest('.word-title-group, .detail-pronunciation-note-controls')
-      || card?.querySelector('.word-title-group');
+    const scope = sourceControl?.closest('.word-pronunciation-row, .detail-pronunciation-note-controls')
+      || card?.querySelector('.word-pronunciation-row');
     const slot = scope?.querySelector('.word-card-pronunciation-note-editor-slot');
     if (!slot) return false;
     const input = document.createElement('textarea');
@@ -21088,7 +21097,7 @@ class KrVocabApp {
     const editMode = input.dataset.noteEditMode === 'replace' ? 'replace' : 'append';
     input.dataset.committed = 'true';
     const slot = input.closest('.word-card-pronunciation-note-editor-slot');
-    const scope = input.closest('.word-title-group, .detail-pronunciation-note-controls');
+    const scope = input.closest('.word-pronunciation-row, .detail-pronunciation-note-controls');
     if (!enteredNote) {
       if (slot) slot.replaceChildren();
       scope?.classList.remove('pronunciation-note-editor-open');
@@ -21175,7 +21184,7 @@ class KrVocabApp {
     if (card) {
       const slot = card.querySelector('.word-card-pronunciation-note-editor-slot');
       if (slot) slot.replaceChildren();
-      card.querySelector('.word-title-group')?.classList.remove('pronunciation-note-editor-open');
+      card.querySelector('.word-pronunciation-row')?.classList.remove('pronunciation-note-editor-open');
       const addButton = card.querySelector('.word-card-pronunciation-note-add-btn');
       const hasNote = Boolean(String(word.pronunciationNote || '').trim());
       if (addButton) {
@@ -23269,13 +23278,16 @@ class KrVocabApp {
           <div class="word-header">
             <div class="word-title-group">
               <span class="word-text">${this.escapeHtml(w.word)}</span>
-              ${w.reading ? `<span class="word-reading">${this.escapeHtml(w.reading)}</span>` : ''}
-              ${this.renderPronunciationNoteControlsHtml(w, 'list')}
             </div>
             <div class="word-header-actions">
               <button type="button" class="similar-word-status-btn word-card-status-btn ${w.mastered ? 'status-mastered' : 'status-learning'}" data-mastered-word-id="${this.escapeHtml(String(w.id))}" aria-pressed="${w.mastered ? 'true' : 'false'}" onclick="event.stopPropagation(); (window.app||window.vocabApp).toggleMastered('${w.id}')" title="${w.mastered ? '点击切换为学习中' : '点击切换为已掌握'}">${w.mastered ? '✅ 已掌握' : '🔄 学习中'}</button>
               ${this.renderStarRating(w, 'word-card-rating')}
             </div>
+          </div>
+
+          <div class="word-pronunciation-row">
+            ${w.reading ? `<span class="word-reading">${this.escapeHtml(w.reading)}</span>` : ''}
+            ${this.renderPronunciationNoteControlsHtml(w, 'list')}
           </div>
 
           <div class="word-meaning">${this.renderPartOfSpeechLabel(w)}${this.escapeHtml(w.meaning)}</div>
@@ -66392,7 +66404,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 var krBadgeHtml = w.krMeaning ? '<span class="kr-badge">' + (w.krMeaning) + '</span>' : '';
                 var partOfSpeechHtml = w.partOfSpeech ? '<span class="part-of-speech-label">' + w.partOfSpeech + '</span>' : '';
                 return '<div class="word-card" onclick="if(window.app) window.app.showDetailModal(w.id)">' +
-                  '<div class="word-header"><span class="word-text">' + w.word + '</span>' + readingHtml + '</div>' +
+                  '<div class="word-header"><div class="word-title-group"><span class="word-text">' + w.word + '</span></div></div>' +
+                  '<div class="word-pronunciation-row">' + readingHtml + '</div>' +
                   '<div class="word-meaning">' + partOfSpeechHtml + w.meaning + krBadgeHtml + '</div>' +
                 '</div>';
               }).join('');

@@ -1242,7 +1242,7 @@ class VocabAppTester:
             ": `${previousNote}${previousNote ? '\\n' : ''}${enteredNote}`).slice(0, 500).trim();",
             "this.showToast('✅ 发音备注已保存')",
             "this.showToast('✅ 发音备注已删除')",
-            '.word-title-group.pronunciation-note-editor-open {',
+            '.word-pronunciation-row.pronunciation-note-editor-open {',
             'flex-wrap: nowrap;',
             'align-items: flex-end;',
             'width: 15px;',
@@ -1259,6 +1259,33 @@ class VocabAppTester:
             'class="user-note-delete-btn"',
         ))
         self.assert_true(pronunciation_note_inline_card_controls, f"[{lang_name}] 发音备注-小加号空白追加、点击文字回填编辑及末尾小叉删除", "列表卡片缺少独立 pronunciationNote、15px 美化＋、同排空白追加、已有文字回填替换、Esc 取消或发音备注末尾×删除")
+
+        list_controls_pos = content.find("this.renderPronunciationNoteControlsHtml(w, 'list')")
+        list_pronunciation_row_start = content.rfind('<div class="word-pronunciation-row">', 0, list_controls_pos)
+        list_pronunciation_row_end = content.find('</div>', list_controls_pos)
+        list_header_start = content.rfind('<div class="word-header">', 0, list_pronunciation_row_start)
+        list_header_end = content.rfind('</div>', 0, list_pronunciation_row_start)
+        list_title_start = content.find('<div class="word-title-group">', list_header_start, list_pronunciation_row_start)
+        list_actions_start = content.find('<div class="word-header-actions">', list_header_start, list_pronunciation_row_start)
+        list_reading_pos = content.find('${w.reading ? `<span class="word-reading">', list_pronunciation_row_start, list_pronunciation_row_end)
+        list_meaning_pos = content.find('<div class="word-meaning">', list_pronunciation_row_end)
+        jp_badge_stays_in_title = True
+        if lang_name == '日语':
+            jp_badge_pos = content.find('${w.krMeaning ? `<span class="kr-meaning-badge">', list_title_start, list_pronunciation_row_start)
+            jp_badge_stays_in_title = list_title_start < jp_badge_pos < list_actions_start
+        list_pronunciation_dedicated_row = (
+            list_header_start >= 0
+            and list_header_start < list_title_start < list_actions_start < list_header_end < list_pronunciation_row_start
+            and list_pronunciation_row_start < list_reading_pos < list_controls_pos < list_pronunciation_row_end < list_meaning_pos
+            and jp_badge_stays_in_title
+            and bool(re.search(r'\.word-pronunciation-row\s*\{[^}]*gap:\s*8px;[^}]*width:\s*100%;[^}]*margin-bottom:\s*6px;', content, re.S))
+            and bool(re.search(r'\.word-card-pronunciation-note-add-btn\s*\{[^}]*margin-left:\s*0;', content, re.S))
+        )
+        self.assert_true(
+            list_pronunciation_dedicated_row,
+            f"[{lang_name}] 发音备注-列表读音与黄色备注位于标题下方独立整宽第二排",
+            "列表卡片仍把读音或发音备注挤在单词标题/状态星级同一排，或第二排未横跨正文全宽",
+        )
 
         pronunciation_display_css_start = content.find('.pronunciation-note-display {')
         pronunciation_display_css_end = content.find('.pronunciation-note-edit-btn {', pronunciation_display_css_start)
@@ -1287,7 +1314,7 @@ class VocabAppTester:
             '.word-card-pronunciation-note-inline-input::-webkit-scrollbar { display: none; }',
         )) and all(token in content for token in (
             'resizeWordCardPronunciationNoteInput(input)',
-            '.word-title-group.pronunciation-note-editor-open .kr-meaning-badge { display: none; }',
+            "sourceControl?.closest('.word-pronunciation-row, .detail-pronunciation-note-controls')",
             "input.wrap = 'soft';",
             "input.style.height = '22px';",
             "const borderHeight = computedStyle",
@@ -1296,7 +1323,7 @@ class VocabAppTester:
         )) and 'max-width: 145px;' not in pronunciation_editor_css and 'overflow-x: auto;' not in pronunciation_editor_css and "input.wrap = 'off';" not in content
         self.assert_true(
             pronunciation_editor_adaptive_layout,
-            f"[{lang_name}] 发音备注编辑框-弹性延伸至状态区左侧、自动换行增高且无滚动条",
+            f"[{lang_name}] 发音备注编辑框-在独立发音排内弹性延伸、自动换行增高且无滚动条",
             "发音备注原位编辑框仍有固定宽度上限、可见滚动条，或缺少按内容自动增高逻辑",
         )
 
@@ -1341,7 +1368,7 @@ class VocabAppTester:
             'id="detailPronunciationNoteControls" class="detail-pronunciation-note-controls"',
             "this.renderPronunciationNoteControlsHtml(w, 'list')",
             "detailPronunciationNoteControls.innerHTML = this.renderPronunciationNoteControlsHtml(word, 'detail');",
-            "sourceControl?.closest('.word-title-group, .detail-pronunciation-note-controls')",
+            "sourceControl?.closest('.word-pronunciation-row, .detail-pronunciation-note-controls')",
             "const detailControls = document.getElementById('detailPronunciationNoteControls');",
             "detailControls.innerHTML = this.renderPronunciationNoteControlsHtml(word, 'detail');",
             '.detail-pronunciation-note-controls.pronunciation-note-editor-open .pronunciation-note-display',
@@ -5587,6 +5614,19 @@ class VocabAppTester:
                   const reading = card?.querySelector('.word-reading');
                   let addButton = card?.querySelector('.word-card-pronunciation-note-add-btn');
                   const addImmediatelyAfterReading = !!reading && reading.nextElementSibling === addButton;
+                  const pronunciationRow = card?.querySelector('.word-pronunciation-row');
+                  const cardHeader = card?.querySelector('.word-header');
+                  const cardMeaning = card?.querySelector('.word-meaning');
+                  const pronunciationRowRect = pronunciationRow?.getBoundingClientRect();
+                  const cardHeaderRect = cardHeader?.getBoundingClientRect();
+                  const cardMeaningRect = cardMeaning?.getBoundingClientRect();
+                  const listPronunciationRowSeparated = !!pronunciationRowRect && !!cardHeaderRect && !!cardMeaningRect
+                    && reading?.parentElement === pronunciationRow
+                    && addButton?.parentElement === pronunciationRow
+                    && cardHeaderRect.bottom <= pronunciationRowRect.top + 1
+                    && pronunciationRowRect.bottom <= cardMeaningRect.top + 1
+                    && Math.abs(pronunciationRowRect.left - cardHeaderRect.left) <= 1
+                    && Math.abs(pronunciationRowRect.right - cardHeaderRect.right) <= 1;
                   const addStyle = addButton ? getComputedStyle(addButton) : null;
                   const addButtonCompact = !!addStyle && parseFloat(addStyle.width) <= 16 && parseFloat(addStyle.height) <= 16;
                   dispatchPointerDown(addButton);
@@ -5597,27 +5637,23 @@ class VocabAppTester:
                   let input = card?.querySelector('.word-card-pronunciation-note-inline-input');
                   const inputRect = input?.getBoundingClientRect();
                   const readingRect = reading?.getBoundingClientRect();
-                  const wordRect = card?.querySelector('.word-text')?.getBoundingClientRect();
                   const openAddRect = addButton?.getBoundingClientRect();
-                  const inputStaysOnTitleRow = !!inputRect && !!readingRect
-                    && input?.closest('.word-title-group') === reading?.closest('.word-title-group')
+                  const inputStaysOnPronunciationRow = !!inputRect && !!readingRect
+                    && input?.closest('.word-pronunciation-row') === reading?.closest('.word-pronunciation-row')
                     && Math.abs((inputRect.top + inputRect.height / 2) - (readingRect.top + readingRect.height / 2)) <= 6;
-                  const editorBottomAlignedWithWord = !!inputRect && !!readingRect && !!wordRect && !!openAddRect
-                    && Math.max(inputRect.bottom, readingRect.bottom, wordRect.bottom, openAddRect.bottom)
-                      - Math.min(inputRect.bottom, readingRect.bottom, wordRect.bottom, openAddRect.bottom) <= 1;
+                  const editorBottomAlignedWithinPronunciationRow = !!inputRect && !!readingRect && !!openAddRect
+                    && Math.max(inputRect.bottom, readingRect.bottom, openAddRect.bottom)
+                      - Math.min(inputRect.bottom, readingRect.bottom, openAddRect.bottom) <= 1;
                   const inlineOpened = !!input && input.maxLength === 500 && input.value === ''
                     && input.getAttribute('placeholder') === null
                     && !document.getElementById('detailModal')?.classList.contains('active');
                   const inputSlot = input?.closest('.word-card-pronunciation-note-editor-slot');
-                  const editorTitleGroup = input?.closest('.word-title-group');
-                  const editorHeaderActions = card?.querySelector('.word-header-actions');
+                  const editorPronunciationRow = input?.closest('.word-pronunciation-row');
                   const editorRect = input?.getBoundingClientRect();
-                  const editorTitleGroupRect = editorTitleGroup?.getBoundingClientRect();
-                  const editorHeaderActionsRect = editorHeaderActions?.getBoundingClientRect();
+                  const editorPronunciationRowRect = editorPronunciationRow?.getBoundingClientRect();
                   const inputSlotStyle = inputSlot ? getComputedStyle(inputSlot) : null;
-                  const editorUsesAvailableWidth = !!editorRect && !!editorTitleGroupRect && !!editorHeaderActionsRect && !!inputSlotStyle
-                    && Math.abs(editorRect.right - editorTitleGroupRect.right) <= 2
-                    && editorRect.right <= editorHeaderActionsRect.left + 1
+                  const editorUsesAvailableWidth = !!editorRect && !!editorPronunciationRowRect && !!inputSlotStyle
+                    && Math.abs(editorRect.right - editorPronunciationRowRect.right) <= 2
                     && parseFloat(inputSlotStyle.flexGrow || '0') >= 1
                     && inputSlotStyle.maxWidth === 'none';
                   let editorAutoGrowsWithoutScrollbars = false;
@@ -5710,27 +5746,24 @@ class VocabAppTester:
                     && source.userNote === contentNote
                     && storedWord?.userNote === contentNote;
 
-                  const longLayoutNote = '这是用于验证黄色发音备注能够一直延伸到右侧学习状态标签左边的长内容'.repeat(4);
+                  const longLayoutNote = '这是用于验证黄色发音备注能够一直延伸到列表卡片右边的长内容'.repeat(4);
                   source.pronunciationNote = longLayoutNote;
                   app.renderWordList();
                   card = app.findWordCardById(source.id);
                   pronunciationDisplay = card?.querySelector('.pronunciation-note-display');
                   const longPronunciationText = pronunciationDisplay?.querySelector('.pronunciation-note-text');
                   const cardHeaderActions = card?.querySelector('.word-header-actions');
-                  const titleGroup = card?.querySelector('.word-title-group');
+                  const longPronunciationRow = card?.querySelector('.word-pronunciation-row');
                   const wideDisplayRect = pronunciationDisplay?.getBoundingClientRect();
                   const cardActionsRect = cardHeaderActions?.getBoundingClientRect();
-                  const titleGroupRect = titleGroup?.getBoundingClientRect();
-                  const followingTitleItem = pronunciationDisplay?.nextElementSibling;
-                  const followingTitleItemRect = followingTitleItem?.getBoundingClientRect();
-                  const titleGroupGap = titleGroup ? parseFloat(getComputedStyle(titleGroup).gap || getComputedStyle(titleGroup).columnGap || '0') : 0;
-                  const followingTitleItemMarginLeft = followingTitleItem ? parseFloat(getComputedStyle(followingTitleItem).marginLeft || '0') : 0;
-                  const availableNoteRightEdge = followingTitleItemRect ? followingTitleItemRect.left - titleGroupGap - followingTitleItemMarginLeft : titleGroupRect?.right;
+                  const longPronunciationRowRect = longPronunciationRow?.getBoundingClientRect();
                   const wideDisplayStyle = pronunciationDisplay ? getComputedStyle(pronunciationDisplay) : null;
                   const wideTextStyle = longPronunciationText ? getComputedStyle(longPronunciationText) : null;
                   const listNoteHasVisibleWidth = !!wideDisplayRect && wideDisplayRect.width > 0;
-                  const listNoteDoesNotOverlapActions = !!wideDisplayRect && !!cardActionsRect && wideDisplayRect.right <= cardActionsRect.left + 1;
-                  const listNoteReachesAvailableEdge = !!wideDisplayRect && Number.isFinite(availableNoteRightEdge) && Math.abs(wideDisplayRect.right - availableNoteRightEdge) <= 2;
+                  const listNoteDoesNotOverlapActions = !!wideDisplayRect && !!cardActionsRect && !!longPronunciationRowRect
+                    && longPronunciationRowRect.top >= cardActionsRect.bottom - 1;
+                  const listNoteReachesAvailableEdge = !!wideDisplayRect && !!longPronunciationRowRect
+                    && Math.abs(wideDisplayRect.right - longPronunciationRowRect.right) <= 2;
                   const listDisplayHasNoFixedCap = wideDisplayStyle?.maxWidth !== '132px';
                   const listTextHasNoFixedCap = wideTextStyle?.maxWidth === 'none';
                   const listLongTextActuallyEllipsizes = !!longPronunciationText && longPronunciationText.scrollWidth > longPronunciationText.clientWidth;
@@ -5891,9 +5924,10 @@ class VocabAppTester:
                     addButtonCompact,
                     addPointerDownKeptTarget,
                     existingPronunciationTagBackfilled,
+                    listPronunciationRowSeparated,
                     inlineOpened,
-                    inputStaysOnTitleRow,
-                    editorBottomAlignedWithWord,
+                    inputStaysOnPronunciationRow,
+                    editorBottomAlignedWithinPronunciationRow,
                     editorUsesAvailableWidth,
                     editorAutoGrowsWithoutScrollbars,
                     enterSaved,
@@ -5953,6 +5987,18 @@ class VocabAppTester:
                 ),
                 f"[{lang_name}] 浏览器发音备注＋-按下不改 DOM 且点击只打开原位编辑器",
                 f"发音备注＋仍在 pointerdown 阶段改变 DOM，或 click 穿透打开详情弹窗: {pronunciation_note_crud}",
+            )
+            list_pronunciation_row_keys = (
+                'listPronunciationRowSeparated',
+                'inputStaysOnPronunciationRow',
+                'editorBottomAlignedWithinPronunciationRow',
+                'editorUsesAvailableWidth',
+                'listNoteUsesAvailableWidth',
+            )
+            self.assert_true(
+                bool(pronunciation_note_crud and all(pronunciation_note_crud.get(key) for key in list_pronunciation_row_keys)),
+                f"[{lang_name}] 浏览器列表卡片-红色读音与黄色备注独占标题下方整宽第二排",
+                f"列表发音排分行、底边对齐或横向空间利用不符合要求: {pronunciation_note_crud}",
             )
             self.assert_true(
                 bool(pronunciation_note_crud and all(pronunciation_note_crud.values())),
