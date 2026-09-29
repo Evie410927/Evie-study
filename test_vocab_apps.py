@@ -1407,6 +1407,24 @@ class VocabAppTester:
             "详情顶部摘要未与例句/相近表达滚动区分离，外层仍可滚动，或置顶与拖拽仍操作旧容器",
         )
 
+        detail_modal_compact_top_clearance = (
+            bool(re.search(
+                r'\.detail-sheet\s*\{(?=[^}]*max-height:\s*92vh;)(?=[^}]*max-height:\s*92dvh;)[^}]*\}',
+                content,
+                re.S,
+            ))
+            and bool(re.search(
+                r'\.modal-sheet\.detail-sheet\s*\{(?=[^}]*height:\s*92vh;)(?=[^}]*height:\s*92dvh;)(?=[^}]*max-height:\s*92vh;)(?=[^}]*max-height:\s*92dvh;)[^}]*\}',
+                content,
+                re.S,
+            ))
+        )
+        self.assert_true(
+            detail_modal_compact_top_clearance,
+            f"[{lang_name}] 详情弹窗高度-92dvh扩大可视区并减少顶部空白",
+            "详情弹窗没有同时提供92vh兼容回退与92dvh动态视口高度，顶部仍可能浪费过多空间",
+        )
+
         detail_visible_content_left_aligned = bool(re.search(
             r'\.detail-meaning\s*\{(?=[^}]*background:\s*transparent;)(?=[^}]*padding:\s*6px\s+0;)(?=[^}]*border-radius:\s*0;)(?=[^}]*border-left:\s*0;)[^}]*\}',
             content,
@@ -4051,6 +4069,30 @@ class VocabAppTester:
                 detail_modal_active,
                 f"[{lang_name}] 浏览器真实点击-单词卡片打开详情弹窗",
                 "点击第一张 .word-card 后 #detailModal 未进入 active 状态",
+            )
+            time.sleep(0.2)
+            detail_modal_viewport_usage = driver.execute_script("""
+                const modal = document.getElementById('detailModal');
+                const sheet = modal?.querySelector('.detail-sheet');
+                if (!modal || !sheet || !modal.classList.contains('active')) return null;
+                const modalRect = modal.getBoundingClientRect();
+                const rect = sheet.getBoundingClientRect();
+                const viewportHeight = modalRect.height;
+                return {
+                  heightRatio: rect.height / viewportHeight,
+                  topGapRatio: (rect.top - modalRect.top) / viewportHeight,
+                  bottomAligned: Math.abs(modalRect.bottom - rect.bottom) <= 1.5
+                };
+            """)
+            self.assert_true(
+                bool(
+                    detail_modal_viewport_usage
+                    and 0.91 <= detail_modal_viewport_usage.get('heightRatio', 0) <= 0.93
+                    and 0.07 <= detail_modal_viewport_usage.get('topGapRatio', 1) <= 0.09
+                    and detail_modal_viewport_usage.get('bottomAligned')
+                ),
+                f"[{lang_name}] 浏览器详情弹窗高度-占用约92%视口且顶部仅留约8%",
+                f"详情弹窗没有向上扩展或已脱离底部安全边界: {detail_modal_viewport_usage}",
             )
             detail_visible_content_alignment = driver.execute_script("""
                 const title = document.getElementById('detailWord');

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-09-29.18",
+  "contractVersion": "2026-09-29.19",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -106,6 +106,8 @@
       "promptDialog": false
     },
     "detailModalScroll": {
+      "viewportHeight": "92dvh-with-92vh-fallback",
+      "topClearance": "approximately-8-percent-of-viewport",
       "fixedRegion": [
         "title-actions",
         "pronunciation-row",
