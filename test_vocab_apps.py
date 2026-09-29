@@ -1322,6 +1322,17 @@ class VocabAppTester:
             "详情读音或发音备注仍挤在标题第一行、没有位于词性释义之前，或独立行没有横跨弹窗可用宽度",
         )
 
+        detail_visible_content_left_aligned = bool(re.search(
+            r'\.detail-meaning\s*\{(?=[^}]*background:\s*transparent;)(?=[^}]*padding:\s*6px\s+0;)(?=[^}]*border-radius:\s*0;)(?=[^}]*border-left:\s*0;)[^}]*\}',
+            content,
+            re.S,
+        ))
+        self.assert_true(
+            detail_visible_content_left_aligned,
+            f"[{lang_name}] 详情弹窗排版-标题、读音、词性标签与内容说明统一左对齐",
+            "详情词性释义行仍有背景卡片、左侧强调边或额外左内边距，导致正文可见内容缩进不一致",
+        )
+
         user_note_style = all(token in content for token in (
             '.user-note-display {',
             '.user-note-text {',
@@ -3895,6 +3906,35 @@ class VocabAppTester:
                 f"[{lang_name}] 浏览器真实点击-单词卡片打开详情弹窗",
                 "点击第一张 .word-card 后 #detailModal 未进入 active 状态",
             )
+            detail_visible_content_alignment = driver.execute_script("""
+                const title = document.getElementById('detailWord');
+                const reading = document.getElementById('detailReading');
+                const meaning = document.getElementById('detailMeaning');
+                const partOfSpeech = meaning?.querySelector('.part-of-speech-label');
+                const userNoteSlot = document.getElementById('detailUserNote');
+                if (!title || !reading || !meaning || !partOfSpeech || !userNoteSlot) return null;
+                const originalUserNoteHtml = userNoteSlot.innerHTML;
+                if (!userNoteSlot.querySelector('.user-note-text')) {
+                  userNoteSlot.innerHTML = '<div class="user-note-row"><div class="user-note-display"><span class="user-note-text">alignment probe</span></div></div>';
+                }
+                const userNoteText = userNoteSlot.querySelector('.user-note-text');
+                const leftEdges = [title, reading, partOfSpeech, userNoteText].map(element => element.getBoundingClientRect().left);
+                const meaningStyle = getComputedStyle(meaning);
+                const result = {
+                  sharedLeftEdge: Math.max(...leftEdges) - Math.min(...leftEdges) <= 1,
+                  noMeaningInset: parseFloat(meaningStyle.paddingLeft || '0') === 0
+                    && parseFloat(meaningStyle.borderLeftWidth || '0') === 0,
+                  transparentMeaningBackground: meaningStyle.backgroundColor === 'rgba(0, 0, 0, 0)'
+                };
+                userNoteSlot.innerHTML = originalUserNoteHtml;
+                return result;
+            """)
+            self.assert_true(
+                bool(detail_visible_content_alignment and all(detail_visible_content_alignment.values())),
+                f"[{lang_name}] 浏览器详情弹窗排版-标题、读音、词性标签与说明共用左边线",
+                f"详情弹窗可见内容仍存在额外缩进或词性释义背景未移除: {detail_visible_content_alignment}",
+            )
+
             detail_modal_scroll_reset = driver.execute_async_script("""
                 const done = arguments[arguments.length - 1];
                 const app = window.app;

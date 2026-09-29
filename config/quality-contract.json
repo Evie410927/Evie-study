@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-09-29.12",
+  "contractVersion": "2026-09-29.13",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -79,6 +79,7 @@
       "detailModalPlacement": "dedicated-second-row-above-meaning",
       "detailModalReadingPlacement": "same-dedicated-row-before-note-controls",
       "detailModalWidth": "full-content-row",
+      "detailModalVisibleContentAlignment": "title-reading-part-of-speech-and-user-note-share-left-edge",
       "crossContextRefresh": true,
       "displayColor": "soft-apricot-distinct-from-reading-and-user-note",
       "displaySizing": "list-uses-available-title-row-space-until-jp-krMeaning-badge-or-header-actions; detail-uses-full-dedicated-pronunciation-row",
