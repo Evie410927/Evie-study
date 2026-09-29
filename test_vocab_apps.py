@@ -1172,7 +1172,7 @@ class VocabAppTester:
 
         pronunciation_note_modal_editor = all(token in content for token in (
             '<label class="form-label" for="inputPronunciationNote">发音备注</label>',
-            '<textarea id="inputPronunciationNote" class="form-textarea" maxlength="500" rows="2"></textarea>',
+            '<input type="text" id="inputPronunciationNote" class="form-input pronunciation-note-form-input" maxlength="500">',
             "const pronunciationNoteInput = document.getElementById('inputPronunciationNote');",
             "pronunciationNoteInput.value = typeof word.pronunciationNote === 'string' ? word.pronunciationNote : '';",
             "const pronunciationNote = pronunciationNoteInput.value.trim();",
@@ -1184,10 +1184,36 @@ class VocabAppTester:
             < content.find('id="inputMeaning"')
         )
         pronunciation_note_modal_safe_save = "pronunciationNote: ''," not in content
+        pronunciation_note_modal_single_line = '<textarea id="inputPronunciationNote"' not in content
         self.assert_true(
-            pronunciation_note_modal_editor and pronunciation_note_modal_order and pronunciation_note_modal_safe_save,
-            f"[{lang_name}] 发音备注-完整新增编辑弹窗独立回填保存且位于读音与释义之间",
-            "完整词条弹窗缺少独立发音备注字段、字段顺序不正确，或保存时仍会强制清空 pronunciationNote",
+            pronunciation_note_modal_editor and pronunciation_note_modal_order and pronunciation_note_modal_safe_save and pronunciation_note_modal_single_line,
+            f"[{lang_name}] 发音备注-完整新增编辑弹窗使用与读音等高的单行输入并独立回填保存",
+            "完整词条弹窗的发音备注不是单行输入、字段顺序不正确，或保存时仍会强制清空 pronunciationNote",
+        )
+
+        required_field_groups = content.count('class="form-group required-field"') == 3
+        required_badges = content.count('class="required-badge">必填</span>') == 3
+        required_field_markup = all(token in content for token in (
+            '<div class="form-group required-field">\n            <label class="form-label" for="inputWord">',
+            '<div class="form-group required-field">\n            <label class="form-label" for="inputMeaning">',
+            '<div id="addWordPartOfSpeechGroup" class="form-group required-field">',
+            'id="inputWord" class="form-input"',
+            'id="inputMeaning" class="form-input"',
+            'id="inputPartOfSpeech" class="form-input"',
+        ))
+        required_field_styles = all(token in content for token in (
+            '.required-field .form-label {',
+            '.required-badge {',
+            '.required-field > .form-input,',
+            '.required-field .part-of-speech-input-wrapper > .form-input {',
+            'border: 1px dashed rgba(251, 113, 133, 0.82);',
+            '.required-field > .form-input:focus,',
+            'border-style: solid;',
+        ))
+        self.assert_true(
+            required_field_groups and required_badges and required_field_markup and required_field_styles,
+            f"[{lang_name}] 新增编辑弹窗-仅单词、中文释义与词性显示必填胶囊和玫红虚线框",
+            "必填字段数量、分组、可见胶囊或虚线/聚焦样式不完整，或可选字段被误标为必填",
         )
 
         pronunciation_note_inline_card_controls = all(token in content for token in (
@@ -3458,6 +3484,49 @@ class VocabAppTester:
                 bool(blank_example_pair_editor and all(blank_example_pair_editor.values())),
                 f"[{lang_name}] 浏览器新增弹窗-例句区默认零行且可按需自由添加",
                 f"新增弹窗例句双栏结构异常: {blank_example_pair_editor}",
+            )
+            required_field_visuals = driver.execute_script("""
+                const requiredIds = ['inputWord', 'inputMeaning', 'inputPartOfSpeech'];
+                const optionalIds = ['inputReading', 'inputPronunciationNote', 'inputUserNote'];
+                const requiredInputs = requiredIds.map(id => document.getElementById(id));
+                const optionalInputs = optionalIds.map(id => document.getElementById(id));
+                const reading = document.getElementById('inputReading');
+                const pronunciationNote = document.getElementById('inputPronunciationNote');
+                if ([...requiredInputs, ...optionalInputs].some(input => !input)) return null;
+                const requiredStylesVisible = requiredInputs.every(input => {
+                  const group = input.closest('.form-group');
+                  const badge = group?.querySelector('.required-badge');
+                  return group?.classList.contains('required-field')
+                    && input.required
+                    && badge?.textContent.trim() === '必填'
+                    && getComputedStyle(input).borderTopStyle === 'dashed';
+                });
+                const onlyThreeRequired = document.querySelectorAll('#wordForm .form-group.required-field').length === 3
+                  && document.querySelectorAll('#wordForm .required-badge').length === 3;
+                const optionalFieldsUnmarked = optionalInputs.every(input => {
+                  const group = input.closest('.form-group');
+                  return !input.required
+                    && !group?.classList.contains('required-field')
+                    && !group?.querySelector('.required-badge');
+                });
+                const pronunciationNoteSingleLineAndEqualHeight = pronunciationNote.tagName === 'INPUT'
+                  && pronunciationNote.type === 'text'
+                  && Math.abs(pronunciationNote.getBoundingClientRect().height - reading.getBoundingClientRect().height) <= 1;
+                requiredInputs[0].focus();
+                const focusUsesSolidAccent = getComputedStyle(requiredInputs[0]).borderTopStyle === 'solid';
+                reading.focus();
+                return {
+                  requiredStylesVisible,
+                  onlyThreeRequired,
+                  optionalFieldsUnmarked,
+                  pronunciationNoteSingleLineAndEqualHeight,
+                  focusUsesSolidAccent,
+                };
+            """)
+            self.assert_true(
+                bool(required_field_visuals and all(required_field_visuals.values())),
+                f"[{lang_name}] 浏览器新增编辑弹窗-发音备注单行等高且三个必填字段提示清晰",
+                f"发音备注高度或必填胶囊、虚线边框、可选字段隔离存在异常: {required_field_visuals}",
             )
             dynamic_example_pair_editor = driver.execute_script("""
                 const app = window.app;

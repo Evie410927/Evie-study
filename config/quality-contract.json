@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-09-29.17",
+  "contractVersion": "2026-09-29.18",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -72,6 +72,8 @@
       "existingNoteEditBehavior": "replace",
       "fullEditorFieldId": "inputPronunciationNote",
       "fullEditorPlacement": "after-reading-before-meaning",
+      "fullEditorControl": "single-line-text-input",
+      "fullEditorHeight": "same-as-reading-input",
       "fullEditorNewValue": "empty",
       "fullEditorEditValue": "prefilled-current-pronunciationNote",
       "fullEditorSaveBehavior": "replace",
@@ -118,6 +120,19 @@
       ],
       "scrollHostClass": "detail-scroll-content",
       "outerSheetScroll": false
+    },
+    "requiredWordFields": {
+      "fields": [
+        "inputWord",
+        "inputMeaning",
+        "inputPartOfSpeech"
+      ],
+      "groupClass": "required-field",
+      "labelIndicator": "required-badge",
+      "labelText": "必填",
+      "controlStyle": "soft-rose-dashed-border",
+      "focusStyle": "solid-accent-border",
+      "optionalFieldsExcluded": true
     }
   },
   "dataContracts": {

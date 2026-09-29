@@ -2385,6 +2385,45 @@ body::-webkit-scrollbar,
   border-color: var(--accent-primary);
 }
 
+.required-field .form-label {
+  color: #fda4af;
+  font-weight: 700;
+}
+
+.required-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid rgba(251, 113, 133, 0.55);
+  border-radius: var(--radius-full);
+  background: rgba(251, 113, 133, 0.1);
+  color: #fb7185;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.3px;
+  vertical-align: 1px;
+}
+
+.required-field > .form-input,
+.required-field .part-of-speech-input-wrapper > .form-input {
+  border: 1px dashed rgba(251, 113, 133, 0.82);
+  box-shadow: inset 0 0 0 1px rgba(251, 113, 133, 0.04);
+}
+
+.required-field > .form-input:hover,
+.required-field .part-of-speech-input-wrapper > .form-input:hover {
+  border-color: #fb7185;
+}
+
+.required-field > .form-input:focus,
+.required-field .part-of-speech-input-wrapper > .form-input:focus {
+  border-style: solid;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(236, 72, 153, 0.14);
+}
+
 .part-of-speech-input-wrapper {
   position: relative;
 }
@@ -16719,8 +16758,8 @@ body::-webkit-scrollbar,
         <form id="wordForm">
           <input type="hidden" id="wordId">
           
-          <div class="form-group">
-            <label class="form-label" for="inputWord">韩语单词 / 词组 *</label>
+          <div class="form-group required-field">
+            <label class="form-label" for="inputWord">韩语单词 / 词组 * <span class="required-badge">必填</span></label>
             <input type="text" id="inputWord" class="form-input" placeholder="如：행복하다 / 설레다 / 응원하다" required>
           </div>
 
@@ -16731,11 +16770,11 @@ body::-webkit-scrollbar,
 
           <div class="form-group">
             <label class="form-label" for="inputPronunciationNote">发音备注</label>
-            <textarea id="inputPronunciationNote" class="form-textarea" maxlength="500" rows="2"></textarea>
+            <input type="text" id="inputPronunciationNote" class="form-input pronunciation-note-form-input" maxlength="500">
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="inputMeaning">中文释义 *</label>
+          <div class="form-group required-field">
+            <label class="form-label" for="inputMeaning">中文释义 * <span class="required-badge">必填</span></label>
             <input type="text" id="inputMeaning" class="form-input" placeholder="如：幸福的，快乐的" required>
           </div>
 
@@ -16752,8 +16791,8 @@ body::-webkit-scrollbar,
             </div>
           </div>
 
-          <div id="addWordPartOfSpeechGroup" class="form-group">
-            <label class="form-label" for="inputPartOfSpeech">单词词性 *</label>
+          <div id="addWordPartOfSpeechGroup" class="form-group required-field">
+            <label class="form-label" for="inputPartOfSpeech">单词词性 * <span class="required-badge">必填</span></label>
             <div id="partOfSpeechInputWrapper" class="part-of-speech-input-wrapper">
               <input type="text" id="inputPartOfSpeech" class="form-input" placeholder="如：动词、名词、短语（可自定义）" autocomplete="off" aria-controls="partOfSpeechOptions" aria-expanded="false" onclick="if(window.app) window.app.openPartOfSpeechOptions(true)" oninput="if(window.app) { window.app.renderModalTags(); window.app.filterPartOfSpeechOptions(this.value); }" onblur="setTimeout(() => { if(window.app) window.app.closePartOfSpeechOptions(); }, 120)" required>
               <button id="partOfSpeechOptionsToggle" type="button" class="part-of-speech-options-toggle" aria-label="展开词性建议" aria-expanded="false" onpointerdown="event.preventDefault()" onclick="if(window.app) window.app.togglePartOfSpeechOptions(event)">▼</button>
