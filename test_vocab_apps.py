@@ -1017,6 +1017,20 @@ class VocabAppTester:
         )) and 'similar-word-drag-handle' not in content
         self.assert_true(similar_word_direct_card_sort, f"[{lang_name}] 相近表达排序-整张卡片支持鼠标与触屏拖动且不增加按钮", "相近表达未绑定整卡 Pointer/Touch 排序、未持久化 manualSimilarWordIds，或错误增加了拖拽按钮")
 
+        modal_similar_word_direct_card_sort = all(token in content for token in (
+            'class="modal-draft-selected-word"',
+            'onpointerdown="(window.app||window.vocabApp).startModalSimilarWordSort(event)"',
+            'ontouchstart="(window.app||window.vocabApp).startModalSimilarWordTouchSort(event)"',
+            'onkeydown="(window.app||window.vocabApp).handleModalSimilarWordSortKey(event)"',
+            'getModalSimilarWordSortState(event, inputType)',
+            "mode: 'modal-draft'",
+            'persistModalSimilarWordOrder(container)',
+            'this.editingModalSimilarWordIds = displayedIds;',
+            "if (state.mode === 'modal-draft') return this.persistModalSimilarWordOrder(state.container);",
+            '.modal-draft-selected-word.similar-sort-dragging',
+        )) and 'modal-similar-word-drag-handle' not in content
+        self.assert_true(modal_similar_word_direct_card_sort, f"[{lang_name}] 相近表达排序-新增编辑弹窗整卡拖动仅更新草稿且不增加按钮", "新增/编辑弹窗相近词未绑定整卡 Pointer/Touch/键盘排序、未隔离草稿保存时机，或错误增加了拖拽按钮")
+
         similar_word_sort_guards = all(token in content for token in (
             'isSimilarWordSortInteractiveTarget(target)',
             "target.closest('button, input, textarea, select, a, .star-rating, .rating-star",
@@ -4692,6 +4706,124 @@ class VocabAppTester:
                 bool(similar_card_sort and all(similar_card_sort.values())),
                 f"[{lang_name}] 浏览器相近表达排序-详情整卡拖动、复习重排、持久化与双视图同步",
                 f"相近表达整卡排序全流程失败: {similar_card_sort}",
+            )
+
+            modal_similar_card_sort = driver.execute_script("""
+                const app = window.app;
+                const source = app.words[0];
+                const candidates = app.words.filter(word => word && source && word.id !== source.id).slice(0, 3);
+                if (!source || candidates.length < 3) return null;
+                const originalWords = JSON.parse(JSON.stringify(app.words));
+                const originalPending = JSON.parse(JSON.stringify(app.getPendingCloudChanges()));
+                try {
+                  source.manualSimilarWordIds = candidates.map(word => String(word.id));
+                  source.hiddenSimilarWordIds = [];
+                  candidates.forEach(word => {
+                    word.manualSimilarWordIds = [...new Set([...(word.manualSimilarWordIds || []).map(String), String(source.id)])];
+                    word.hiddenSimilarWordIds = (word.hiddenSimilarWordIds || []).map(String).filter(id => id !== String(source.id));
+                  });
+                  app.saveData();
+                  app.savePendingCloudChanges({});
+                  const originalOrder = candidates.map(word => String(word.id));
+                  const reverseOrderBefore = candidates.map(word => JSON.stringify(word.manualSimilarWordIds || []));
+                  const storedBeforeDraft = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(source.id));
+
+                  app.openWordModal(source);
+                  const list = document.getElementById('modalSelectedSimilarWords');
+                  const initialCards = Array.from(list?.querySelectorAll('.modal-draft-selected-word') || []);
+                  if (!list || initialCards.length !== 3) return null;
+                  list.scrollIntoView({block:'center'});
+                  const first = initialCards[0];
+                  const second = initialCards[1];
+                  const firstRect = first.getBoundingClientRect();
+                  const secondRect = second.getBoundingClientRect();
+                  const directCardWiring = first.getAttribute('onpointerdown')?.includes('startModalSimilarWordSort')
+                    && first.getAttribute('ontouchstart')?.includes('startModalSimilarWordTouchSort')
+                    && first.getAttribute('onkeydown')?.includes('handleModalSimilarWordSortKey')
+                    && !list.querySelector('.modal-similar-word-drag-handle, .similar-word-drag-handle');
+
+                  first.dispatchEvent(new PointerEvent('pointerdown', {
+                    bubbles:true, pointerId:831, pointerType:'mouse', button:0, buttons:1,
+                    clientX:firstRect.left + Math.min(24, firstRect.width / 2), clientY:firstRect.top + Math.min(24, firstRect.height / 2)
+                  }));
+                  const pointerStateCreated = app._similarWordSortState?.mode === 'modal-draft'
+                    && app._similarWordSortState?.card === first;
+                  const pointerMoved = app.moveSimilarWordSort({
+                    pointerId:831,
+                    clientX:secondRect.left + Math.min(24, secondRect.width / 2),
+                    clientY:secondRect.bottom - 2,
+                    preventDefault(){}, stopPropagation(){}
+                  });
+                  const pointerFinished = app.finishSimilarWordSort({pointerId:831});
+                  const expectedPointerOrder = [String(candidates[1].id), String(candidates[0].id), String(candidates[2].id)];
+                  const pointerDomOrder = Array.from(list.querySelectorAll('.modal-draft-selected-word')).map(card => String(card.dataset.similarWordId));
+                  const pointerDraftUpdated = pointerStateCreated && pointerMoved && pointerFinished
+                    && JSON.stringify(pointerDomOrder) === JSON.stringify(expectedPointerOrder)
+                    && JSON.stringify((app.editingModalSimilarWordIds || []).map(String)) === JSON.stringify(expectedPointerOrder);
+                  const sourceUnchangedBeforeSave = JSON.stringify((source.manualSimilarWordIds || []).map(String)) === JSON.stringify(originalOrder);
+                  const storedDuringDraft = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(source.id));
+                  const storageUnchangedBeforeSave = JSON.stringify((storedBeforeDraft?.manualSimilarWordIds || []).map(String)) === JSON.stringify(originalOrder)
+                    && JSON.stringify((storedDuringDraft?.manualSimilarWordIds || []).map(String)) === JSON.stringify(originalOrder)
+                    && JSON.stringify(app.getPendingCloudChanges()) === JSON.stringify({});
+
+                  const removeButton = list.querySelector('.similar-word-remove-btn');
+                  const removeCard = removeButton?.closest('.modal-draft-selected-word');
+                  const internalControlBlocked = !!removeButton && app.startModalSimilarWordSort({
+                    target:removeButton, currentTarget:removeCard, pointerType:'mouse', button:0,
+                    preventDefault(){}, stopPropagation(){}
+                  }) === false && !app._similarWordSortState;
+
+                  const touchCard = list.querySelector('.modal-draft-selected-word');
+                  const touchStarted = !!touchCard && app.startModalSimilarWordTouchSort({
+                    target:touchCard.querySelector('.modal-draft-selected-word-title'), currentTarget:touchCard,
+                    touches:[{identifier:913, clientX:10, clientY:10}]
+                  }) === true && app._similarWordSortState?.mode === 'modal-draft'
+                    && app._similarWordSortState?.inputType === 'touch';
+                  app.finishSimilarWordSort(null, true);
+                  const touchCancelledCleanly = !app._similarWordSortState;
+
+                  const keyboardCard = list.querySelectorAll('.modal-draft-selected-word')[2];
+                  keyboardCard?.dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowUp', bubbles:true, cancelable:true}));
+                  const expectedFinalOrder = [String(candidates[1].id), String(candidates[2].id), String(candidates[0].id)];
+                  const keyboardDomOrder = Array.from(list.querySelectorAll('.modal-draft-selected-word')).map(card => String(card.dataset.similarWordId));
+                  const keyboardDraftUpdated = JSON.stringify(keyboardDomOrder) === JSON.stringify(expectedFinalOrder)
+                    && JSON.stringify((app.editingModalSimilarWordIds || []).map(String)) === JSON.stringify(expectedFinalOrder)
+                    && JSON.stringify((source.manualSimilarWordIds || []).map(String)) === JSON.stringify(originalOrder);
+
+                  document.getElementById('saveWordBtn')?.click();
+                  const savedSource = app.words.find(word => String(word.id) === String(source.id));
+                  const storedAfterSave = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]').find(word => String(word.id) === String(source.id));
+                  const saveCommittedDraft = document.getElementById('wordModal')?.classList.contains('active') === false
+                    && JSON.stringify((savedSource?.manualSimilarWordIds || []).map(String)) === JSON.stringify(expectedFinalOrder)
+                    && JSON.stringify((storedAfterSave?.manualSimilarWordIds || []).map(String)) === JSON.stringify(expectedFinalOrder);
+                  const reverseOrderIndependent = candidates.every((word, index) => JSON.stringify(word.manualSimilarWordIds || []) === reverseOrderBefore[index]);
+
+                  return {
+                    directCardWiring:!!directCardWiring,
+                    pointerStateCreated,
+                    pointerDraftUpdated,
+                    sourceUnchangedBeforeSave,
+                    storageUnchangedBeforeSave,
+                    internalControlBlocked,
+                    touchStarted,
+                    touchCancelledCleanly,
+                    keyboardDraftUpdated,
+                    saveCommittedDraft,
+                    reverseOrderIndependent
+                  };
+                } finally {
+                  app.finishSimilarWordSort(null, true);
+                  app.words = originalWords;
+                  app.saveData();
+                  app.savePendingCloudChanges(originalPending);
+                  app.closeWordModal();
+                  app.renderWordList();
+                }
+            """)
+            self.assert_true(
+                bool(modal_similar_card_sort and all(modal_similar_card_sort.values())),
+                f"[{lang_name}] 浏览器相近表达排序-编辑弹窗整卡拖动先改草稿并在保存后持久化",
+                f"编辑弹窗相近表达整卡排序全流程失败: {modal_similar_card_sort}",
             )
 
             backspace_search_guard = None

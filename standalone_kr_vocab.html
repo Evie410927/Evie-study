@@ -1337,7 +1337,9 @@ body::-webkit-scrollbar,
   background: var(--bg-input);
 }
 .similar-word-chip.similar-sort-dragging,
-.similar-word-chip.similar-sort-dragging:active {
+.similar-word-chip.similar-sort-dragging:active,
+.modal-draft-selected-word.similar-sort-dragging,
+.modal-draft-selected-word.similar-sort-dragging:active {
   cursor: grabbing;
   opacity: 0.76;
   transform: scale(1.01);
@@ -1836,6 +1838,14 @@ body::-webkit-scrollbar,
   border: 1px solid var(--border-color);
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.04);
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.modal-draft-selected-word:active {
+  background: var(--bg-input);
 }
 .modal-draft-selected-word-title {
   color: var(--text-primary);
@@ -21585,6 +21595,7 @@ class KrVocabApp {
   }
 
   closeWordModal() {
+    if (this._similarWordSortState?.mode === 'modal-draft') this.finishSimilarWordSort(null, true);
     this.closeTagDropdown();
     this.closePartOfSpeechOptions();
     const modal = document.getElementById('wordModal');
@@ -21848,7 +21859,7 @@ class KrVocabApp {
     const selectedIds = Array.isArray(this.editingModalSimilarWordIds) ? this.editingModalSimilarWordIds.map(String) : [];
     const selectedWords = selectedIds.map(id => this.words.find(word => String(word.id) === id)).filter(Boolean);
     container.innerHTML = selectedWords.length ? selectedWords.map(word => `
-      <div class="modal-draft-selected-word" data-similar-word-id="${this.escapeHtml(String(word.id))}">
+      <div class="modal-draft-selected-word" data-similar-word-id="${this.escapeHtml(String(word.id))}" tabindex="0" role="listitem" aria-label="${this.escapeHtml(word.word)}，可直接拖动排序" onpointerdown="(window.app||window.vocabApp).startModalSimilarWordSort(event)" ontouchstart="(window.app||window.vocabApp).startModalSimilarWordTouchSort(event)" onkeydown="(window.app||window.vocabApp).handleModalSimilarWordSortKey(event)" title="直接拖动卡片排序">
         <div class="modal-draft-selected-word-title">${this.escapeHtml(word.word)}${word.reading ? ` <span style="color:var(--accent-secondary); font-weight:500;">${this.escapeHtml(word.reading)}</span>` : ''}</div>
         <div class="modal-draft-selected-word-meaning">${this.escapeHtml(word.meaning)}</div>
         <button type="button" class="similar-word-remove-btn" onclick="event.stopPropagation(); (window.app||window.vocabApp).removeModalSimilarWord('${this.escapeHtml(String(word.id))}')" aria-label="移除相近词 ${this.escapeHtml(word.word)}" title="移除">×</button>
@@ -22269,6 +22280,73 @@ class KrVocabApp {
     };
   }
 
+  getModalSimilarWordSortState(event, inputType) {
+    const card = event && event.currentTarget && typeof event.currentTarget.closest === 'function'
+      ? event.currentTarget.closest('.modal-draft-selected-word') : null;
+    const container = card ? card.closest('#modalSelectedSimilarWords') : null;
+    if (!card || !container || !container.closest('#wordModal.active')) return null;
+    const point = inputType === 'touch' ? event.touches && event.touches[0] : event;
+    if (!point) return null;
+    return {
+      mode: 'modal-draft',
+      inputType,
+      card,
+      container,
+      cardSelector: '.modal-draft-selected-word',
+      pointerId: event.pointerId,
+      touchId: inputType === 'touch' ? point.identifier : null,
+      startX: Number(point.clientX || 0),
+      startY: Number(point.clientY || 0),
+      active: inputType !== 'touch',
+      hasDragged: false,
+      reordered: false
+    };
+  }
+
+  startModalSimilarWordSort(event) {
+    if (!event || event.pointerType === 'touch' || (typeof event.button === 'number' && event.button !== 0)) return false;
+    if (this.isSimilarWordSortInteractiveTarget(event.target)) return false;
+    if (this._similarWordSortState) this.finishSimilarWordSort(null, true);
+    const state = this.getModalSimilarWordSortState(event, 'pointer');
+    if (!state) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    state.moveHandler = moveEvent => this.moveSimilarWordSort(moveEvent);
+    state.endHandler = endEvent => this.finishSimilarWordSort(endEvent);
+    state.cancelHandler = cancelEvent => this.finishSimilarWordSort(cancelEvent, true);
+    this._similarWordSortState = state;
+    state.card.classList.add('similar-sort-dragging');
+    if (state.card.setPointerCapture && event.pointerId !== undefined) {
+      try { state.card.setPointerCapture(event.pointerId); } catch (error) { console.warn('编辑弹窗相近词拖动指针捕获失败:', error); }
+    }
+    window.addEventListener('pointermove', state.moveHandler, { passive: false });
+    window.addEventListener('pointerup', state.endHandler);
+    window.addEventListener('pointercancel', state.cancelHandler);
+    return true;
+  }
+
+  startModalSimilarWordTouchSort(event) {
+    if (!event || !event.touches || event.touches.length !== 1 || this.isSimilarWordSortInteractiveTarget(event.target)) return false;
+    if (this._similarWordSortState) this.finishSimilarWordSort(null, true);
+    const state = this.getModalSimilarWordSortState(event, 'touch');
+    if (!state) return false;
+    state.moveHandler = moveEvent => this.moveSimilarWordSort(moveEvent);
+    state.endHandler = endEvent => this.finishSimilarWordSort(endEvent);
+    state.cancelHandler = cancelEvent => this.finishSimilarWordSort(cancelEvent, true);
+    state.activationTimer = setTimeout(() => {
+      if (this._similarWordSortState !== state) return;
+      state.active = true;
+      state.hasDragged = true;
+      state.card.classList.add('similar-sort-dragging');
+      if (navigator.vibrate) navigator.vibrate(10);
+    }, 240);
+    this._similarWordSortState = state;
+    window.addEventListener('touchmove', state.moveHandler, { passive: false });
+    window.addEventListener('touchend', state.endHandler);
+    window.addEventListener('touchcancel', state.cancelHandler);
+    return true;
+  }
+
   startSimilarWordSort(event, targetWordId) {
     if (!event || event.pointerType === 'touch' || (typeof event.button === 'number' && event.button !== 0)) return false;
     if (this.isSimilarWordSortInteractiveTarget(event.target)) return false;
@@ -22320,7 +22398,7 @@ class KrVocabApp {
   }
 
   autoScrollSimilarWordSort(state, clientY) {
-    const scrollHost = state && state.container ? state.container.closest('.detail-body, .card-face-back') : null;
+    const scrollHost = state && state.container ? state.container.closest('.detail-body, .card-face-back, .modal-sheet') : null;
     if (!scrollHost) return;
     const rect = scrollHost.getBoundingClientRect();
     const edge = Math.min(64, rect.height * 0.16);
@@ -22344,8 +22422,17 @@ class KrVocabApp {
     event.preventDefault();
     event.stopPropagation();
     this.autoScrollSimilarWordSort(state, Number(point.clientY || 0));
+    const cardSelector = state.cardSelector || '.similar-word-chip';
     const hovered = document.elementFromPoint ? document.elementFromPoint(Number(point.clientX || 0), Number(point.clientY || 0)) : null;
-    const target = hovered && typeof hovered.closest === 'function' ? hovered.closest('.similar-word-chip') : null;
+    let target = hovered && typeof hovered.closest === 'function' ? hovered.closest(cardSelector) : null;
+    if (!target || target === state.card || !state.container.contains(target)) {
+      const pointerY = Number(point.clientY || 0);
+      target = Array.from(state.container.querySelectorAll(cardSelector)).find(candidate => {
+        if (candidate === state.card) return false;
+        const candidateRect = candidate.getBoundingClientRect();
+        return pointerY >= candidateRect.top && pointerY <= candidateRect.bottom;
+      }) || null;
+    }
     if (!target || target === state.card || !state.container.contains(target)) return false;
     const rect = target.getBoundingClientRect();
     const insertAfter = Number(point.clientY || 0) > rect.top + rect.height / 2;
@@ -22375,6 +22462,7 @@ class KrVocabApp {
     this._similarWordSortState = null;
     if (state.active && state.hasDragged) this._suppressSimilarWordClickUntil = Date.now() + 500;
     if (cancelled || !state.active || !state.reordered) return state.active;
+    if (state.mode === 'modal-draft') return this.persistModalSimilarWordOrder(state.container);
     return this.persistSimilarWordOrder(state.targetWordId, state.container);
   }
 
@@ -22395,6 +22483,31 @@ class KrVocabApp {
     const persisted = this.persistSimilarWordOrder(targetWordId, container);
     setTimeout(() => Array.from(document.querySelectorAll('.similar-word-chip')).find(item => String(item.dataset.similarTargetId) === String(targetWordId) && String(item.dataset.similarWordId) === String(movedId))?.focus(), 0);
     return persisted;
+  }
+
+  handleModalSimilarWordSortKey(event) {
+    if (!event || !['ArrowUp', 'ArrowDown'].includes(event.key) || this.isSimilarWordSortInteractiveTarget(event.target)) return false;
+    const card = event.currentTarget?.closest('.modal-draft-selected-word');
+    const container = card?.closest('#modalSelectedSimilarWords');
+    if (!card || !container) return false;
+    const cards = Array.from(container.querySelectorAll('.modal-draft-selected-word'));
+    const currentIndex = cards.indexOf(card);
+    const nextIndex = event.key === 'ArrowUp' ? currentIndex - 1 : currentIndex + 1;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= cards.length) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === 'ArrowUp') container.insertBefore(card, cards[nextIndex]);
+    else container.insertBefore(cards[nextIndex], card);
+    const reordered = this.persistModalSimilarWordOrder(container);
+    card.focus();
+    return reordered;
+  }
+
+  persistModalSimilarWordOrder(container) {
+    if (!container || container.id !== 'modalSelectedSimilarWords') return false;
+    const displayedIds = [...new Set(Array.from(container.querySelectorAll('.modal-draft-selected-word')).map(card => String(card.dataset.similarWordId || '')).filter(Boolean))];
+    this.editingModalSimilarWordIds = displayedIds;
+    return true;
   }
 
   persistSimilarWordOrder(targetWordId, container) {
