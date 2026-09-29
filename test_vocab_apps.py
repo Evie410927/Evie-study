@@ -1244,7 +1244,7 @@ class VocabAppTester:
             "this.showToast('✅ 发音备注已删除')",
             '.word-title-group.pronunciation-note-editor-open {',
             'flex-wrap: nowrap;',
-            'align-items: flex-start;',
+            'align-items: flex-end;',
             'width: 15px;',
             'height: 15px;',
             'color: #f6a96b;',
@@ -5510,9 +5510,14 @@ class VocabAppTester:
                   let input = card?.querySelector('.word-card-pronunciation-note-inline-input');
                   const inputRect = input?.getBoundingClientRect();
                   const readingRect = reading?.getBoundingClientRect();
+                  const wordRect = card?.querySelector('.word-text')?.getBoundingClientRect();
+                  const openAddRect = addButton?.getBoundingClientRect();
                   const inputStaysOnTitleRow = !!inputRect && !!readingRect
                     && input?.closest('.word-title-group') === reading?.closest('.word-title-group')
                     && Math.abs((inputRect.top + inputRect.height / 2) - (readingRect.top + readingRect.height / 2)) <= 6;
+                  const editorBottomAlignedWithWord = !!inputRect && !!readingRect && !!wordRect && !!openAddRect
+                    && Math.max(inputRect.bottom, readingRect.bottom, wordRect.bottom, openAddRect.bottom)
+                      - Math.min(inputRect.bottom, readingRect.bottom, wordRect.bottom, openAddRect.bottom) <= 1;
                   const inlineOpened = !!input && input.maxLength === 500 && input.value === ''
                     && input.getAttribute('placeholder') === null
                     && !document.getElementById('detailModal')?.classList.contains('active');
@@ -5801,6 +5806,7 @@ class VocabAppTester:
                     existingPronunciationTagBackfilled,
                     inlineOpened,
                     inputStaysOnTitleRow,
+                    editorBottomAlignedWithWord,
                     editorUsesAvailableWidth,
                     editorAutoGrowsWithoutScrollbars,
                     enterSaved,
