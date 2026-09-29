@@ -14,6 +14,7 @@
 import os
 import re
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -1276,6 +1277,37 @@ class VocabAppTester:
         detail_note_immediately_after_reading = detail_reading_pos >= 0 and detail_note_pos > detail_reading_pos
         self.assert_true(detail_pronunciation_note_controls and detail_note_immediately_after_reading, f"[{lang_name}] 发音备注-详情标题读音后支持新建编辑删除并与列表即时同步", "详情标题缺少发音备注组件、没有紧邻读音、未复用同一交互，或保存后未同步刷新列表与详情")
 
+        detail_title_start = content.find('<div class="detail-title-group">')
+        detail_title_end = content.find('</div>', detail_title_start)
+        detail_title_html = content[detail_title_start:detail_title_end] if detail_title_start >= 0 and detail_title_end > detail_title_start else ''
+        detail_row_start = content.find('<div class="detail-pronunciation-row">')
+        detail_row_end = content.find('</div>', detail_row_start)
+        detail_row_html = content[detail_row_start:detail_row_end] if detail_row_start >= 0 and detail_row_end > detail_row_start else ''
+        detail_meaning_pos = content.find('id="detailMeaning"')
+        detail_pronunciation_second_row = (
+            'id="detailWord"' in detail_title_html
+            and 'id="detailReading"' not in detail_title_html
+            and 'id="detailReading"' in detail_row_html
+            and 'id="detailPronunciationNoteControls"' in detail_row_html
+            and detail_row_html.find('id="detailReading"') < detail_row_html.find('id="detailPronunciationNoteControls"')
+            and detail_row_start < detail_meaning_pos
+        )
+        detail_header_grid = bool(re.search(
+            r'\.detail-sheet\s+\.modal-header\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;',
+            content,
+            re.S,
+        ))
+        detail_row_full_width = bool(re.search(
+            r'\.detail-pronunciation-row\s*\{[^}]*grid-column:\s*1\s*/\s*-1;[^}]*display:\s*flex;[^}]*width:\s*100%;[^}]*min-width:\s*0;',
+            content,
+            re.S,
+        ))
+        self.assert_true(
+            detail_pronunciation_second_row and detail_header_grid and detail_row_full_width,
+            f"[{lang_name}] 发音备注-详情读音与黄色备注位于词性上方的独立整宽第二行",
+            "详情读音或发音备注仍挤在标题第一行、没有位于词性释义之前，或独立行没有横跨弹窗可用宽度",
+        )
+
         user_note_style = all(token in content for token in (
             '.user-note-display {',
             '.user-note-text {',
@@ -1980,6 +2012,7 @@ class VocabAppTester:
         print("  --------------------------------------------------")
 
         driver = None
+        browser_profile = None
         try:
             from selenium import webdriver
             from selenium.webdriver.chrome.options import Options
@@ -1991,7 +2024,22 @@ class VocabAppTester:
             options = Options()
             options.add_argument('--headless=new')
             options.add_argument('--disable-gpu')
+            options.add_argument('--disable-crash-reporter')
+            options.add_argument('--no-first-run')
+            options.add_argument('--no-default-browser-check')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-software-rasterizer')
+            options.add_argument('--disable-background-networking')
             options.add_argument('--window-size=430,932')
+            browser_profile_root = PROJECT_ROOT / 'scratch'
+            browser_profile_root.mkdir(exist_ok=True)
+            browser_profile = tempfile.TemporaryDirectory(
+                prefix='selenium-vocab-',
+                dir=browser_profile_root,
+                ignore_cleanup_errors=True,
+            )
+            options.add_argument(f'--user-data-dir={browser_profile.name}')
             options.set_capability('goog:loggingPrefs', {'browser': 'ALL'})
             driver = webdriver.Chrome(options=options)
             driver.get(Path(filepath).resolve().as_uri())
@@ -4813,10 +4861,15 @@ class VocabAppTester:
                 const blankReading = blankListCard?.querySelector('.word-reading');
                 const detailPronunciationControls = document.getElementById('detailPronunciationNoteControls');
                 const detailPronunciationAddButton = detailPronunciationControls?.querySelector('.word-card-pronunciation-note-add-btn');
+                const detailPronunciationRow = document.querySelector('#detailModal .detail-pronunciation-row');
+                const detailTitleGroup = document.querySelector('#detailModal .detail-title-group');
                 const inlineControlsScoped = !!blankAddButton
                   && blankReading?.nextElementSibling === blankAddButton
                   && !blankListCard.querySelector('.pronunciation-note-display, .pronunciation-note-delete-btn, .word-card-pronunciation-note-inline-input')
                   && document.getElementById('detailReading')?.nextElementSibling === detailPronunciationControls
+                  && document.getElementById('detailReading')?.parentElement === detailPronunciationRow
+                  && detailPronunciationControls?.parentElement === detailPronunciationRow
+                  && !detailTitleGroup?.contains(document.getElementById('detailReading'))
                   && !!detailPronunciationAddButton
                   && !detailPronunciationControls?.querySelector('.pronunciation-note-display, .pronunciation-note-delete-btn, .word-card-pronunciation-note-inline-input')
                   && !document.querySelector('#flashcard .word-card-pronunciation-note-add-btn, .similar-word-chip .word-card-pronunciation-note-add-btn');
@@ -5114,15 +5167,25 @@ class VocabAppTester:
                   detailControls = document.getElementById('detailPronunciationNoteControls');
                   const detailPronunciationDisplay = detailControls?.querySelector('.pronunciation-note-display');
                   const detailLongText = detailPronunciationDisplay?.querySelector('.pronunciation-note-text');
-                  const detailHeaderActions = document.querySelector('#detailModal .detail-header-actions');
-                  const detailTitleGroup = document.querySelector('#detailModal .detail-title-group');
+                  const detailHeader = document.querySelector('#detailModal .modal-header');
+                  const detailTitleRow = document.querySelector('#detailModal .detail-title-row');
+                  const detailPronunciationRow = document.querySelector('#detailModal .detail-pronunciation-row');
+                  const detailMeaning = document.getElementById('detailMeaning');
                   const detailDisplayRect = detailPronunciationDisplay?.getBoundingClientRect();
-                  const detailActionsRect = detailHeaderActions?.getBoundingClientRect();
-                  const detailTitleRect = detailTitleGroup?.getBoundingClientRect();
-                  const detailNoteUsesAvailableWidth = !!detailDisplayRect && !!detailActionsRect && !!detailTitleRect
+                  const detailHeaderRect = detailHeader?.getBoundingClientRect();
+                  const detailTitleRowRect = detailTitleRow?.getBoundingClientRect();
+                  const detailPronunciationRowRect = detailPronunciationRow?.getBoundingClientRect();
+                  const detailMeaningRect = detailMeaning?.getBoundingClientRect();
+                  const detailNoteUsesAvailableWidth = !!detailDisplayRect && !!detailHeaderRect
+                    && !!detailTitleRowRect && !!detailPronunciationRowRect && !!detailMeaningRect
                     && detailDisplayRect.width > 0
-                    && detailDisplayRect.right <= detailActionsRect.left + 1
-                    && Math.abs(detailDisplayRect.right - detailTitleRect.right) <= 2
+                    && document.getElementById('detailReading')?.parentElement === detailPronunciationRow
+                    && detailControls?.parentElement === detailPronunciationRow
+                    && detailTitleRowRect.bottom <= detailPronunciationRowRect.top + 1
+                    && detailPronunciationRowRect.bottom <= detailMeaningRect.top + 12
+                    && Math.abs(detailPronunciationRowRect.left - detailHeaderRect.left) <= 2
+                    && Math.abs(detailPronunciationRowRect.right - detailHeaderRect.right) <= 2
+                    && Math.abs(detailDisplayRect.right - detailPronunciationRowRect.right) <= 2
                     && getComputedStyle(detailPronunciationDisplay).maxWidth !== '132px'
                     && getComputedStyle(detailLongText).maxWidth === 'none'
                     && detailLongText.scrollWidth > detailLongText.clientWidth;
@@ -5345,6 +5408,8 @@ class VocabAppTester:
         finally:
             if driver:
                 driver.quit()
+            if browser_profile:
+                browser_profile.cleanup()
 
     def test_supabase_schema(self):
         """检查部署所需的 Supabase 表、RLS 与最小权限 SQL。"""
