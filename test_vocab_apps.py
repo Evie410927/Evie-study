@@ -978,13 +978,23 @@ class VocabAppTester:
             "this._startupLocalSnapshotSummary",
             "async persistDurableSnapshot()",
             "async restoreDurableSnapshot()",
+            "async saveCloudBaselineRevision(revision)",
+            "const persistedBaselineRaw = SafeStorage.getPersistentItem(this.CLOUD_BASE_REVISION_KEY);",
+            "const indexedDbSnapshotMatches = this.queueDurableSnapshot",
+            "? await this.queueDurableSnapshot()",
+            "if (durableOnly > 0 && localOnly === 0) return true;",
+            "if (localOnly > 0 && durableOnly === 0) return false;",
             "const indexedDbDurable = await this.persistDurableSnapshot();",
             "if (!localDurable && !indexedDbDurable) return false;",
             "if (this.restoreDurableSnapshot) this.restoreDurableSnapshot();",
             "await this.replaceLocalWithCloudRows(dataRows);",
             "await this.mergeCloudRows(dataRows);",
             "localStorage 与 IndexedDB 均未能持久保存",
+            "云端词库与版本基线未能一致持久保存",
         ))
+        mobile_cloud_durable_fallback = mobile_cloud_durable_fallback and content.count(
+            "if (!await this.saveCloudBaselineRevision("
+        ) == 5
         self.assert_true(mobile_cloud_durable_fallback, f"[{lang_name}] 云同步-手机 localStorage 受限时使用 IndexedDB 持久化并在重载后恢复", "云端数据下载后仍只依赖 localStorage，手机端可能因存储限制误报持久化失败")
 
         persistence_gated_feedback = (
@@ -2948,7 +2958,7 @@ class VocabAppTester:
                     [id]:{changedAt:9999, source:'user', fields:['word','rating','mastered']},
                     [newId]:{changedAt:10000, source:'user', fields:['word','meaning','rating','mastered','tags']}
                   });
-                  app.saveCloudBaselineRevision(1);
+                  await app.saveCloudBaselineRevision(1);
                   app.refreshWordFingerprints();
                   app.getValidCloudSession = async () => ({access_token:'strict-sync-token', user:{id:'00000000-0000-0000-0000-000000000000'}});
                   app.fetchCloudRows = async () => cloudRows;
@@ -3101,7 +3111,7 @@ class VocabAppTester:
                     [sharedId]:{changedAt:9001, source:'user', fields:['meaning']},
                     [localOnlyId]:{changedAt:9002, source:'user', fields:['word','meaning']}
                   });
-                  app.saveCloudBaselineRevision(2);
+                  await app.saveCloudBaselineRevision(2);
                   const downloadStart = toasts.length;
                   const downloadOk = await app.syncWithSupabase(true, {uploadLocal:false, downloadCloud:true});
                   const downloadToasts = toasts.slice(downloadStart);
@@ -3129,7 +3139,7 @@ class VocabAppTester:
                     [sharedId]:{changedAt:9101, source:'user', fields:['meaning']},
                     [localOnlyId]:{changedAt:9102, source:'user', fields:['word','meaning']}
                   });
-                  app.saveCloudBaselineRevision(3);
+                  await app.saveCloudBaselineRevision(3);
                   const uploadStart = toasts.length;
                   const uploadOk = await app.syncWithSupabase(true, {uploadLocal:true, downloadCloud:false});
                   const uploadToasts = toasts.slice(uploadStart);
@@ -3218,7 +3228,9 @@ class VocabAppTester:
                       && Array.isArray(durableSnapshot.words)
                       && durableSnapshot.words.some(word => word.id === fallbackId);
 
-                    Storage.prototype.setItem = originalSetItem;
+                    const durableBaselineBeforeContamination = Number(durableSnapshot && durableSnapshot.cloudBaselineRevision || 0);
+                    const contaminatedLocalBaseline = durableBaselineBeforeContamination + 50;
+                    SafeStorage.setItem(app.CLOUD_BASE_REVISION_KEY, String(contaminatedLocalBaseline));
                     delete SafeStorage.memoryStore[app.STORAGE_KEY];
                     app.words = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]');
                     app._hadDurableLocalWords = true;
@@ -3234,7 +3246,23 @@ class VocabAppTester:
                     const reloadRecoveredCloudWords = restoredAfterReload
                       && app.words.some(word => word.id === fallbackId)
                       && app.words.some(word => word.id === staleId);
-                    result = {persistedWithBlockedLocalStorage, localStorageActuallyFellBack, indexedDbContainsCloudWords, staleLocalWasPresent, reloadRecoveredCloudWords};
+                    const committedBaseline = contaminatedLocalBaseline + 1;
+                    const baselinePersistedBeforeSuccess = await app.saveCloudBaselineRevision(committedBaseline);
+                    const committedSnapshot = await DurableStorage.getItem(app.STORAGE_KEY);
+                    const indexedDbBaselineMatchesWords = !!committedSnapshot
+                      && Number(committedSnapshot.cloudBaselineRevision) === committedBaseline
+                      && Array.isArray(committedSnapshot.words)
+                      && committedSnapshot.words.some(word => word.id === fallbackId);
+                    result = {
+                      persistedWithBlockedLocalStorage,
+                      localStorageActuallyFellBack,
+                      indexedDbContainsCloudWords,
+                      staleLocalWasPresent,
+                      contaminatedLocalBaselineWasNewer:contaminatedLocalBaseline > durableBaselineBeforeContamination,
+                      reloadRecoveredCloudWords,
+                      baselinePersistedBeforeSuccess,
+                      indexedDbBaselineMatchesWords
+                    };
                   } finally {
                     Storage.prototype.setItem = originalSetItem;
                     app.words = originalWords;
@@ -3261,9 +3289,12 @@ class VocabAppTester:
                      and mobile_storage_fallback_result.get('localStorageActuallyFellBack')
                      and mobile_storage_fallback_result.get('indexedDbContainsCloudWords')
                      and mobile_storage_fallback_result.get('staleLocalWasPresent')
-                     and mobile_storage_fallback_result.get('reloadRecoveredCloudWords')),
-                f"[{lang_name}] 浏览器手机存储回归-localStorage 留有旧词库时仍从 IndexedDB 恢复较新云端快照",
-                f"手机端旧 localStorage 阻止了较新 IndexedDB 云端快照恢复：{mobile_storage_fallback_result}",
+                     and mobile_storage_fallback_result.get('contaminatedLocalBaselineWasNewer')
+                     and mobile_storage_fallback_result.get('reloadRecoveredCloudWords')
+                     and mobile_storage_fallback_result.get('baselinePersistedBeforeSuccess')
+                     and mobile_storage_fallback_result.get('indexedDbBaselineMatchesWords')),
+                f"[{lang_name}] 浏览器手机存储回归-污染基线不阻断完整快照且成功前词库与基线一致落盘",
+                f"手机端旧 localStorage、新基线与完整 IndexedDB 快照的一致性恢复失败：{mobile_storage_fallback_result}",
             )
 
             paginated_fetch_result = driver.execute_async_script("""
@@ -3317,7 +3348,7 @@ class VocabAppTester:
                     [`${prefix}_page_0000`]:{changedAt:9999, source:'system', fields:[]},
                     [localOnlyId]:{changedAt:9998, source:'user', fields:['word','meaning']}
                   });
-                  app.saveCloudBaselineRevision(8);
+                  await app.saveCloudBaselineRevision(8);
                   const missingBeforeRepair = app.countUnexplainedMissingCloudWords(split.dataRows);
                   let rowUploadCalls = 0;
                   let metaUploadCalls = 0;

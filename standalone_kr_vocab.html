@@ -20137,17 +20137,22 @@ function createSupabaseSyncMethods(language) {
       if (!localSummary || localSummary.wordIds.length === 0) return durableSummary.wordIds.length > 0;
       if (durableSummary.fingerprint === localSummary.fingerprint) return false;
       if (localSummary.savedAt > 0) return durableSummary.savedAt > localSummary.savedAt;
-      if (durableSummary.cloudBaselineRevision !== null && localSummary.cloudBaselineRevision !== null
-          && durableSummary.cloudBaselineRevision !== localSummary.cloudBaselineRevision) {
-        return durableSummary.cloudBaselineRevision > localSummary.cloudBaselineRevision;
-      }
-      if (durableSummary.maxChangedAt !== localSummary.maxChangedAt) return durableSummary.maxChangedAt > localSummary.maxChangedAt;
       const localIds = new Set(localSummary.wordIds);
       const durableIds = new Set(durableSummary.wordIds);
       const localDeletedIds = new Set(localSummary.deletedIds);
       const durableDeletedIds = new Set(durableSummary.deletedIds);
       const durableOnly = durableSummary.wordIds.filter(id => !localIds.has(id) && !localDeletedIds.has(id)).length;
       const localOnly = localSummary.wordIds.filter(id => !durableIds.has(id) && !durableDeletedIds.has(id)).length;
+      // Older builds could write a new cloud baseline beside stale localStorage words before
+      // the complete IndexedDB snapshot finished. A tombstone-aware strict superset is stronger
+      // evidence than that potentially contaminated baseline when no valid save time exists.
+      if (durableOnly > 0 && localOnly === 0) return true;
+      if (localOnly > 0 && durableOnly === 0) return false;
+      if (durableSummary.cloudBaselineRevision !== null && localSummary.cloudBaselineRevision !== null
+          && durableSummary.cloudBaselineRevision !== localSummary.cloudBaselineRevision) {
+        return durableSummary.cloudBaselineRevision > localSummary.cloudBaselineRevision;
+      }
+      if (durableSummary.maxChangedAt !== localSummary.maxChangedAt) return durableSummary.maxChangedAt > localSummary.maxChangedAt;
       return durableOnly > 0 && localOnly === 0;
     },
 
@@ -20264,9 +20269,28 @@ function createSupabaseSyncMethods(language) {
       return Number.isFinite(value) && value >= 0 ? value : null;
     },
 
-    saveCloudBaselineRevision(revision) {
-      SafeStorage.setItem(this.CLOUD_BASE_REVISION_KEY, String(Math.max(0, Number(revision) || 0)));
-      this.queueDurableSnapshot();
+    async saveCloudBaselineRevision(revision) {
+      const normalizedRevision = Math.max(0, Number(revision) || 0);
+      SafeStorage.setItem(this.CLOUD_BASE_REVISION_KEY, String(normalizedRevision));
+      SafeStorage.flushMemoryStore();
+      let localSnapshotMatches = false;
+      try {
+        const persistedWords = JSON.parse(SafeStorage.getPersistentItem(this.STORAGE_KEY) || 'null');
+        const persistedBaselineRaw = SafeStorage.getPersistentItem(this.CLOUD_BASE_REVISION_KEY);
+        const persistedBaseline = Number(persistedBaselineRaw);
+        localSnapshotMatches = Array.isArray(persistedWords)
+          && persistedBaselineRaw !== null
+          && !SafeStorage.hasVolatileValue(this.STORAGE_KEY)
+          && !SafeStorage.hasVolatileValue(this.CLOUD_BASE_REVISION_KEY)
+          && this.snapshotWordsFingerprint(persistedWords) === this.snapshotWordsFingerprint(this.words)
+          && persistedBaseline === normalizedRevision;
+      } catch (error) {
+        localSnapshotMatches = false;
+      }
+      const indexedDbSnapshotMatches = this.queueDurableSnapshot
+        ? await this.queueDurableSnapshot()
+        : false;
+      return localSnapshotMatches || indexedDbSnapshotMatches;
     },
 
     splitCloudRows(rows) {
@@ -20503,7 +20527,7 @@ function createSupabaseSyncMethods(language) {
 
         if (!uploadLocal && downloadCloud) {
           await this.replaceLocalWithCloudRows(dataRows);
-          this.saveCloudBaselineRevision(cloudRevision);
+          if (!await this.saveCloudBaselineRevision(cloudRevision)) throw new Error('云端词库与版本基线未能一致持久保存，请保留当前页面并重试');
           this.renderWordList();
           this.updateStats();
           if (showToastNotification) this.showToast('✅ 同步完成');
@@ -20515,7 +20539,7 @@ function createSupabaseSyncMethods(language) {
           const nextRevision = cloudRevision + 1;
           await this.upsertCloudMeta(session.access_token, userId, nextRevision);
           this.clearUploadedCloudChanges(uploadedRows);
-          this.saveCloudBaselineRevision(nextRevision);
+          if (!await this.saveCloudBaselineRevision(nextRevision)) throw new Error('云端词库与版本基线未能一致持久保存，请保留当前页面并重试');
           if (showToastNotification) this.showToast('✅ 上传完成');
           return true;
         }
@@ -20531,7 +20555,7 @@ function createSupabaseSyncMethods(language) {
         // 即使待上传标记意外缺失，本地独有卡片也会被识别并补传，点击云朵绝不删除本地新增词。
         if (metaRow && (localRevision !== cloudRevision || missingCloudWordCount > 0)) {
           await this.mergeCloudRows(dataRows);
-          this.saveCloudBaselineRevision(cloudRevision);
+          if (!await this.saveCloudBaselineRevision(cloudRevision)) throw new Error('云端词库与版本基线未能一致持久保存，请保留当前页面并重试');
           const pendingAfterMerge = this.getPendingCloudChanges();
           const pendingAfterMergeIds = Object.keys(pendingAfterMerge).filter(id => this.getPendingCloudMeta(pendingAfterMerge[id]).changedAt > 0);
           const localOnlyAfterMergeIds = this.getLocalOnlyCloudWordIds(dataRows);
@@ -20541,7 +20565,7 @@ function createSupabaseSyncMethods(language) {
             const nextRevision = cloudRevision + 1;
             await this.upsertCloudMeta(session.access_token, userId, nextRevision);
             this.clearUploadedCloudChanges(uploadedRows);
-            this.saveCloudBaselineRevision(nextRevision);
+            if (!await this.saveCloudBaselineRevision(nextRevision)) throw new Error('云端词库与版本基线未能一致持久保存，请保留当前页面并重试');
             this.renderWordList();
             this.updateStats();
             if (showToastNotification) this.showToast('✅ 上传完成，同步完成');
@@ -20564,7 +20588,7 @@ function createSupabaseSyncMethods(language) {
         const nextRevision = cloudRevision + 1;
         await this.upsertCloudMeta(session.access_token, userId, nextRevision);
         this.clearUploadedCloudChanges(uploadedRows);
-        this.saveCloudBaselineRevision(nextRevision);
+        if (!await this.saveCloudBaselineRevision(nextRevision)) throw new Error('云端词库与版本基线未能一致持久保存，请保留当前页面并重试');
         this.renderWordList();
         this.updateStats();
         if (showToastNotification) this.showToast('✅ 上传完成，同步完成');

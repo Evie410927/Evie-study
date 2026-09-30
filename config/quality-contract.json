@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-09-30.1",
+  "contractVersion": "2026-09-30.2",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -187,7 +187,10 @@
       "primary": "localStorage",
       "durableFallback": "IndexedDB",
       "startupSelection": "newest-valid-snapshot",
-      "staleNonEmptyPrimaryMustNotBlockFallback": true
+      "staleNonEmptyPrimaryMustNotBlockFallback": true,
+      "cloudBaselineAndWordsPersistTogetherBeforeSuccess": true,
+      "missingTimestampStrictSupersetRecoveryPrecedesBaseline": true,
+      "strictSupersetRecoveryRespectsDeletionTombstones": true
     },
     "mainSearch": {
       "krFields": ["word", "reading", "meaning"],
