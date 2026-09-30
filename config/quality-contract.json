@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-09-29.24",
+  "contractVersion": "2026-09-30.1",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -11,7 +11,8 @@
       "docs/decisions/ADR-003-mobile-durable-snapshot-recovery.md",
       "docs/decisions/ADR-004-similar-word-manual-order.md",
       "docs/decisions/ADR-005-inline-memory-note.md",
-      "docs/decisions/ADR-006-list-card-vertical-rhythm.md"
+      "docs/decisions/ADR-006-list-card-vertical-rhythm.md",
+      "docs/decisions/ADR-007-new-word-part-of-speech-scroll.md"
     ]
   },
   "mirroredApps": [
@@ -142,6 +143,17 @@
       "controlStyle": "soft-rose-dashed-border",
       "focusStyle": "solid-accent-border",
       "optionalFieldsExcluded": true
+    },
+    "wordEditorPartOfSpeechDropdown": {
+      "newWordFullListInitialScroll": "top",
+      "resetOnEveryFullListOpenInNewMode": true,
+      "resetAxes": [
+        "scrollTop",
+        "scrollLeft"
+      ],
+      "mobileLayoutFrameCorrection": true,
+      "filteredInputRemainsInteractive": true,
+      "editValuePreserved": true
     },
     "listCardVerticalRhythm": {
       "meaningToUserNote": "8px",

@@ -10870,14 +10870,29 @@ class JpVocabApp {
     optionsList.replaceChildren(fragment);
   }
 
+  resetPartOfSpeechOptionsScroll(optionsList) {
+    if (!optionsList) return;
+    const resetScroll = () => {
+      if (!optionsList.isConnected) return;
+      optionsList.scrollTop = 0;
+      optionsList.scrollLeft = 0;
+    };
+    resetScroll();
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(resetScroll);
+  }
+
   openPartOfSpeechOptions(showAll = true) {
     const optionsList = document.getElementById('partOfSpeechOptions');
     const input = document.getElementById('inputPartOfSpeech');
     const wrapper = document.getElementById('partOfSpeechInputWrapper');
     const toggle = document.getElementById('partOfSpeechOptionsToggle');
+    const wordIdInput = document.getElementById('wordId');
     if (!optionsList || !input || !wrapper || !toggle) return;
     this.renderPartOfSpeechOptions(showAll ? '' : input.value);
     optionsList.hidden = false;
+    if (showAll && !String(wordIdInput?.value || '').trim()) {
+      this.resetPartOfSpeechOptionsScroll(optionsList);
+    }
     wrapper.classList.add('is-open');
     input.setAttribute('aria-expanded', 'true');
     toggle.setAttribute('aria-expanded', 'true');

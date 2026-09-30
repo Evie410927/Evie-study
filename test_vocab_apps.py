@@ -610,6 +610,21 @@ class VocabAppTester:
         )) and content.index('id="addWordPartOfSpeechGroup"') < content.index('id="addWordTagsGroup"')
         self.assert_true(taxonomy_structure, f"[{lang_name}] 词性结构-独立可编辑字段位于卡片标签上方并与 Tag 隔离", "缺少单词词性输入、迁移/归一化逻辑，或字段未放在卡片标签上方")
 
+        new_word_part_of_speech_scroll_reset = all(token in content for token in (
+            'resetPartOfSpeechOptionsScroll(optionsList) {',
+            'optionsList.scrollTop = 0;',
+            'optionsList.scrollLeft = 0;',
+            "if (typeof requestAnimationFrame === 'function') requestAnimationFrame(resetScroll);",
+            "const wordIdInput = document.getElementById('wordId');",
+            "if (showAll && !String(wordIdInput?.value || '').trim()) {",
+            'this.resetPartOfSpeechOptionsScroll(optionsList);',
+        ))
+        self.assert_true(
+            new_word_part_of_speech_scroll_reset,
+            f"[{lang_name}] 新增弹窗-完整词性候选列表每次展开均从顶部开始",
+            "新建模式缺少词性列表同步与下一帧滚动归零，手机端可能复用上次停在底部的位置",
+        )
+
         taxonomy_views = all(token in content for token in (
             '<div class="word-meaning">${this.renderPartOfSpeechLabel(w)}${this.escapeHtml(w.meaning)}</div>',
             "detailMeaning.innerHTML = this.renderPartOfSpeechLabel(word) + this.escapeHtml(word.meaning)",
@@ -3566,6 +3581,53 @@ class VocabAppTester:
                 bool(word_modal_scroll_reset and all(word_modal_scroll_reset.values())),
                 f"[{lang_name}] 浏览器新增/编辑弹窗-滚到底部后重复打开均自动回到顶部",
                 f"新增或编辑弹窗复用旧滚动位置: {word_modal_scroll_reset}",
+            )
+            new_word_part_of_speech_scroll_reset = driver.execute_async_script("""
+                const done = arguments[arguments.length - 1];
+                const app = window.app;
+                const optionsList = document.getElementById('partOfSpeechOptions');
+                const input = document.getElementById('inputPartOfSpeech');
+                const wordIdInput = document.getElementById('wordId');
+                if (!app || !optionsList || !input || !wordIdInput) { done(null); return; }
+                const originalWords = app.words;
+                const finish = result => {
+                  app.words = originalWords;
+                  app.closePartOfSpeechOptions();
+                  app.renderPartOfSpeechOptions();
+                  done(result);
+                };
+                app.words = Array.from({length:18}, (_, index) => ({
+                  id: `pos_scroll_probe_${index}`,
+                  word: `probe_${index}`,
+                  meaning: '测试',
+                  partOfSpeech: `测试词性${String(index + 1).padStart(2, '0')}`,
+                  tags: [],
+                  mastered: false,
+                  rating: 0,
+                  examples: []
+                }));
+                app.openWordModal();
+                app.openPartOfSpeechOptions(true);
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                  optionsList.scrollTop = optionsList.scrollHeight;
+                  const listCanScroll = optionsList.scrollHeight > optionsList.clientHeight
+                    && optionsList.scrollTop > 0;
+                  app.closePartOfSpeechOptions();
+                  input.click();
+                  const resetImmediately = optionsList.scrollTop === 0 && optionsList.scrollLeft === 0;
+                  requestAnimationFrame(() => requestAnimationFrame(() => finish({
+                    newMode: wordIdInput.value === '',
+                    listCanScroll,
+                    reopened: optionsList.hidden === false,
+                    resetImmediately,
+                    remainsAtTopAfterLayout: optionsList.scrollTop === 0 && optionsList.scrollLeft === 0
+                  })));
+                }));
+            """)
+            self.assert_true(
+                bool(new_word_part_of_speech_scroll_reset and all(new_word_part_of_speech_scroll_reset.values())),
+                f"[{lang_name}] 浏览器新增弹窗-词性下拉滚到底后再次展开自动回到顶部",
+                f"新增词性候选列表仍复用旧滚动位置: {new_word_part_of_speech_scroll_reset}",
             )
             blank_example_pair_editor = driver.execute_script("""
                 const rows = Array.from(document.querySelectorAll('#examplePairsEditor .example-pair-row'));
