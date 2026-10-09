@@ -21,6 +21,7 @@ class AppContractParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.stack: list[dict[str, object]] = []
         self.pagination: dict[str, object] | None = None
+        self.elements_by_id: dict[str, dict[str, object]] = {}
         self.review_options: list[dict[str, object]] = []
         self._inside_review_select = False
 
@@ -39,6 +40,14 @@ class AppContractParser(HTMLParser):
                 "previous_sibling_id": previous_sibling_id,
                 "class": attr_map.get("class", ""),
                 "style": attr_map.get("style", ""),
+            }
+
+        if element_id:
+            self.elements_by_id[element_id] = {
+                "tag": tag,
+                "parent_id": parent.get("id") if parent else None,
+                "previous_sibling_id": previous_sibling_id,
+                "attrs": attr_map,
             }
 
         if tag == "select" and element_id == "reviewRatingSortSelect":
@@ -112,6 +121,19 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
         fail(errors, f"{relative_path}: reviewRatingSort 运行时默认值不是 createdDesc")
     if "this.sortReviewWordsBySimilarity(this.reviewList)" in content:
         fail(errors, f"{relative_path}: 仍存在已废止的自动相似表达聚类调用")
+
+    reset_contract = contract["uiContracts"]["partOfSpeechFilterReset"]
+    reset_button = parser.elements_by_id.get(reset_contract["buttonId"])
+    if reset_button is None:
+        fail(errors, f"{relative_path}: 缺少词性筛选重置按钮 #{reset_contract['buttonId']}")
+    else:
+        if reset_button["parent_id"] != reset_contract["menuId"]:
+            fail(errors, f"{relative_path}: 词性筛选重置按钮必须直属 #{reset_contract['menuId']}")
+        if reset_button["previous_sibling_id"] != reset_contract["previousSiblingId"]:
+            fail(errors, f"{relative_path}: 词性筛选重置按钮必须紧随 #{reset_contract['previousSiblingId']}")
+        onclick = str(reset_button["attrs"].get("onclick", ""))
+        if reset_contract["action"] not in onclick:
+            fail(errors, f"{relative_path}: 词性筛选重置按钮未绑定 {reset_contract['action']}")
 
     similar_contract = contract["dataContracts"]["similarWords"]
     if similar_contract["mode"] == "manual-only":

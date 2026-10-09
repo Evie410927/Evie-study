@@ -501,8 +501,24 @@ class VocabAppTester:
             'id="partOfSpeechDropdownBtn"',
             'id="partOfSpeechDropdownMenu"',
             'id="partOfSpeechDropdownList"',
+            'id="partOfSpeechDropdownResetBtn"',
         )) and content.index('id="partOfSpeechDropdownContainer"') < content.index('id="tagDropdownContainer"')
         self.assert_true(part_of_speech_filter_dom, f"[{lang_name}] 词性筛选-独立按钮位于标签筛选左侧", "词性筛选 DOM 不完整，或没有放在标签筛选按钮左侧")
+
+        part_of_speech_reset_control = all(token in content for token in (
+            'id="partOfSpeechDropdownResetBtn" class="part-of-speech-dropdown-reset-btn"',
+            'onclick="if(window.app) window.app.clearAllPartOfSpeechFilters()"',
+            '↺ 重置（显示全部）',
+            '.part-of-speech-dropdown-reset-btn {',
+            'border-top: 1px solid var(--border-color',
+            'flex-shrink: 0;',
+            'Math.max(48, maxHeight - 52)',
+        )) and content.index('id="partOfSpeechDropdownList"') < content.index('id="partOfSpeechDropdownResetBtn"')
+        self.assert_true(
+            part_of_speech_reset_control,
+            f"[{lang_name}] 词性筛选-下拉底部固定提供一键重置并显示全部",
+            "词性筛选重置按钮缺失、未放在滚动列表底部，或未绑定清空方法",
+        )
 
         part_of_speech_filter_methods = all(token in content for token in (
             'this.selectedPartOfSpeech = new Set();',
@@ -2408,8 +2424,22 @@ class VocabAppTester:
                   const activeBadgeVisible = badge?.style.display === 'inline-flex';
                   const activeButton = button?.classList.contains('has-active-part-of-speech') === true;
 
-                  // 回归用户反馈：内部残留 3 个已不存在的词性时，Badge 曾显示 3、下拉却零勾选，并把统计筛成 0。
+                  const resetButton = document.getElementById('partOfSpeechDropdownResetBtn');
+                  const resetPlacementValid = resetButton?.parentElement?.id === 'partOfSpeechDropdownMenu'
+                    && resetButton?.previousElementSibling?.id === 'partOfSpeechDropdownList';
                   app.selectedTags = new Set();
+                  app.currentPage = 3;
+                  resetButton?.click();
+                  const idsAfterReset = app.getSearchFilteredWords().map(word => word.id).sort();
+                  const resetRestoredAll = app.selectedPartOfSpeech.size === 0
+                    && app.currentPage === 1
+                    && idsAfterReset.join('|') === ['pos_filter_custom', 'pos_filter_noun', 'pos_filter_phrase', 'pos_filter_verb'].join('|')
+                    && badge?.style.display === 'none'
+                    && badge?.textContent === '0'
+                    && !button?.classList.contains('has-active-part-of-speech')
+                    && document.querySelectorAll('#partOfSpeechDropdownList .tag-dropdown-item.selected').length === 0;
+
+                  // 回归用户反馈：内部残留 3 个已不存在的词性时，Badge 曾显示 3、下拉却零勾选，并把统计筛成 0。
                   app.selectedPartOfSpeech = new Set(['失效词性甲', '失效词性乙', '失效词性丙']);
                   app.renderWordList();
                   app.renderPartOfSpeechDropdownItems();
@@ -2430,6 +2460,8 @@ class VocabAppTester:
                     badgeCount: activeBadgeCount,
                     badgeVisible: activeBadgeVisible,
                     buttonActive: activeButton,
+                    resetPlacementValid,
+                    resetRestoredAll,
                     staleStateSelfHealed
                   };
                 } finally {
@@ -2468,6 +2500,13 @@ class VocabAppTester:
                 bool(part_of_speech_filter_result and part_of_speech_filter_result.get('staleStateSelfHealed')),
                 f"[{lang_name}] 浏览器词性筛选-无勾选时 Badge 归零且不会把统计筛成 0",
                 f"失效词性状态未自动清理：{part_of_speech_filter_result}",
+            )
+            self.assert_true(
+                bool(part_of_speech_filter_result
+                     and part_of_speech_filter_result.get('resetPlacementValid')
+                     and part_of_speech_filter_result.get('resetRestoredAll')),
+                f"[{lang_name}] 浏览器词性筛选-底部重置按钮一键恢复显示全部",
+                f"词性筛选重置按钮位置或运行结果异常：{part_of_speech_filter_result}",
             )
 
             inline_existing_tag_result = driver.execute_script("""

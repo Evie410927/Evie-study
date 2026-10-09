@@ -532,6 +532,29 @@ body.light-theme .clear-all-tags-chip-btn:hover {
   background: rgba(99, 102, 241, 0.15);
 }
 
+.part-of-speech-dropdown-reset-btn {
+  width: 100%;
+  flex-shrink: 0;
+  padding: 10px 12px;
+  border: 0;
+  border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  background: rgba(0, 0, 0, 0.12);
+  color: var(--accent-primary, #818cf8);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.part-of-speech-dropdown-reset-btn:hover,
+.part-of-speech-dropdown-reset-btn:focus-visible {
+  background: rgba(99, 102, 241, 0.16);
+  color: var(--text-primary);
+  outline: none;
+}
+
 .tag-dropdown-list,
 .part-of-speech-dropdown-list {
   padding: 6px;
@@ -2893,6 +2916,7 @@ body::-webkit-scrollbar,
                 <div id="partOfSpeechDropdownList" class="part-of-speech-dropdown-list">
                   <!-- Dynamic part-of-speech items with counts -->
                 </div>
+                <button id="partOfSpeechDropdownResetBtn" class="part-of-speech-dropdown-reset-btn" type="button" onclick="if(window.app) window.app.clearAllPartOfSpeechFilters()" title="清空已选词性并显示全部">↺ 重置（显示全部）</button>
               </div>
             </div>
             <div class="tag-filter-dropdown-wrapper" id="tagDropdownContainer">
@@ -11019,7 +11043,7 @@ class JpVocabApp {
     menu.style.maxHeight = `${maxHeight}px`;
     menu.style.zIndex = '10000';
     const list = menu.querySelector('.part-of-speech-dropdown-list');
-    if (list) list.style.maxHeight = `${Math.max(72, maxHeight - 12)}px`;
+    if (list) list.style.maxHeight = `${Math.max(48, maxHeight - 52)}px`;
   }
 
   closePartOfSpeechFilterDropdown() {
