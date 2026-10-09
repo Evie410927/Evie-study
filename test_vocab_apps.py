@@ -499,6 +499,7 @@ class VocabAppTester:
         part_of_speech_filter_dom = all(token in content for token in (
             'id="partOfSpeechDropdownContainer"',
             'id="partOfSpeechDropdownBtn"',
+            'id="partOfSpeechQuickResetBtn"',
             'id="partOfSpeechDropdownMenu"',
             'id="partOfSpeechDropdownList"',
             'id="partOfSpeechDropdownResetBtn"',
@@ -518,6 +519,22 @@ class VocabAppTester:
             part_of_speech_reset_control,
             f"[{lang_name}] 词性筛选-下拉底部固定提供一键重置并显示全部",
             "词性筛选重置按钮缺失、未放在滚动列表底部，或未绑定清空方法",
+        )
+
+        part_of_speech_quick_reset_control = all(token in content for token in (
+            'id="partOfSpeechQuickResetBtn" class="part-of-speech-quick-reset-btn"',
+            'onclick="event.stopPropagation(); if(window.app) window.app.clearAllPartOfSpeechFilters()"',
+            'aria-label="重置词性筛选并显示全部"',
+            '.part-of-speech-quick-reset-btn {',
+            'width: 28px;',
+            'height: 28px;',
+            "const quickResetButton = document.getElementById('partOfSpeechQuickResetBtn');",
+            "quickResetButton.style.display = count > 0 ? 'inline-flex' : 'none';",
+        )) and content.index('id="partOfSpeechDropdownBtn"') < content.index('id="partOfSpeechQuickResetBtn"') < content.index('id="partOfSpeechDropdownMenu"')
+        self.assert_true(
+            part_of_speech_quick_reset_control,
+            f"[{lang_name}] 词性筛选-收起且有已选项时在箭头右侧显示快捷重置",
+            "词性筛选快捷重置按钮缺失、位置错误，或未按已选数量显隐",
         )
 
         part_of_speech_filter_methods = all(token in content for token in (
@@ -2424,10 +2441,35 @@ class VocabAppTester:
                   const activeBadgeVisible = badge?.style.display === 'inline-flex';
                   const activeButton = button?.classList.contains('has-active-part-of-speech') === true;
 
+                  const quickResetButton = document.getElementById('partOfSpeechQuickResetBtn');
+                  const dropdownMenu = document.getElementById('partOfSpeechDropdownMenu');
+                  app.closePartOfSpeechFilterDropdown();
+                  const quickResetPlacementValid = quickResetButton?.parentElement?.id === 'partOfSpeechDropdownContainer'
+                    && quickResetButton?.previousElementSibling?.id === 'partOfSpeechDropdownBtn';
+                  const quickResetRect = quickResetButton?.getBoundingClientRect();
+                  const quickResetVisibleWhileCollapsed = dropdownMenu?.style.display !== 'block'
+                    && quickResetButton?.style.display === 'inline-flex'
+                    && getComputedStyle(quickResetButton).display !== 'none'
+                    && quickResetRect?.width >= 26
+                    && quickResetRect?.height >= 26;
+                  app.currentPage = 3;
+                  quickResetButton?.click();
+                  const idsAfterQuickReset = app.getSearchFilteredWords().map(word => word.id).sort();
+                  const quickResetRestoredAllPartOfSpeech = app.selectedPartOfSpeech.size === 0
+                    && app.selectedTags.has('联合筛选')
+                    && app.currentPage === 1
+                    && idsAfterQuickReset.join('|') === ['pos_filter_noun', 'pos_filter_phrase'].join('|')
+                    && badge?.style.display === 'none'
+                    && badge?.textContent === '0'
+                    && quickResetButton?.style.display === 'none'
+                    && !button?.classList.contains('has-active-part-of-speech');
+
                   const resetButton = document.getElementById('partOfSpeechDropdownResetBtn');
                   const resetPlacementValid = resetButton?.parentElement?.id === 'partOfSpeechDropdownMenu'
                     && resetButton?.previousElementSibling?.id === 'partOfSpeechDropdownList';
                   app.selectedTags = new Set();
+                  app.togglePartOfSpeechFilter('名词');
+                  app.togglePartOfSpeechFilter('动词');
                   app.currentPage = 3;
                   resetButton?.click();
                   const idsAfterReset = app.getSearchFilteredWords().map(word => word.id).sort();
@@ -2460,6 +2502,9 @@ class VocabAppTester:
                     badgeCount: activeBadgeCount,
                     badgeVisible: activeBadgeVisible,
                     buttonActive: activeButton,
+                    quickResetPlacementValid,
+                    quickResetVisibleWhileCollapsed,
+                    quickResetRestoredAllPartOfSpeech,
                     resetPlacementValid,
                     resetRestoredAll,
                     staleStateSelfHealed
@@ -2507,6 +2552,14 @@ class VocabAppTester:
                      and part_of_speech_filter_result.get('resetRestoredAll')),
                 f"[{lang_name}] 浏览器词性筛选-底部重置按钮一键恢复显示全部",
                 f"词性筛选重置按钮位置或运行结果异常：{part_of_speech_filter_result}",
+            )
+            self.assert_true(
+                bool(part_of_speech_filter_result
+                     and part_of_speech_filter_result.get('quickResetPlacementValid')
+                     and part_of_speech_filter_result.get('quickResetVisibleWhileCollapsed')
+                     and part_of_speech_filter_result.get('quickResetRestoredAllPartOfSpeech')),
+                f"[{lang_name}] 浏览器词性筛选-收起状态快捷重置按钮按数量显隐并恢复全部词性",
+                f"收起状态快捷重置按钮位置、显隐或运行结果异常：{part_of_speech_filter_result}",
             )
 
             inline_existing_tag_result = driver.execute_script("""

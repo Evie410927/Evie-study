@@ -462,6 +462,36 @@ body.light-theme .clear-all-tags-chip-btn:hover {
   font-weight: 600;
 }
 
+#partOfSpeechDropdownContainer {
+  gap: 4px;
+}
+
+.part-of-speech-quick-reset-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  background: var(--bg-card-solid);
+  color: var(--accent-primary, #818cf8);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.part-of-speech-quick-reset-btn:hover,
+.part-of-speech-quick-reset-btn:focus-visible {
+  background: rgba(99, 102, 241, 0.16);
+  border-color: var(--accent-primary, #818cf8);
+  color: var(--text-primary);
+  outline: none;
+}
+
 .tag-badge {
   display: inline-flex;
   align-items: center;
@@ -2912,6 +2942,7 @@ body::-webkit-scrollbar,
               <button id="partOfSpeechDropdownBtn" class="pill-btn part-of-speech-dropdown-btn" onclick="if(window.app) window.app.togglePartOfSpeechDropdown(event)" title="按词性过滤（可多选）" style="display: inline-flex; align-items: center; gap: 4px;">
                 词性 <span id="partOfSpeechDropdownBadge" class="tag-badge" style="display:none;">0</span> ▾
               </button>
+              <button id="partOfSpeechQuickResetBtn" class="part-of-speech-quick-reset-btn" type="button" style="display:none;" onclick="event.stopPropagation(); if(window.app) window.app.clearAllPartOfSpeechFilters()" title="重置词性筛选并显示全部" aria-label="重置词性筛选并显示全部">↺</button>
               <div id="partOfSpeechDropdownMenu" class="tag-dropdown-menu" style="display:none;" onclick="event.stopPropagation()">
                 <div id="partOfSpeechDropdownList" class="part-of-speech-dropdown-list">
                   <!-- Dynamic part-of-speech items with counts -->
@@ -11075,12 +11106,14 @@ class JpVocabApp {
   updatePartOfSpeechBadge() {
     const badge = document.getElementById('partOfSpeechDropdownBadge');
     const button = document.getElementById('partOfSpeechDropdownBtn');
+    const quickResetButton = document.getElementById('partOfSpeechQuickResetBtn');
     const count = this.reconcilePartOfSpeechFilters().size;
     if (badge) {
       badge.textContent = count;
       badge.style.display = count > 0 ? 'inline-flex' : 'none';
     }
     if (button) button.classList.toggle('has-active-part-of-speech', count > 0);
+    if (quickResetButton) quickResetButton.style.display = count > 0 ? 'inline-flex' : 'none';
   }
 
   renderPartOfSpeechDropdownItems() {

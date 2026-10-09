@@ -135,6 +135,23 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
         if reset_contract["action"] not in onclick:
             fail(errors, f"{relative_path}: 词性筛选重置按钮未绑定 {reset_contract['action']}")
 
+    quick_reset_button = parser.elements_by_id.get(reset_contract["quickButtonId"])
+    if quick_reset_button is None:
+        fail(errors, f"{relative_path}: 缺少收起状态词性快捷重置按钮 #{reset_contract['quickButtonId']}")
+    else:
+        if quick_reset_button["parent_id"] != reset_contract["quickParentId"]:
+            fail(errors, f"{relative_path}: 词性快捷重置按钮必须直属 #{reset_contract['quickParentId']}")
+        if quick_reset_button["previous_sibling_id"] != reset_contract["quickPreviousSiblingId"]:
+            fail(errors, f"{relative_path}: 词性快捷重置按钮必须紧随 #{reset_contract['quickPreviousSiblingId']}")
+        onclick = str(quick_reset_button["attrs"].get("onclick", ""))
+        if reset_contract["action"] not in onclick:
+            fail(errors, f"{relative_path}: 词性快捷重置按钮未绑定 {reset_contract['action']}")
+        if "display:none" not in str(quick_reset_button["attrs"].get("style", "")).replace(" ", ""):
+            fail(errors, f"{relative_path}: 词性快捷重置按钮初始状态必须隐藏")
+    quick_visibility_token = "quickResetButton.style.display = count > 0 ? 'inline-flex' : 'none';"
+    if quick_visibility_token not in content:
+        fail(errors, f"{relative_path}: 词性快捷重置按钮未按已选数量显隐")
+
     similar_contract = contract["dataContracts"]["similarWords"]
     if similar_contract["mode"] == "manual-only":
         required_manual_tokens = (

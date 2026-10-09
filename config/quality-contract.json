@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-10-09.1",
+  "contractVersion": "2026-10-09.2",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -161,6 +161,11 @@
       "menuId": "partOfSpeechDropdownMenu",
       "previousSiblingId": "partOfSpeechDropdownList",
       "placement": "fixed-footer-after-scroll-list",
+      "quickButtonId": "partOfSpeechQuickResetBtn",
+      "quickParentId": "partOfSpeechDropdownContainer",
+      "quickPreviousSiblingId": "partOfSpeechDropdownBtn",
+      "quickPlacement": "collapsed-control-right-of-dropdown-trigger",
+      "quickVisibleWhen": "selected-count-positive",
       "action": "clearAllPartOfSpeechFilters",
       "result": "empty-selection-shows-all-part-of-speech"
     },
