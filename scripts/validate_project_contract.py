@@ -152,6 +152,55 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
     if quick_visibility_token not in content:
         fail(errors, f"{relative_path}: 词性快捷重置按钮未按已选数量显隐")
 
+    tag_reset_contract = contract["uiContracts"]["tagFilterReset"]
+    tag_reset_button = parser.elements_by_id.get(tag_reset_contract["buttonId"])
+    if tag_reset_button is None:
+        fail(errors, f"{relative_path}: 缺少 Tag 筛选重置按钮 #{tag_reset_contract['buttonId']}")
+    else:
+        if tag_reset_button["parent_id"] != tag_reset_contract["menuId"]:
+            fail(errors, f"{relative_path}: Tag 筛选重置按钮必须直属 #{tag_reset_contract['menuId']}")
+        if tag_reset_button["previous_sibling_id"] != tag_reset_contract["previousSiblingId"]:
+            fail(errors, f"{relative_path}: Tag 筛选重置按钮必须紧随 #{tag_reset_contract['previousSiblingId']}")
+        onclick = str(tag_reset_button["attrs"].get("onclick", ""))
+        if tag_reset_contract["action"] not in onclick:
+            fail(errors, f"{relative_path}: Tag 筛选重置按钮未绑定 {tag_reset_contract['action']}")
+
+    tag_quick_reset_button = parser.elements_by_id.get(tag_reset_contract["quickButtonId"])
+    if tag_quick_reset_button is None:
+        fail(errors, f"{relative_path}: 缺少收起状态 Tag 快捷重置按钮 #{tag_reset_contract['quickButtonId']}")
+    else:
+        if tag_quick_reset_button["parent_id"] != tag_reset_contract["quickParentId"]:
+            fail(errors, f"{relative_path}: Tag 快捷重置按钮必须直属 #{tag_reset_contract['quickParentId']}")
+        if tag_quick_reset_button["previous_sibling_id"] != tag_reset_contract["quickPreviousSiblingId"]:
+            fail(errors, f"{relative_path}: Tag 快捷重置按钮必须紧随 #{tag_reset_contract['quickPreviousSiblingId']}")
+        onclick = str(tag_quick_reset_button["attrs"].get("onclick", ""))
+        if tag_reset_contract["action"] not in onclick:
+            fail(errors, f"{relative_path}: Tag 快捷重置按钮未绑定 {tag_reset_contract['action']}")
+        if "display:none" not in str(tag_quick_reset_button["attrs"].get("style", "")).replace(" ", ""):
+            fail(errors, f"{relative_path}: Tag 快捷重置按钮初始状态必须隐藏")
+    tag_quick_visibility_token = "tagQuickResetButton.style.display = count > 0 ? 'inline-flex' : 'none';"
+    if tag_quick_visibility_token not in content:
+        fail(errors, f"{relative_path}: Tag 快捷重置按钮未按已选数量显隐")
+
+    active_tags_bar = parser.elements_by_id.get("activeTagsBar")
+    if active_tags_bar is None:
+        fail(errors, f"{relative_path}: 缺少兼容节点 #activeTagsBar")
+    else:
+        active_bar_style = str(active_tags_bar["attrs"].get("style", "")).replace(" ", "")
+        if "display:none" not in active_bar_style or active_tags_bar["attrs"].get("aria-hidden") != "true":
+            fail(errors, f"{relative_path}: #activeTagsBar 必须静态隐藏且对辅助技术隐藏")
+    required_hidden_summary_tokens = (
+        "bar.innerHTML = '';",
+        "bar.style.display = 'none';",
+        "bar.setAttribute('aria-hidden', 'true');",
+    )
+    for token in required_hidden_summary_tokens:
+        if token not in content:
+            fail(errors, f"{relative_path}: Tag 旧摘要栏缺少持续隐藏实现 {token}")
+    for forbidden_markup in ('<span class="active-tag-chip">', '<button class="clear-all-tags-chip-btn"'):
+        if forbidden_markup in content:
+            fail(errors, f"{relative_path}: 搜索框下方仍会渲染旧 Tag 摘要 {forbidden_markup}")
+
     similar_contract = contract["dataContracts"]["similarWords"]
     if similar_contract["mode"] == "manual-only":
         required_manual_tokens = (

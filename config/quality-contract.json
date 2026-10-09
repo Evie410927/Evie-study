@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-10-09.2",
+  "contractVersion": "2026-10-09.3",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -13,7 +13,8 @@
       "docs/decisions/ADR-005-inline-memory-note.md",
       "docs/decisions/ADR-006-list-card-vertical-rhythm.md",
       "docs/decisions/ADR-007-new-word-part-of-speech-scroll.md",
-      "docs/decisions/ADR-008-part-of-speech-filter-reset.md"
+      "docs/decisions/ADR-008-part-of-speech-filter-reset.md",
+      "docs/decisions/ADR-009-tag-filter-reset-parity.md"
     ]
   },
   "mirroredApps": [
@@ -168,6 +169,20 @@
       "quickVisibleWhen": "selected-count-positive",
       "action": "clearAllPartOfSpeechFilters",
       "result": "empty-selection-shows-all-part-of-speech"
+    },
+    "tagFilterReset": {
+      "buttonId": "tagDropdownResetBtn",
+      "menuId": "tagDropdownMenu",
+      "previousSiblingId": "tagDropdownList",
+      "placement": "fixed-footer-after-scroll-list",
+      "quickButtonId": "tagQuickResetBtn",
+      "quickParentId": "tagDropdownContainer",
+      "quickPreviousSiblingId": "tagDropdownBtn",
+      "quickPlacement": "collapsed-control-right-of-dropdown-trigger",
+      "quickVisibleWhen": "selected-count-positive",
+      "selectedSummaryPlacement": "none-below-search",
+      "action": "clearAllTagFilters",
+      "result": "empty-selection-shows-all-tags"
     },
     "listCardVerticalRhythm": {
       "meaningToUserNote": "8px",

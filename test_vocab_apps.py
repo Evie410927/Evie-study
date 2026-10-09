@@ -476,6 +476,48 @@ class VocabAppTester:
         tag_dropdown_menu = 'id="tagDropdownMenu"' in content and 'id="tagDropdownList"' in content
         self.assert_true(tag_dropdown_menu, f"[{lang_name}] 标签筛选-下拉菜单面板 #tagDropdownMenu 存在", "DOM 中缺少 id='tagDropdownMenu' 面板")
 
+        tag_reset_control = all(token in content for token in (
+            'id="tagDropdownResetBtn" class="tag-dropdown-reset-btn"',
+            'onclick="if(window.app) window.app.clearAllTagFilters()"',
+            '↺ 重置（显示全部）',
+            '.tag-dropdown-reset-btn {',
+            'border-top: 1px solid var(--border-color',
+            'Math.max(48, maxHeight - 52)',
+        )) and content.index('id="tagDropdownList"') < content.index('id="tagDropdownResetBtn"')
+        self.assert_true(
+            tag_reset_control,
+            f"[{lang_name}] 标签筛选-下拉底部固定提供一键重置并显示全部",
+            "Tag 重置按钮缺失、未放在滚动列表底部，或未绑定清空方法",
+        )
+
+        tag_quick_reset_control = all(token in content for token in (
+            'id="tagQuickResetBtn" class="tag-quick-reset-btn"',
+            'onclick="event.stopPropagation(); if(window.app) window.app.clearAllTagFilters()"',
+            'aria-label="重置 Tag 筛选并显示全部"',
+            '.tag-quick-reset-btn {',
+            'width: 28px;',
+            'height: 28px;',
+            "const tagQuickResetButton = document.getElementById('tagQuickResetBtn');",
+            "tagQuickResetButton.style.display = count > 0 ? 'inline-flex' : 'none';",
+        )) and content.index('id="tagDropdownBtn"') < content.index('id="tagQuickResetBtn"') < content.index('id="tagDropdownMenu"')
+        self.assert_true(
+            tag_quick_reset_control,
+            f"[{lang_name}] 标签筛选-收起且有已选项时在图标右侧显示快捷重置",
+            "Tag 快捷重置按钮缺失、位置错误，或未按已选数量显隐",
+        )
+
+        legacy_tag_summary_hidden = all(token in content for token in (
+            'id="activeTagsBar" class="active-tags-bar" style="display:none;" aria-hidden="true"',
+            "bar.innerHTML = '';",
+            "bar.style.display = 'none';",
+            "bar.setAttribute('aria-hidden', 'true');",
+        )) and '<span class="active-tag-chip">' not in content and '<button class="clear-all-tags-chip-btn"' not in content
+        self.assert_true(
+            legacy_tag_summary_hidden,
+            f"[{lang_name}] 标签筛选-不再在搜索框下方单独显示已选 Tag 摘要",
+            "旧 activeTagsBar 仍可能渲染已选 Tag 或清空按钮",
+        )
+
         mobile_tag_dropdown_unclipped = all(token in content for token in (
             "positionTagDropdownMenu(menu)", "document.body.appendChild(menu)",
             "button.getBoundingClientRect()", "menu.style.position = 'fixed'",
@@ -510,7 +552,7 @@ class VocabAppTester:
             'id="partOfSpeechDropdownResetBtn" class="part-of-speech-dropdown-reset-btn"',
             'onclick="if(window.app) window.app.clearAllPartOfSpeechFilters()"',
             '↺ 重置（显示全部）',
-            '.part-of-speech-dropdown-reset-btn {',
+            '.part-of-speech-dropdown-reset-btn,',
             'border-top: 1px solid var(--border-color',
             'flex-shrink: 0;',
             'Math.max(48, maxHeight - 52)',
@@ -525,7 +567,7 @@ class VocabAppTester:
             'id="partOfSpeechQuickResetBtn" class="part-of-speech-quick-reset-btn"',
             'onclick="event.stopPropagation(); if(window.app) window.app.clearAllPartOfSpeechFilters()"',
             'aria-label="重置词性筛选并显示全部"',
-            '.part-of-speech-quick-reset-btn {',
+            '.part-of-speech-quick-reset-btn,',
             'width: 28px;',
             'height: 28px;',
             "const quickResetButton = document.getElementById('partOfSpeechQuickResetBtn');",
@@ -2393,6 +2435,123 @@ class VocabAppTester:
                 bool(all_tag_dropdown_result and all_tag_dropdown_result.get('compactIconButton')),
                 f"[{lang_name}] 浏览器标签筛选-仅保留图案且实际宽度小于词性按钮",
                 f"标签筛选按钮仍有文字或宽度未缩小：{all_tag_dropdown_result}",
+            )
+
+            tag_filter_reset_result = driver.execute_script("""
+                const app = window.app;
+                const originalWords = app.words;
+                const originalPartOfSpeech = new Set(app.selectedPartOfSpeech || []);
+                const originalTags = new Set(app.selectedTags || []);
+                const originalSearchQuery = app.searchQuery;
+                const originalPage = app.currentPage;
+                try {
+                  app.words = [
+                    {id:'tag_filter_alpha', word:'标签甲', meaning:'标签测试甲', partOfSpeech:'名词', tags:['联合标签'], mastered:false, rating:0, examples:[]},
+                    {id:'tag_filter_beta', word:'标签乙', meaning:'标签测试乙', partOfSpeech:'动词', tags:['其他标签'], mastered:false, rating:0, examples:[]},
+                    {id:'tag_filter_both', word:'标签丙', meaning:'标签测试丙', partOfSpeech:'短语', tags:['联合标签', '其他标签'], mastered:false, rating:0, examples:[]}
+                  ];
+                  app.selectedPartOfSpeech = new Set();
+                  app.selectedTags = new Set();
+                  app.searchQuery = '';
+                  app.currentPage = 1;
+                  app.renderWordList();
+                  app.toggleTagFilter('联合标签');
+                  app.toggleTagFilter('其他标签');
+                  app.renderTagDropdownItems();
+
+                  const badge = document.getElementById('tagDropdownBadge');
+                  const button = document.getElementById('tagDropdownBtn');
+                  const quickResetButton = document.getElementById('tagQuickResetBtn');
+                  const dropdownMenu = document.getElementById('tagDropdownMenu');
+                  const activeTagsBar = document.getElementById('activeTagsBar');
+                  app.closeTagFilterDropdown();
+                  const quickResetPlacementValid = quickResetButton?.parentElement?.id === 'tagDropdownContainer'
+                    && quickResetButton?.previousElementSibling?.id === 'tagDropdownBtn';
+                  const quickResetRect = quickResetButton?.getBoundingClientRect();
+                  const quickResetVisibleWhileCollapsed = dropdownMenu?.style.display !== 'block'
+                    && badge?.textContent === '2'
+                    && badge?.style.display === 'inline-flex'
+                    && quickResetButton?.style.display === 'inline-flex'
+                    && getComputedStyle(quickResetButton).display !== 'none'
+                    && quickResetRect?.width >= 26
+                    && quickResetRect?.height >= 26;
+                  const oldSummaryHidden = activeTagsBar?.innerHTML === ''
+                    && activeTagsBar?.style.display === 'none'
+                    && activeTagsBar?.getAttribute('aria-hidden') === 'true';
+
+                  app.currentPage = 3;
+                  quickResetButton?.click();
+                  const idsAfterQuickReset = app.getSearchFilteredWords().map(word => word.id).sort();
+                  const quickResetRestoredAllTags = app.selectedTags.size === 0
+                    && app.currentPage === 1
+                    && idsAfterQuickReset.join('|') === ['tag_filter_alpha', 'tag_filter_beta', 'tag_filter_both'].join('|')
+                    && badge?.style.display === 'none'
+                    && badge?.textContent === '0'
+                    && quickResetButton?.style.display === 'none'
+                    && !button?.classList.contains('has-active-tags');
+
+                  const resetButton = document.getElementById('tagDropdownResetBtn');
+                  const resetPlacementValid = resetButton?.parentElement?.id === 'tagDropdownMenu'
+                    && resetButton?.previousElementSibling?.id === 'tagDropdownList';
+                  app.toggleTagFilter('联合标签');
+                  app.toggleTagFilter('其他标签');
+                  app.currentPage = 3;
+                  resetButton?.click();
+                  app.renderTagDropdownItems();
+                  const idsAfterFooterReset = app.getSearchFilteredWords().map(word => word.id).sort();
+                  const footerResetRestoredAllTags = app.selectedTags.size === 0
+                    && app.currentPage === 1
+                    && idsAfterFooterReset.join('|') === ['tag_filter_alpha', 'tag_filter_beta', 'tag_filter_both'].join('|')
+                    && badge?.style.display === 'none'
+                    && badge?.textContent === '0'
+                    && quickResetButton?.style.display === 'none'
+                    && document.querySelectorAll('#tagDropdownList .tag-dropdown-item.selected').length === 0;
+                  return {
+                    quickResetPlacementValid,
+                    quickResetVisibleWhileCollapsed,
+                    oldSummaryHidden,
+                    quickResetRestoredAllTags,
+                    resetPlacementValid,
+                    footerResetRestoredAllTags
+                  };
+                } finally {
+                  app.words = originalWords;
+                  app.selectedPartOfSpeech = originalPartOfSpeech;
+                  app.selectedTags = originalTags;
+                  app.searchQuery = originalSearchQuery;
+                  app.currentPage = originalPage;
+                  app.renderWordList();
+                }
+            """)
+            self.assert_true(
+                bool(tag_filter_reset_result and tag_filter_reset_result.get('quickResetPlacementValid')),
+                f"[{lang_name}] 浏览器标签筛选-快捷重置紧邻 Tag 图标右侧",
+                f"Tag 快捷重置位置错误：{tag_filter_reset_result}",
+            )
+            self.assert_true(
+                bool(tag_filter_reset_result and tag_filter_reset_result.get('quickResetVisibleWhileCollapsed')),
+                f"[{lang_name}] 浏览器标签筛选-收起且有数字时显示可点击快捷重置",
+                f"Tag 快捷重置显隐或尺寸错误：{tag_filter_reset_result}",
+            )
+            self.assert_true(
+                bool(tag_filter_reset_result and tag_filter_reset_result.get('oldSummaryHidden')),
+                f"[{lang_name}] 浏览器标签筛选-搜索框下方旧摘要保持隐藏",
+                f"activeTagsBar 仍显示内容：{tag_filter_reset_result}",
+            )
+            self.assert_true(
+                bool(tag_filter_reset_result and tag_filter_reset_result.get('quickResetRestoredAllTags')),
+                f"[{lang_name}] 浏览器标签筛选-快捷重置清空选择并恢复显示全部",
+                f"Tag 快捷重置未恢复默认状态：{tag_filter_reset_result}",
+            )
+            self.assert_true(
+                bool(tag_filter_reset_result and tag_filter_reset_result.get('resetPlacementValid')),
+                f"[{lang_name}] 浏览器标签筛选-下拉重置固定在滚动列表底部",
+                f"Tag 下拉重置位置错误：{tag_filter_reset_result}",
+            )
+            self.assert_true(
+                bool(tag_filter_reset_result and tag_filter_reset_result.get('footerResetRestoredAllTags')),
+                f"[{lang_name}] 浏览器标签筛选-下拉底部重置清空选择并恢复显示全部",
+                f"Tag 下拉重置未恢复默认状态：{tag_filter_reset_result}",
             )
 
             part_of_speech_filter_result = driver.execute_script("""

@@ -462,11 +462,13 @@ body.light-theme .clear-all-tags-chip-btn:hover {
   font-weight: 600;
 }
 
-#partOfSpeechDropdownContainer {
+#partOfSpeechDropdownContainer,
+#tagDropdownContainer {
   gap: 4px;
 }
 
-.part-of-speech-quick-reset-btn {
+.part-of-speech-quick-reset-btn,
+.tag-quick-reset-btn {
   display: none;
   align-items: center;
   justify-content: center;
@@ -485,7 +487,9 @@ body.light-theme .clear-all-tags-chip-btn:hover {
 }
 
 .part-of-speech-quick-reset-btn:hover,
-.part-of-speech-quick-reset-btn:focus-visible {
+.part-of-speech-quick-reset-btn:focus-visible,
+.tag-quick-reset-btn:hover,
+.tag-quick-reset-btn:focus-visible {
   background: rgba(99, 102, 241, 0.16);
   border-color: var(--accent-primary, #818cf8);
   color: var(--text-primary);
@@ -562,7 +566,8 @@ body.light-theme .clear-all-tags-chip-btn:hover {
   background: rgba(99, 102, 241, 0.15);
 }
 
-.part-of-speech-dropdown-reset-btn {
+.part-of-speech-dropdown-reset-btn,
+.tag-dropdown-reset-btn {
   width: 100%;
   flex-shrink: 0;
   padding: 10px 12px;
@@ -579,7 +584,9 @@ body.light-theme .clear-all-tags-chip-btn:hover {
 }
 
 .part-of-speech-dropdown-reset-btn:hover,
-.part-of-speech-dropdown-reset-btn:focus-visible {
+.part-of-speech-dropdown-reset-btn:focus-visible,
+.tag-dropdown-reset-btn:hover,
+.tag-dropdown-reset-btn:focus-visible {
   background: rgba(99, 102, 241, 0.16);
   color: var(--text-primary);
   outline: none;
@@ -2929,7 +2936,7 @@ body::-webkit-scrollbar,
           <input type="text" id="searchInput" class="search-input" placeholder="搜索日语单词、假名、中文或韩文释义..." oninput="if(window.app) window.app.onSearchInput(this.value)">
           <span id="searchClearBtn" class="search-clear-btn" style="display:none;" title="一键清空搜索" onclick="if(window.app) window.app.clearSearch()">✕</span>
         </div>
-        <div id="activeTagsBar" class="active-tags-bar"></div>
+        <div id="activeTagsBar" class="active-tags-bar" style="display:none;" aria-hidden="true"></div>
 
         <div class="list-control-row">
           <div class="filter-pills-group" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
@@ -2954,10 +2961,12 @@ body::-webkit-scrollbar,
               <button id="tagDropdownBtn" class="pill-btn tag-dropdown-btn" onclick="if(window.app) window.app.toggleTagDropdown(event)" title="按标签/Label过滤 (可多选)" aria-label="按标签过滤" style="display: inline-flex; align-items: center;">
                 🏷️ <span id="tagDropdownBadge" class="tag-badge" style="display:none;">0</span> ▾
               </button>
+              <button id="tagQuickResetBtn" class="tag-quick-reset-btn" type="button" style="display:none;" onclick="event.stopPropagation(); if(window.app) window.app.clearAllTagFilters()" title="重置 Tag 筛选并显示全部" aria-label="重置 Tag 筛选并显示全部">↺</button>
               <div id="tagDropdownMenu" class="tag-dropdown-menu" style="display:none;" onclick="event.stopPropagation()">
                 <div id="tagDropdownList" class="tag-dropdown-list">
                   <!-- Dynamic tag items with counts -->
                 </div>
+                <button id="tagDropdownResetBtn" class="tag-dropdown-reset-btn" type="button" onclick="if(window.app) window.app.clearAllTagFilters()" title="清空已选 Tag 并显示全部">↺ 重置（显示全部）</button>
               </div>
             </div>
           </div>
@@ -10800,49 +10809,12 @@ class JpVocabApp {
 
   updateActiveTagsBar() {
     const bar = document.getElementById('activeTagsBar');
-    const badges = document.querySelectorAll('.tag-badge, .tag-dropdown-badge, #tagDropdownBadge, #searchBoxTagDropdownBadge');
-    const btns = document.querySelectorAll('.tag-dropdown-btn, #tagDropdownBtn, #searchBoxTagDropdownBtn');
-
-    const count = this.selectedTags ? this.selectedTags.size : 0;
-
-    badges.forEach(badge => {
-      if (count > 0) {
-        badge.textContent = count;
-        badge.style.display = 'inline-flex';
-      } else {
-        badge.style.display = 'none';
-      }
-    });
-
-    btns.forEach(btn => {
-      if (count > 0) {
-        btn.classList.add('has-active-tags');
-      } else {
-        btn.classList.remove('has-active-tags');
-      }
-    });
-
-    if (!bar) return;
-
-    if (count === 0) {
+    if (bar) {
       bar.innerHTML = '';
       bar.style.display = 'none';
-      return;
+      bar.setAttribute('aria-hidden', 'true');
     }
-
-    bar.style.display = 'flex';
-    let html = '';
-    this.selectedTags.forEach(tag => {
-      html += `
-        <span class="active-tag-chip">
-          🏷️ ${this.escapeHtml(tag)}
-          <span class="remove-chip-btn" onclick="window.app.removeSelectedTag('${this.escapeHtml(tag)}', event)" title="移除此标签">✕</span>
-        </span>
-      `;
-    });
-
-    html += `<button class="clear-all-tags-chip-btn" onclick="window.app.clearAllTagFilters()">清空全部 (${count})</button>`;
-    bar.innerHTML = html;
+    this.updateTagBadge();
   }
 
   removeSelectedTag(tag, e) {
@@ -11180,7 +11152,7 @@ class JpVocabApp {
     menu.style.maxHeight = `${maxHeight}px`;
     menu.style.zIndex = '10000';
     const list = menu.querySelector('.tag-dropdown-list');
-    if (list) list.style.maxHeight = `${Math.max(72, maxHeight - 12)}px`;
+    if (list) list.style.maxHeight = `${Math.max(48, maxHeight - 52)}px`;
   }
 
   closeTagFilterDropdown() {
@@ -11211,10 +11183,11 @@ class JpVocabApp {
   updateTagBadge() {
     const badge = document.getElementById('tagDropdownBadge');
     const btn = document.getElementById('tagDropdownBtn');
+    const tagQuickResetButton = document.getElementById('tagQuickResetBtn');
     const count = this.selectedTags ? this.selectedTags.size : 0;
     if (badge) {
+      badge.textContent = count;
       if (count > 0) {
-        badge.textContent = count;
         badge.style.display = 'inline-flex';
       } else {
         badge.style.display = 'none';
@@ -11227,6 +11200,7 @@ class JpVocabApp {
         btn.classList.remove('has-active-tags');
       }
     }
+    if (tagQuickResetButton) tagQuickResetButton.style.display = count > 0 ? 'inline-flex' : 'none';
   }
 
   renderTagDropdownItems() {
