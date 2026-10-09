@@ -23,7 +23,9 @@ class AppContractParser(HTMLParser):
         self.pagination: dict[str, object] | None = None
         self.elements_by_id: dict[str, dict[str, object]] = {}
         self.review_options: list[dict[str, object]] = []
+        self.page_size_options: list[dict[str, object]] = []
         self._inside_review_select = False
+        self._inside_page_size_select = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attr_map = {key: value or "" for key, value in attrs}
@@ -52,8 +54,17 @@ class AppContractParser(HTMLParser):
 
         if tag == "select" and element_id == "reviewRatingSortSelect":
             self._inside_review_select = True
+        elif tag == "select" and element_id == "pageSizeSelect":
+            self._inside_page_size_select = True
         elif tag == "option" and self._inside_review_select:
             self.review_options.append(
+                {
+                    "value": attr_map.get("value", ""),
+                    "selected": "selected" in attr_map,
+                }
+            )
+        elif tag == "option" and self._inside_page_size_select:
+            self.page_size_options.append(
                 {
                     "value": attr_map.get("value", ""),
                     "selected": "selected" in attr_map,
@@ -69,6 +80,8 @@ class AppContractParser(HTMLParser):
             if element["tag"] == tag:
                 if tag == "select" and element.get("id") == "reviewRatingSortSelect":
                     self._inside_review_select = False
+                elif tag == "select" and element.get("id") == "pageSizeSelect":
+                    self._inside_page_size_select = False
                 break
 
 
@@ -109,6 +122,25 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
                 fail(errors, f"{relative_path}: pagination {key} 应为 {expected!r}，实际为 {actual!r}")
         if expected_class not in classes:
             fail(errors, f"{relative_path}: #paginationBar 缺少类 {expected_class}")
+
+    page_size_select = parser.elements_by_id.get(pagination_contract["pageSizeSelectId"])
+    if page_size_select is None:
+        fail(errors, f"{relative_path}: 缺少分页条数选择器 #{pagination_contract['pageSizeSelectId']}")
+    actual_page_sizes = [int(option["value"]) for option in parser.page_size_options if str(option["value"]).isdigit()]
+    if actual_page_sizes != pagination_contract["allowedPageSizes"]:
+        fail(errors, f"{relative_path}: 每页条数选项应为 {pagination_contract['allowedPageSizes']}，实际为 {actual_page_sizes}")
+    selected_page_sizes = [int(option["value"]) for option in parser.page_size_options if option["selected"] and str(option["value"]).isdigit()]
+    if selected_page_sizes != [pagination_contract["defaultPageSize"]]:
+        fail(errors, f"{relative_path}: 每页条数默认值应为 {pagination_contract['defaultPageSize']}，实际为 {selected_page_sizes}")
+    default_page_size = pagination_contract["defaultPageSize"]
+    required_page_size_tokens = (
+        f"this.pageSize = {default_page_size};",
+        f"this.pageSize = parseInt(e.target.value) || {default_page_size};",
+        f"this.pageSize = parseInt(val) || {default_page_size};",
+    )
+    for token in required_page_size_tokens:
+        if token not in content:
+            fail(errors, f"{relative_path}: 分页条数默认/回退实现缺少 {token}")
 
     review_contract = contract["uiContracts"]["reviewOrder"]
     actual_values = [option["value"] for option in parser.review_options]

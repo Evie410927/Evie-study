@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-10-09.3",
+  "contractVersion": "2026-10-09.4",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -33,7 +33,14 @@
       "parentId": "tab-list",
       "previousSiblingId": "wordList",
       "class": "word-list-inline-pagination",
-      "inlineStyle": "margin-top: 2px; margin-bottom: 0px;"
+      "inlineStyle": "margin-top: 2px; margin-bottom: 0px;",
+      "pageSizeSelectId": "pageSizeSelect",
+      "defaultPageSize": 50,
+      "allowedPageSizes": [
+        10,
+        20,
+        50
+      ]
     },
     "reviewOrder": {
       "selectId": "reviewRatingSortSelect",

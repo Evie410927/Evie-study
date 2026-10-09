@@ -287,6 +287,20 @@ class VocabAppTester:
         page_size_select = 'id="pageSizeSelect"' in content
         self.assert_true(page_size_select, f"[{lang_name}] 分页-每页条数 Selector", "缺少 pageSizeSelect 下拉选择框")
 
+        default_page_size_fifty = all(token in content for token in (
+            '<option value="10">10 条</option>',
+            '<option value="20">20 条</option>',
+            '<option value="50" selected>50 条</option>',
+            'this.pageSize = 50;',
+            'this.pageSize = parseInt(e.target.value) || 50;',
+            'this.pageSize = parseInt(val) || 50;',
+        )) and '<option value="20" selected>20 条</option>' not in content
+        self.assert_true(
+            default_page_size_fifty,
+            f"[{lang_name}] 分页-每页条数默认 50 且静态/运行时/回退值一致",
+            "每页选择器未默认选中 50，或运行时 pageSize 仍默认/回退为 20",
+        )
+
         scroll_to_first_match = re.search(
             r'scrollToFirstCard\(\)\s*\{(?P<body>.*?)\n\s*\}\n\s*\n\s*scrollToListTop\(\)',
             content,
@@ -2384,6 +2398,27 @@ class VocabAppTester:
                 app_ready,
                 f"[{lang_name}] 浏览器运行期-window.app 初始化且核心交互方法可调用",
                 "window.app 未正确实例化，或 toggleTheme/openWordModal/showDetailModal/switchTab 缺失",
+            )
+
+            default_page_size_result = driver.execute_script("""
+                const select = document.getElementById('pageSizeSelect');
+                return {
+                  appPageSize: window.app?.pageSize,
+                  selectedValue: select?.value,
+                  selectedOption: select?.selectedOptions?.[0]?.textContent.trim(),
+                  allowedValues: Array.from(select?.options || []).map(option => option.value)
+                };
+            """)
+            self.assert_true(
+                bool(
+                    default_page_size_result
+                    and default_page_size_result.get('appPageSize') == 50
+                    and default_page_size_result.get('selectedValue') == '50'
+                    and default_page_size_result.get('selectedOption') == '50 条'
+                    and default_page_size_result.get('allowedValues') == ['10', '20', '50']
+                ),
+                f"[{lang_name}] 浏览器分页-首次加载默认每页 50 条",
+                f"默认分页状态不一致：{default_page_size_result}",
             )
 
             all_tag_dropdown_result = driver.execute_script("""

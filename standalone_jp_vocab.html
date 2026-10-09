@@ -2980,8 +2980,8 @@ body::-webkit-scrollbar,
             <span>每页:</span>
             <select id="pageSizeSelect" class="page-size-select" onchange="if(window.app) window.app.onPageSizeChange(this.value)">
               <option value="10">10 条</option>
-              <option value="20" selected>20 条</option>
-              <option value="50">50 条</option>
+              <option value="20">20 条</option>
+              <option value="50" selected>50 条</option>
             </select>
           </div>
         </div>
@@ -8326,7 +8326,7 @@ class JpVocabApp {
     this.selectedPartOfSpeech = new Set();
     this.selectedTags = new Set();
     this.currentPage = 1;
-    this.pageSize = 20;
+    this.pageSize = 50;
     this.ratingSort = 'createdDesc';
     this.reviewRatingSort = 'createdDesc';
     this.init();
@@ -9049,7 +9049,7 @@ class JpVocabApp {
       const pageSizeSelect = document.getElementById('pageSizeSelect');
       if (pageSizeSelect) {
         pageSizeSelect.addEventListener('change', (e) => {
-          this.pageSize = parseInt(e.target.value) || 20;
+          this.pageSize = parseInt(e.target.value) || 50;
           this.currentPage = 1;
           this.renderWordList();
         });
@@ -11490,7 +11490,7 @@ class JpVocabApp {
   }
 
   onPageSizeChange(val) {
-    this.pageSize = parseInt(val) || 20;
+    this.pageSize = parseInt(val) || 50;
     this.currentPage = 1;
     const selectEl = document.getElementById('pageSizeSelect');
     if (selectEl) selectEl.value = String(this.pageSize);
