@@ -1534,6 +1534,19 @@ body::-webkit-scrollbar,
   font-size: 11px;
   color: var(--accent-info);
   font-weight: 500;
+  flex: 0 0 auto;
+}
+.similar-word-pronunciation-note {
+  display: inline-block;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: #f6a96b;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .similar-word-meaning {
   font-size: 12px;
@@ -9909,6 +9922,7 @@ class JpVocabApp {
       const exList = this.getParsedExamples(w);
       const firstEx = exList.length > 0 ? exList[0] : null;
       const cleanReading = w.reading ? w.reading.replace(/^[\[\(]+/, '').replace(/[\]\)]+$/, '') : '';
+      const cleanPronunciationNote = typeof w.pronunciationNote === 'string' ? w.pronunciationNote.trim() : '';
 
       return `
         <div class="similar-word-chip" data-similar-word-id="${this.escapeHtml(String(w.id))}" data-similar-target-id="${this.escapeHtml(String(targetWord.id))}" tabindex="0" role="button" aria-label="${this.escapeHtml(w.word)}，可直接拖动排序" onpointerdown="(window.app||window.vocabApp).startSimilarWordSort(event, '${targetWord.id}')" ontouchstart="(window.app||window.vocabApp).startSimilarWordTouchSort(event, '${targetWord.id}')" onkeydown="(window.app||window.vocabApp).handleSimilarWordSortKey(event, '${targetWord.id}')" onclick="(window.app||window.vocabApp).handleSimilarWordCardClick(event, '${w.id}')" style="width:100%; box-sizing:border-box; text-align:left;" title="直接拖动卡片排序；点击查看详情">
@@ -9917,6 +9931,7 @@ class JpVocabApp {
             <div class="similar-word-title">
               <span class="similar-word-text" style="font-size:15px; font-weight:700; color:var(--text-primary);">${this.escapeHtml(w.word)}</span>
               ${cleanReading ? `<span class="similar-word-reading" style="font-size:13px; color:var(--accent-secondary);">[${this.escapeHtml(cleanReading)}]</span>` : ''}
+              ${cleanPronunciationNote ? `<span class="similar-word-pronunciation-note" title="${this.escapeHtml(cleanPronunciationNote)}">${this.escapeHtml(cleanPronunciationNote)}</span>` : ''}
             </div>
             <div class="similar-word-header-actions">
               <button type="button" class="similar-word-status-btn ${w.mastered ? 'status-mastered' : 'status-learning'}" data-mastered-word-id="${this.escapeHtml(String(w.id))}" aria-pressed="${w.mastered ? 'true' : 'false'}" onclick="event.stopPropagation(); (window.app||window.vocabApp).toggleMastered('${w.id}')" title="${w.mastered ? '点击切换为学习中' : '点击切换为已掌握'}">${w.mastered ? '✅ 已掌握' : '🔄 学习中'}</button>

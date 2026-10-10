@@ -253,6 +253,25 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
             if token in content:
                 fail(errors, f"{relative_path}: 仍包含自动相近表达实现 {token}")
 
+    pronunciation_contract = contract["uiContracts"]["inlinePronunciationNote"]
+    if "similar-word-card-title" in pronunciation_contract["contexts"]:
+        required_similar_note_tokens = (
+            "const cleanPronunciationNote = typeof w.pronunciationNote === 'string' ? w.pronunciationNote.trim() : '';",
+            '<span class="similar-word-pronunciation-note"',
+            'title="${this.escapeHtml(cleanPronunciationNote)}"',
+            '>${this.escapeHtml(cleanPronunciationNote)}</span>',
+            ".similar-word-pronunciation-note {",
+            "color: #f6a96b;",
+            "text-overflow: ellipsis;",
+        )
+        for token in required_similar_note_tokens:
+            if token not in content:
+                fail(errors, f"{relative_path}: 相近表达发音备注展示缺少实现标记 {token}")
+        reading_markup = '${cleanReading ? `<span class="similar-word-reading"'
+        note_markup = '${cleanPronunciationNote ? `<span class="similar-word-pronunciation-note"'
+        if reading_markup not in content or note_markup not in content or content.index(reading_markup) > content.index(note_markup):
+            fail(errors, f"{relative_path}: 相近表达发音备注必须紧随读音标注之后")
+
 
 def main() -> None:
     errors: list[str] = []

@@ -1099,6 +1099,22 @@ class VocabAppTester:
         similar_words_manual_view = 'getSimilarWords(' in content and 'renderSimilarBlockHtml(' in content and 'similar-word-chip' in content
         self.assert_true(similar_words_manual_view, f"[{lang_name}] 相近表达-getSimilarWords 手动关系读取与面板交互防护", "缺少 getSimilarWords 或 renderSimilarBlockHtml 方法")
 
+        similar_word_pronunciation_note = all(token in content for token in (
+            "const cleanPronunciationNote = typeof w.pronunciationNote === 'string' ? w.pronunciationNote.trim() : '';",
+            '${cleanReading ? `<span class="similar-word-reading"',
+            '${cleanPronunciationNote ? `<span class="similar-word-pronunciation-note"',
+            'title="${this.escapeHtml(cleanPronunciationNote)}"',
+            '>${this.escapeHtml(cleanPronunciationNote)}</span>',
+            '.similar-word-pronunciation-note {',
+            'color: #f6a96b;',
+            'text-overflow: ellipsis;',
+        )) and content.index('${cleanReading ? `<span class="similar-word-reading"') < content.index('${cleanPronunciationNote ? `<span class="similar-word-pronunciation-note"')
+        self.assert_true(
+            similar_word_pronunciation_note,
+            f"[{lang_name}] 相近表达-发音备注只读显示在读音标注右侧",
+            "相近表达卡片未清洗/转义 pronunciationNote，或备注节点、位置、杏黄色省略样式不正确",
+        )
+
         similar_word_manual_controls = all(token in content for token in (
             'class="similar-panel-add-btn"',
             'class="similar-word-remove-btn"',
@@ -5270,6 +5286,66 @@ class VocabAppTester:
                 bool(taxonomy_label_and_custom_tags and all(taxonomy_label_and_custom_tags.values())),
                 f"[{lang_name}] 浏览器词性/Tag-三视图独立显示且自定义 Tag 可删除持久化",
                 f"词性 Label 与自定义 Tag 分离全流程失败: {taxonomy_label_and_custom_tags}",
+            )
+
+            similar_pronunciation_note_result = driver.execute_script("""
+                const app = window.app;
+                if (!Array.isArray(app.words) || app.words.length < 2) return null;
+                const targetIndex = 0;
+                const similarIndex = 1;
+                const originalTarget = app.words[targetIndex];
+                const originalSimilar = app.words[similarIndex];
+                const originalReviewList = app.reviewList;
+                const originalReviewIndex = app.currentReviewIndex;
+                const noteText = '“发音”备注 <测试>';
+                try {
+                  const target = JSON.parse(JSON.stringify(originalTarget));
+                  const similar = JSON.parse(JSON.stringify(originalSimilar));
+                  target.manualSimilarWordIds = [String(similar.id)];
+                  target.hiddenSimilarWordIds = [];
+                  target.autoSimilarWordIds = [];
+                  similar.reading = '[note-test]';
+                  similar.pronunciationNote = noteText;
+                  app.words[targetIndex] = target;
+                  app.words[similarIndex] = similar;
+
+                  const inspectPanel = host => {
+                    const reading = host?.querySelector('.similar-word-reading');
+                    const note = host?.querySelector('.similar-word-pronunciation-note');
+                    return !!reading && !!note
+                      && reading.nextElementSibling === note
+                      && note.textContent === noteText
+                      && note.tagName === 'SPAN'
+                      && !note.hasAttribute('onclick')
+                      && !note.querySelector('button, input, textarea')
+                      && host.innerHTML.includes('&lt;测试&gt;');
+                  };
+
+                  app.showDetailModal(target.id);
+                  const detailVisible = inspectPanel(document.getElementById('detailSimilarBlock'));
+
+                  app.reviewList = [target];
+                  app.currentReviewIndex = 0;
+                  app.renderCurrentCard();
+                  const reviewVisible = inspectPanel(document.getElementById('cardBackSimilarBlock'));
+
+                  const emptyProbe = document.createElement('div');
+                  emptyProbe.innerHTML = app.renderSimilarBlockHtml([{...similar, pronunciationNote:'   '}], target);
+                  const emptyNoteOmitted = !emptyProbe.querySelector('.similar-word-pronunciation-note');
+                  return {detailVisible, reviewVisible, emptyNoteOmitted};
+                } finally {
+                  app.words[targetIndex] = originalTarget;
+                  app.words[similarIndex] = originalSimilar;
+                  app.reviewList = originalReviewList;
+                  app.currentReviewIndex = originalReviewIndex;
+                  app.closeDetailModal();
+                  app.renderWordList();
+                }
+            """)
+            self.assert_true(
+                bool(similar_pronunciation_note_result and all(similar_pronunciation_note_result.values())),
+                f"[{lang_name}] 浏览器相近表达-详情与复习在读音右侧安全显示只读发音备注",
+                f"相近表达发音备注的位置、转义、空值或只读展示异常：{similar_pronunciation_note_result}",
             )
 
             similar_manual_crud = driver.execute_script("""
