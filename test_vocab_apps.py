@@ -1099,6 +1099,10 @@ class VocabAppTester:
         similar_words_manual_view = 'getSimilarWords(' in content and 'renderSimilarBlockHtml(' in content and 'similar-word-chip' in content
         self.assert_true(similar_words_manual_view, f"[{lang_name}] 相近表达-getSimilarWords 手动关系读取与面板交互防护", "缺少 getSimilarWords 或 renderSimilarBlockHtml 方法")
 
+        similar_word_title_css = re.search(r'\.similar-word-title\s*\{([^}]*)\}', content, re.DOTALL)
+        similar_word_text_css = re.search(r'\.similar-word-text\s*\{([^}]*)\}', content, re.DOTALL)
+        similar_word_reading_css = re.search(r'\.similar-word-reading\s*\{([^}]*)\}', content, re.DOTALL)
+        similar_word_note_css = re.search(r'\.similar-word-pronunciation-note\s*\{([^}]*)\}', content, re.DOTALL)
         similar_word_pronunciation_note = all(token in content for token in (
             "const cleanPronunciationNote = typeof w.pronunciationNote === 'string' ? w.pronunciationNote.trim() : '';",
             '${cleanReading ? `<span class="similar-word-reading"',
@@ -1108,11 +1112,15 @@ class VocabAppTester:
             '.similar-word-pronunciation-note {',
             'color: #f6a96b;',
             'text-overflow: ellipsis;',
-        )) and content.index('${cleanReading ? `<span class="similar-word-reading"') < content.index('${cleanPronunciationNote ? `<span class="similar-word-pronunciation-note"')
+        )) and content.index('${cleanReading ? `<span class="similar-word-reading"') < content.index('${cleanPronunciationNote ? `<span class="similar-word-pronunciation-note"') \
+            and bool(similar_word_title_css and 'align-items: baseline;' in similar_word_title_css.group(1)) \
+            and all(css_match and 'line-height: 1.25;' in css_match.group(1) for css_match in (
+                similar_word_text_css, similar_word_reading_css, similar_word_note_css
+            ))
         self.assert_true(
             similar_word_pronunciation_note,
-            f"[{lang_name}] 相近表达-发音备注只读显示在读音标注右侧",
-            "相近表达卡片未清洗/转义 pronunciationNote，或备注节点、位置、杏黄色省略样式不正确",
+            f"[{lang_name}] 相近表达-发音备注只读显示在读音标注右侧并按文字基线对齐",
+            "相近表达卡片未清洗/转义 pronunciationNote，或备注节点、位置、基线、杏黄色省略样式不正确",
         )
 
         similar_word_manual_controls = all(token in content for token in (
@@ -5312,27 +5320,57 @@ class VocabAppTester:
                   const inspectPanel = host => {
                     const reading = host?.querySelector('.similar-word-reading');
                     const note = host?.querySelector('.similar-word-pronunciation-note');
-                    return !!reading && !!note
+                    const title = note?.closest('.similar-word-title');
+                    const wordText = title?.querySelector('.similar-word-text');
+                    const bottomEdges = [wordText, reading, note]
+                      .filter(Boolean)
+                      .map(element => {
+                        const textRange = document.createRange();
+                        textRange.selectNodeContents(element);
+                        const firstLineRect = textRange.getClientRects()[0];
+                        return firstLineRect ? firstLineRect.bottom : element.getBoundingClientRect().bottom;
+                      });
+                    const bottomSpread = bottomEdges.length === 3
+                      ? Math.max(...bottomEdges) - Math.min(...bottomEdges)
+                      : Number.POSITIVE_INFINITY;
+                    const contentValid = !!reading && !!note
+                      && !!title && !!wordText
                       && reading.nextElementSibling === note
                       && note.textContent === noteText
                       && note.tagName === 'SPAN'
                       && !note.hasAttribute('onclick')
                       && !note.querySelector('button, input, textarea')
                       && host.innerHTML.includes('&lt;测试&gt;');
+                    return {
+                      contentValid,
+                      baselineAligned: !!title && getComputedStyle(title).alignItems === 'baseline',
+                      bottomAligned: bottomSpread <= 4,
+                      bottomSpread
+                    };
                   };
 
                   app.showDetailModal(target.id);
-                  const detailVisible = inspectPanel(document.getElementById('detailSimilarBlock'));
+                  const detailInspection = inspectPanel(document.getElementById('detailSimilarBlock'));
 
                   app.reviewList = [target];
                   app.currentReviewIndex = 0;
                   app.renderCurrentCard();
-                  const reviewVisible = inspectPanel(document.getElementById('cardBackSimilarBlock'));
+                  const reviewInspection = inspectPanel(document.getElementById('cardBackSimilarBlock'));
 
                   const emptyProbe = document.createElement('div');
                   emptyProbe.innerHTML = app.renderSimilarBlockHtml([{...similar, pronunciationNote:'   '}], target);
                   const emptyNoteOmitted = !emptyProbe.querySelector('.similar-word-pronunciation-note');
-                  return {detailVisible, reviewVisible, emptyNoteOmitted};
+                  return {
+                    detailVisible: detailInspection.contentValid,
+                    detailBaselineAligned: detailInspection.baselineAligned,
+                    detailBottomAligned: detailInspection.bottomAligned,
+                    detailBottomSpread: detailInspection.bottomSpread,
+                    reviewVisible: reviewInspection.contentValid,
+                    reviewBaselineAligned: reviewInspection.baselineAligned,
+                    reviewBottomAligned: reviewInspection.bottomAligned,
+                    reviewBottomSpread: reviewInspection.bottomSpread,
+                    emptyNoteOmitted
+                  };
                 } finally {
                   app.words[targetIndex] = originalTarget;
                   app.words[similarIndex] = originalSimilar;
@@ -5343,7 +5381,10 @@ class VocabAppTester:
                 }
             """)
             self.assert_true(
-                bool(similar_pronunciation_note_result and all(similar_pronunciation_note_result.values())),
+                bool(similar_pronunciation_note_result and all(
+                    value for key, value in similar_pronunciation_note_result.items()
+                    if not key.endswith("BottomSpread")
+                )),
                 f"[{lang_name}] 浏览器相近表达-详情与复习在读音右侧安全显示只读发音备注",
                 f"相近表达发音备注的位置、转义、空值或只读展示异常：{similar_pronunciation_note_result}",
             )

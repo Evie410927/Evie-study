@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from html.parser import HTMLParser
 from pathlib import Path
@@ -267,6 +268,15 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
         for token in required_similar_note_tokens:
             if token not in content:
                 fail(errors, f"{relative_path}: 相近表达发音备注展示缺少实现标记 {token}")
+        if pronunciation_contract.get("similarWordVerticalAlignment") == "typographic-baseline":
+            baseline_title_css = ".similar-word-title {\n  display: flex;\n  align-items: baseline;"
+            if baseline_title_css not in content:
+                fail(errors, f"{relative_path}: 相近表达标题中的词条、读音与发音备注必须按文字基线对齐")
+        if pronunciation_contract.get("similarWordSharedLineHeight") == 1.25:
+            for selector in (".similar-word-text", ".similar-word-reading", ".similar-word-pronunciation-note"):
+                css_block = re.search(rf"{re.escape(selector)}\s*\{{([^}}]*)\}}", content, re.DOTALL)
+                if not css_block or "line-height: 1.25;" not in css_block.group(1):
+                    fail(errors, f"{relative_path}: {selector} 必须使用契约规定的 1.25 统一行高")
         reading_markup = '${cleanReading ? `<span class="similar-word-reading"'
         note_markup = '${cleanPronunciationNote ? `<span class="similar-word-pronunciation-note"'
         if reading_markup not in content or note_markup not in content or content.index(reading_markup) > content.index(note_markup):
