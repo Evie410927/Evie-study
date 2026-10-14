@@ -96,12 +96,14 @@ class VocabAppTester:
 
         directional_sync_options = all(token in content for token in (
             "openCloudSyncOptionsModal()", "cloudSyncOptionsModal",
-            "cloudUploadLocalCheckbox", "cloudDownloadLatestCheckbox",
+            "cloudUploadLocalCheckbox", "cloudDownloadLatestCheckbox", "cloudSyncResourcesCheckbox",
             "cloudSyncExecuteBtn", "cloudDownloadDiscardWarning",
-            "两个都勾选时才会双向同步", "只同步云端将永久丢弃本浏览器未上传的修改",
+            "词库上传/下载与学习资料同步彼此独立", "只同步云端将永久丢弃本浏览器未上传的修改",
             "上传当前本地版本", "只上传会以本浏览器完整词库覆盖云端",
             "async syncWithSupabase(showToastNotification = true, syncOptions = {})",
             "if (!uploadLocal && downloadCloud)", "if (uploadLocal && !downloadCloud)",
+            "const syncResources = syncOptions.syncResources === true",
+            "await this.syncResourceLibraryWithSupabase(session, userId)",
             "this.upsertCloudRows(session.access_token, userId, dataRows, true, true)",
             "const cloudOnlyTombstones = authoritative",
             "this.pendingCloudSyncSelection = syncOptions",
@@ -248,7 +250,7 @@ class VocabAppTester:
             'id="resourceLibraryModal"', 'id="closeResourceLibraryBtn"',
             'id="resourceUploadZone"', 'id="resourceFileInput"', 'multiple hidden',
             'id="resourceFileStatus"', 'id="resourceFileList"', 'resource-file-empty',
-            '文件仅保存在当前浏览器，不会加入词库备份或云同步',
+            '文件先安全保存在当前浏览器', '勾选云同步中的“学习资料”', '打开时再下载文件',
         ))
         self.assert_true(
             resource_modal_contract,
@@ -258,9 +260,11 @@ class VocabAppTester:
 
         resource_persistence_contract = all(token in content for token in (
             "this.RESOURCE_DB_NAME = 'evie_vocab_resource_library_v1'",
-            "this.RESOURCE_STORE_NAME = 'files'", 'openResourceDatabase()',
+            "this.RESOURCE_STORE_NAME = 'files'", "this.RESOURCE_DELETION_STORE_NAME = 'deletions'",
+            'this.RESOURCE_DB_VERSION = 2', 'openResourceDatabase()',
             "db.createObjectStore(this.RESOURCE_STORE_NAME, { keyPath: 'id' })",
-            'transaction.oncomplete = () => resolve()', 'this.resourceFiles = records.sort',
+            "db.createObjectStore(this.RESOURCE_DELETION_STORE_NAME, { keyPath: 'id' })",
+            'transaction.oncomplete = () => resolve()', 'this.resourceFiles = normalizedRecords.sort',
             'this.RESOURCE_MAX_FILE_SIZE = 50 * 1024 * 1024',
             "new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'png', 'jpg', 'jpeg', 'webp'])",
         ))
@@ -271,16 +275,53 @@ class VocabAppTester:
         )
 
         resource_actions_contract = all(token in content for token in (
-            'openResourceFile(resourceId)', 'downloadResourceFile(resourceId)',
+            'async openResourceFile(resourceId)', 'async downloadResourceFile(resourceId)',
             'async deleteResourceFile(resourceId)', 'window.confirm(`确定删除',
             'URL.createObjectURL(record.blob)', 'URL.revokeObjectURL(url)',
-            "anchor.target = '_blank'", 'anchor.download = record.name',
+            "anchor.target = '_blank'", 'anchor.download = readyRecord.name',
             "exportedResourceList.innerHTML = '<div class=\"resource-file-empty\"",
         ))
         self.assert_true(
             resource_actions_contract,
             f"[{lang_name}] 资料库-打开、下载、确认删除、临时 URL 回收与 HTML 导出脱敏",
             "资料文件操作不完整，或导出 HTML 可能固化当前本地文件名",
+        )
+
+        resource_cloud_contract = all(token in content for token in (
+            "this.RESOURCE_STORAGE_BUCKET = 'vocab-resources'",
+            'async fetchResourceCloudRows(accessToken)',
+            'on_conflict=user_id,resource_id',
+            'async syncResourceLibraryWithSupabase(session, userId)',
+            'async ensureResourceBlob(record)',
+            '/storage/v1/object/authenticated/',
+            "cloudState: 'pending'", "cloudState: 'synced'",
+        ))
+        self.assert_true(
+            resource_cloud_contract,
+            f"[{lang_name}] 资料云同步-私有目录合并、待处理队列与按需下载缓存",
+            "资料没有独立元数据同步、待处理状态或云端按需下载缓存",
+        )
+
+        resource_upload_resilience = all(token in content for token in (
+            'new XMLHttpRequest()', 'request.upload.onprogress', "request.setRequestHeader('x-upsert', 'true')",
+            'const retryDelays = [0, 1500, 4000]', '第 ${attempt + 1}/3 次',
+            "window.crypto.subtle.digest('SHA-256'", '下载文件完整性校验失败',
+        ))
+        self.assert_true(
+            resource_upload_resilience,
+            f"[{lang_name}] 资料云同步-上传进度、自动重试与 SHA-256 完整性校验",
+            "大文件上传缺少进度/重试，或下载后没有完整性校验",
+        )
+
+        resource_tombstone_contract = all(token in content for token in (
+            'applyResourceTombstone(tombstone)', 'saveResourceDeletion(tombstone)',
+            'deletedAt: Date.now()', 'await this.upsertResourceMetadataRows',
+            'await this.deleteResourceStorageObject', '下次同步时也会从账号云端删除',
+        ))
+        self.assert_true(
+            resource_tombstone_contract,
+            f"[{lang_name}] 资料云同步-删除墓碑先于对象删除并防止跨设备复活",
+            "资料删除没有持久墓碑，或未按先元数据后 Storage 对象的顺序传播",
         )
 
         # ---------------------------------------------------------------------
@@ -2486,7 +2527,8 @@ class VocabAppTester:
                 const input = document.getElementById('resourceFileInput');
                 const notice = modal?.querySelector('.resource-library-notice');
                 return !!modal && !!input && input.multiple && !!notice
-                  && notice.textContent.includes('不会加入词库备份或云同步');
+                  && notice.textContent.includes('勾选云同步中的“学习资料”')
+                  && notice.textContent.includes('打开时再下载文件');
             """)
             self.assert_true(
                 bool(resource_initial_state),
@@ -2539,8 +2581,94 @@ class VocabAppTester:
                 f"资料只停留在内存或重读未刷新列表：{resource_reload_result}",
             )
 
+            resource_cloud_result = driver.execute_async_script("""
+                const done = arguments[0];
+                (async () => {
+                  const app = window.app;
+                  const userId = '00000000-0000-4000-8000-000000000001';
+                  const originals = {
+                    fetch: app.fetchResourceCloudRows,
+                    upload: app.uploadResourceWithRetry,
+                    upsert: app.upsertResourceMetadataRows,
+                    remove: app.deleteResourceStorageObject,
+                    session: app.getValidCloudSession,
+                    download: app.downloadResourceBlobFromStorage
+                  };
+                  const events = [];
+                  try {
+                    app.fetchResourceCloudRows = async () => [];
+                    app.uploadResourceWithRetry = async () => { throw new Error('simulated upload interruption'); };
+                    let failedUploadPreserved = false;
+                    try { await app.syncResourceLibraryWithSupabase({access_token:'resource-test-token'}, userId); } catch (error) {}
+                    await app.loadResourceFiles();
+                    const pendingAfterFailure = app.resourceFiles.find(item => item.name === 'selenium-resource.txt');
+                    failedUploadPreserved = !!pendingAfterFailure
+                      && pendingAfterFailure.cloudState === 'pending'
+                      && pendingAfterFailure.blob instanceof Blob;
+                    app.uploadResourceWithRetry = async (token, path, record) => {
+                      events.push({kind:'upload', path, name:record.name});
+                      return true;
+                    };
+                    app.upsertResourceMetadataRows = async (token, uid, records) => {
+                      events.push({kind:'metadata', ids:records.map(item => String(item.id || item.resource_id))});
+                    };
+                    app.deleteResourceStorageObject = async () => true;
+                    await app.syncResourceLibraryWithSupabase({access_token:'resource-test-token'}, userId);
+                    const local = app.resourceFiles.find(item => item.name === 'selenium-resource.txt');
+                    const uploaded = !!local && local.cloudState === 'synced'
+                      && local.storagePath.startsWith(userId + '/' + local.id + '/')
+                      && local.sha256.length === 64
+                      && events.some(event => event.kind === 'upload' && event.name === local.name)
+                      && events.some(event => event.kind === 'metadata' && event.ids.includes(String(local.id)));
+
+                    const remoteId = 'remote-resource-regression';
+                    const remoteUpdatedAt = Date.now() + 1000;
+                    app.fetchResourceCloudRows = async () => [{
+                      resource_id: local.id, name: local.name, mime_type: local.type,
+                      size: local.size, sha256: local.sha256, storage_path: local.storagePath,
+                      updated_at: local.updatedAt, deleted_at: null
+                    }, {
+                      resource_id: remoteId, name: 'remote-only.txt', mime_type: 'text/plain',
+                      size: 19, sha256: '', storage_path: userId + '/' + remoteId + '/' + remoteId + '.txt',
+                      updated_at: remoteUpdatedAt, deleted_at: null
+                    }];
+                    await app.syncResourceLibraryWithSupabase({access_token:'resource-test-token'}, userId);
+                    const remoteBefore = app.resourceFiles.find(item => item.id === remoteId);
+                    app.getValidCloudSession = async () => ({access_token:'resource-test-token'});
+                    app.downloadResourceBlobFromStorage = async () => new Blob(['remote lazy content'], {type:'text/plain'});
+                    const remoteCached = await app.ensureResourceBlob(remoteBefore);
+                    const lazyDownloaded = !!remoteBefore && !(remoteBefore.blob instanceof Blob)
+                      && remoteCached.blob instanceof Blob && remoteCached.blob.size === 19;
+                    await app.applyResourceTombstone({id:remoteId, name:'remote-only.txt', storagePath:remoteBefore.storagePath, deletedAt:Date.now() + 2000, syncedAt:Date.now()});
+                    await app.removeResourceDeletion(remoteId);
+                    await app.loadResourceFiles();
+                    done({failedUploadPreserved, uploaded, lazyDownloaded, remaining:app.resourceFiles.map(item => item.name), events});
+                  } catch (error) {
+                    done({error:String(error), events});
+                  } finally {
+                    app.fetchResourceCloudRows = originals.fetch;
+                    app.uploadResourceWithRetry = originals.upload;
+                    app.upsertResourceMetadataRows = originals.upsert;
+                    app.deleteResourceStorageObject = originals.remove;
+                    app.getValidCloudSession = originals.session;
+                    app.downloadResourceBlobFromStorage = originals.download;
+                  }
+                })();
+            """)
+            self.assert_true(
+                bool(
+                    resource_cloud_result
+                    and resource_cloud_result.get('failedUploadPreserved')
+                    and resource_cloud_result.get('uploaded')
+                    and resource_cloud_result.get('lazyDownloaded')
+                    and resource_cloud_result.get('remaining') == ['selenium-resource.txt']
+                ),
+                f"[{lang_name}] 浏览器资料云同步-待处理上传、元数据合并与远端文件懒下载缓存",
+                f"资料云同步或按需下载流程不完整：{resource_cloud_result}",
+            )
+
             resource_action_result = driver.execute_script("""
-                const id = window.app.resourceFiles[0]?.id;
+                const id = window.app.resourceFiles.find(item => item.name === 'selenium-resource.txt')?.id;
                 const originalClick = HTMLAnchorElement.prototype.click;
                 const clicks = [];
                 HTMLAnchorElement.prototype.click = function() {
@@ -2565,14 +2693,18 @@ class VocabAppTester:
 
             resource_delete_result = driver.execute_async_script("""
                 const done = arguments[0];
-                const id = window.app.resourceFiles[0]?.id;
+                const id = window.app.resourceFiles.find(item => item.name === 'selenium-resource.txt')?.id;
                 const originalConfirm = window.confirm;
                 window.confirm = () => true;
-                window.app.deleteResourceFile(id).then(() => {
+                window.app.deleteResourceFile(id).then(async () => {
                   window.confirm = originalConfirm;
+                  const deletions = await window.app.getResourceDeletions();
+                  const tombstone = deletions.find(item => String(item.id) === String(id));
                   done({
+                    id,
                     count: window.app.resourceFiles.length,
-                    empty: !!document.querySelector('#resourceFileList .resource-file-empty')
+                    empty: !!document.querySelector('#resourceFileList .resource-file-empty'),
+                    tombstone: !!tombstone && Number(tombstone.deletedAt) > 0 && tombstone.syncedAt === 0
                   });
                 }).catch(error => {
                   window.confirm = originalConfirm;
@@ -2580,9 +2712,57 @@ class VocabAppTester:
                 });
             """)
             self.assert_true(
-                bool(resource_delete_result and resource_delete_result.get('count') == 0 and resource_delete_result.get('empty')),
-                f"[{lang_name}] 浏览器资料库-确认删除后持久化移除并恢复空状态",
+                bool(resource_delete_result and resource_delete_result.get('count') == 0 and resource_delete_result.get('empty') and resource_delete_result.get('tombstone')),
+                f"[{lang_name}] 浏览器资料库-确认删除后持久化墓碑并恢复空状态",
                 f"文件删除后 IndexedDB 或空状态未同步：{resource_delete_result}",
+            )
+
+            resource_delete_sync_result = driver.execute_async_script("""
+                const targetId = arguments[0];
+                const done = arguments[1];
+                (async () => {
+                  const app = window.app;
+                  const userId = '00000000-0000-4000-8000-000000000001';
+                  const originals = {
+                    fetch: app.fetchResourceCloudRows,
+                    upload: app.uploadResourceWithRetry,
+                    upsert: app.upsertResourceMetadataRows,
+                    remove: app.deleteResourceStorageObject
+                  };
+                  const order = [];
+                  try {
+                    app.fetchResourceCloudRows = async () => [];
+                    app.uploadResourceWithRetry = async () => true;
+                    app.upsertResourceMetadataRows = async (token, uid, records) => {
+                      if (records.some(item => String(item.id || item.resource_id) === String(targetId))) order.push('metadata');
+                    };
+                    app.deleteResourceStorageObject = async (token, path) => {
+                      if (path.includes(String(targetId))) order.push('storage-delete');
+                      return true;
+                    };
+                    await app.syncResourceLibraryWithSupabase({access_token:'resource-test-token'}, userId);
+                    const tombstones = await app.getResourceDeletions();
+                    const target = tombstones.find(item => String(item.id) === String(targetId));
+                    done({order, synced:!!target && Number(target.syncedAt) > 0, visible:app.resourceFiles.length});
+                  } catch (error) {
+                    done({error:String(error), order});
+                  } finally {
+                    app.fetchResourceCloudRows = originals.fetch;
+                    app.uploadResourceWithRetry = originals.upload;
+                    app.upsertResourceMetadataRows = originals.upsert;
+                    app.deleteResourceStorageObject = originals.remove;
+                  }
+                })();
+            """, resource_delete_result.get('id') if resource_delete_result else None)
+            self.assert_true(
+                bool(
+                    resource_delete_sync_result
+                    and resource_delete_sync_result.get('order') == ['metadata', 'storage-delete']
+                    and resource_delete_sync_result.get('synced')
+                    and resource_delete_sync_result.get('visible') == 0
+                ),
+                f"[{lang_name}] 浏览器资料云同步-删除先传播墓碑再删除 Storage 对象",
+                f"资料删除传播顺序或已同步状态错误：{resource_delete_sync_result}",
             )
             driver.find_element(By.ID, 'closeResourceLibraryBtn').click()
             self.assert_true(
@@ -3074,17 +3254,33 @@ class VocabAppTester:
             cloud_option_defaults = driver.execute_script("""
                 const upload = document.getElementById('cloudUploadLocalCheckbox');
                 const download = document.getElementById('cloudDownloadLatestCheckbox');
+                const resources = document.getElementById('cloudSyncResourcesCheckbox');
                 const execute = document.getElementById('cloudSyncExecuteBtn');
                 const warning = document.getElementById('cloudDownloadDiscardWarning');
-                return !!upload && !!download && !!execute && !!warning
-                  && !upload.checked && !download.checked && execute.disabled
+                return !!upload && !!download && !!resources && !!execute && !!warning
+                  && !upload.checked && !download.checked && !resources.checked && execute.disabled
                   && warning.style.display === 'none';
             """)
             self.assert_true(
                 bool(cloud_option_defaults),
-                f"[{lang_name}] 浏览器真实点击-云同步两项默认均不勾选以防误上传",
+                f"[{lang_name}] 浏览器真实点击-云同步三项默认均不勾选以防误上传",
                 "打开云同步选择窗口后有选项被默认勾选，仍可能误传或误覆盖",
             )
+
+            driver.find_element(By.ID, 'cloudSyncResourcesCheckbox').click()
+            resource_only_option = driver.execute_script("""
+                const execute = document.getElementById('cloudSyncExecuteBtn');
+                const discard = document.getElementById('cloudDownloadDiscardWarning');
+                const uploadOnly = document.getElementById('cloudUploadOnlyNotice');
+                return !!execute && !execute.disabled
+                  && discard.style.display === 'none' && uploadOnly.style.display === 'none';
+            """)
+            self.assert_true(
+                bool(resource_only_option),
+                f"[{lang_name}] 浏览器云同步-可只选择学习资料且不触发词库覆盖警告",
+                "资料同步仍依赖词库上传/下载，或错误触发词库覆盖警告",
+            )
+            driver.find_element(By.ID, 'cloudSyncResourcesCheckbox').click()
 
             driver.find_element(By.ID, 'cloudDownloadLatestCheckbox').click()
             download_only_warning = driver.execute_script("""
@@ -6750,6 +6946,27 @@ class VocabAppTester:
         self.assert_true(rls_enabled, "[Supabase] RLS 启用且增删改查均按用户隔离", "RLS 未启用或四类操作权限未完整限制为 auth.uid()")
         anon_revoked = 'revoke all on table public.vocab_items from anon' in sql and 'to authenticated' in sql
         self.assert_true(anon_revoked, "[Supabase] 匿名访问撤销，仅登录用户可同步", "anon 仍可能直接访问私人词库数据")
+
+        resource_schema = all(token in sql for token in (
+            'create table if not exists public.resource_files',
+            'resource_id text not null', 'mime_type text', 'size bigint', 'sha256 text',
+            'storage_path text', 'primary key (user_id, resource_id)',
+            'revoke all on table public.resource_files from anon',
+        ))
+        self.assert_true(resource_schema, "[Supabase] resource_files 私有元数据表与复合主键完整", "学习资料元数据表字段、主键或匿名权限限制不完整")
+
+        resource_bucket = all(token in sql for token in (
+            "insert into storage.buckets", "'vocab-resources'", 'false', '52428800',
+            'allowed_mime_types', "bucket_id = 'vocab-resources'",
+            "(storage.foldername(name))[1] = (select auth.uid()::text)",
+        ))
+        self.assert_true(resource_bucket, "[Supabase] vocab-resources 私有 Bucket 限额与用户目录 RLS 完整", "资料 Bucket 不是私有、缺少 50MB/MIME 限制或用户目录隔离")
+
+        storage_policies = all(
+            f'Users can {action} their own resource objects' in sql
+            for action in ('read', 'insert', 'update', 'delete')
+        )
+        self.assert_true(storage_policies, "[Supabase] Storage 对象增删改查策略完整", "Storage 对象缺少登录用户自己的增删改查策略")
 
 
     def run_all(self):

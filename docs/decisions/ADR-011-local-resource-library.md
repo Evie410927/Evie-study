@@ -1,6 +1,6 @@
 # ADR-011：本地学习资料库
 
-- 状态：Accepted
+- 状态：Superseded by ADR-012
 - 日期：2026-10-14
 
 ## 背景
@@ -10,11 +10,11 @@
 ## 决策
 
 1. 在 `quickAddBtn` 左侧增加 `resourceLibraryBtn`，KR/JP 的 DOM、样式、交互和测试完全镜像。
-2. 资料库使用独立 IndexedDB `evie_vocab_resource_library_v1` / `files` 存储原始 Blob 和元数据；KR/JP 同源部署时共享同一份资料，且不进入词库 localStorage、HTML/JSON 导出或 Supabase 云同步。
+2. 资料库使用独立 IndexedDB `evie_vocab_resource_library_v1` / `files` 存储原始 Blob 和元数据；KR/JP 同源部署时共享同一份资料，且不进入词库 localStorage、HTML/JSON 导出或 Supabase 云同步。此处“不同步资料文件”的决策已由 ADR-012 替代。
 3. 弹窗支持拖放或文件选择、多文件批量上传、空状态、文件类型/大小/添加时间展示、打开/下载和确认删除。单文件上限 50 MiB，白名单为 PDF、Word、Excel、CSV、纯文本和常见位图。
 4. PDF、图片和文本使用浏览器原生预览能力；Office 文件以原始格式打开，当前浏览器不能内联显示时由下载或系统关联应用继续查看。不引入 CDN 解析器，继续满足单文件离线交付。
 5. 只有 IndexedDB 写入或删除事务完成后才显示成功反馈；IndexedDB 不可用或配额不足时显示明确失败，不使用易丢失的内存降级冒充持久化。
-6. 弹窗固定显示“仅保存在当前浏览器、不会随词库云同步”的隐私和同步边界说明。
+6. 弹窗固定显示资料与词条数据相互隔离的说明；具体云同步边界以后续 ADR-012 为准。
 
 ## 验证
 

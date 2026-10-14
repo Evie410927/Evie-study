@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-10-14.1",
+  "contractVersion": "2026-10-14.2",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -16,7 +16,7 @@
       "docs/decisions/ADR-008-part-of-speech-filter-reset.md",
       "docs/decisions/ADR-009-tag-filter-reset-parity.md",
       "docs/decisions/ADR-010-similar-word-pronunciation-note.md",
-      "docs/decisions/ADR-011-local-resource-library.md"
+      "docs/decisions/ADR-012-resource-library-cloud-sync.md"
     ]
   },
   "mirroredApps": [
@@ -206,7 +206,17 @@
       "fileInputId": "resourceFileInput",
       "listId": "resourceFileList",
       "persistence": "shared-origin-IndexedDB",
-      "cloudSync": false,
+      "cloudSync": true,
+      "cloudSyncCheckboxId": "cloudSyncResourcesCheckbox",
+      "cloudMetadataTable": "resource_files",
+      "cloudStorageBucket": "vocab-resources",
+      "cloudStoragePrivacy": "private-user-folder-with-RLS",
+      "cloudDownload": "metadata-first-file-on-demand",
+      "localCache": "IndexedDB",
+      "pendingUploadQueue": true,
+      "uploadProgress": true,
+      "uploadRetry": true,
+      "deletePropagation": "metadata-tombstone-before-storage-delete",
       "acceptedExtensions": [
         "pdf",
         "doc",
@@ -262,6 +272,19 @@
       "cloudBaselineAndWordsPersistTogetherBeforeSuccess": true,
       "missingTimestampStrictSupersetRecoveryPrecedesBaseline": true,
       "strictSupersetRecoveryRespectsDeletionTombstones": true
+    },
+    "resourceCloudSync": {
+      "sharedAcrossLanguages": true,
+      "metadataTable": "resource_files",
+      "storageBucket": "vocab-resources",
+      "storagePath": "user-id/resource-id/resource-id.extension",
+      "contentHash": "SHA-256-when-WebCrypto-available",
+      "remoteMetadataFirst": true,
+      "downloadOnOpen": true,
+      "offlineCache": true,
+      "localPendingMigration": true,
+      "deleteTombstones": true,
+      "wordPayloadIsolation": true
     },
     "mainSearch": {
       "krFields": ["word", "reading", "meaning"],

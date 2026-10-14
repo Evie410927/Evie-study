@@ -17160,7 +17160,7 @@ body::-webkit-scrollbar,
           <h3 id="resourceLibraryTitle" class="modal-title">📚 学习资料库</h3>
           <button id="closeResourceLibraryBtn" type="button" class="icon-btn" aria-label="关闭学习资料库" onclick="if(window.app) window.app.closeResourceLibrary()">✕</button>
         </div>
-        <div class="resource-library-notice">🔒 文件仅保存在当前浏览器，不会加入词库备份或云同步。PDF、图片和文本可直接预览；Word / Excel 将由浏览器或系统应用打开。</div>
+        <div class="resource-library-notice">🔒 文件先安全保存在当前浏览器；勾选云同步中的“学习资料”后，将加密传输到账号私有空间。其他设备先同步目录，打开时再下载文件。</div>
         <label id="resourceUploadZone" class="resource-upload-zone" for="resourceFileInput" tabindex="0" role="button" aria-label="选择学习资料文件上传">
           <span class="resource-upload-icon">📤</span>
           <span class="resource-upload-copy">
@@ -20041,9 +20041,10 @@ function createSupabaseSyncMethods(language) {
         modal.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(5,10,24,.78);display:none;align-items:center;justify-content:center;padding:20px;';
         modal.innerHTML = `<div data-modal-scroll style="width:min(430px,100%);max-height:calc(100vh - 40px);overflow-y:auto;background:var(--bg-secondary,#1e293b);border:1px solid var(--border-color,#334155);border-radius:18px;padding:22px;color:var(--text-primary,#f8fafc);box-shadow:0 20px 55px rgba(0,0,0,.45);">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><strong style="font-size:18px;">☁️ 选择云同步方式</strong><button type="button" aria-label="关闭" onclick="if(window.app) window.app.closeCloudSyncOptionsModal()" style="border:0;background:transparent;color:inherit;font-size:22px;cursor:pointer;">×</button></div>
-          <p style="margin:0 0 16px;color:var(--text-secondary,#94a3b8);font-size:13px;line-height:1.6;">请选择这一次要执行的操作。两个都勾选时才会双向同步。</p>
+          <p style="margin:0 0 16px;color:var(--text-secondary,#94a3b8);font-size:13px;line-height:1.6;">词库上传/下载与学习资料同步彼此独立，可只选择其中一项。</p>
           <label style="display:flex;gap:12px;align-items:flex-start;margin-bottom:10px;padding:13px;border:1px solid var(--border-color,#475569);border-radius:12px;cursor:pointer;background:rgba(15,23,42,.3);"><input id="cloudUploadLocalCheckbox" type="checkbox" onchange="if(window.app) window.app.updateCloudSyncOptionState()" style="width:18px;height:18px;margin-top:1px;accent-color:var(--accent-primary,#ec4899);"><span><strong style="display:block;margin-bottom:3px;">上传当前本地版本</strong><small style="color:var(--text-secondary,#94a3b8);line-height:1.5;">把这个浏览器当前的完整词库作为新的云端最新版本。</small></span></label>
           <label style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;padding:13px;border:1px solid var(--border-color,#475569);border-radius:12px;cursor:pointer;background:rgba(15,23,42,.3);"><input id="cloudDownloadLatestCheckbox" type="checkbox" onchange="if(window.app) window.app.updateCloudSyncOptionState()" style="width:18px;height:18px;margin-top:1px;accent-color:var(--accent-primary,#ec4899);"><span><strong style="display:block;margin-bottom:3px;">同步云端最新内容</strong><small style="color:var(--text-secondary,#94a3b8);line-height:1.5;">获取当前账号在云端保存的最新词库。</small></span></label>
+          <label style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;padding:13px;border:1px solid var(--border-color,#475569);border-radius:12px;cursor:pointer;background:rgba(15,23,42,.3);"><input id="cloudSyncResourcesCheckbox" type="checkbox" onchange="if(window.app) window.app.updateCloudSyncOptionState()" style="width:18px;height:18px;margin-top:1px;accent-color:var(--accent-primary,#ec4899);"><span><strong style="display:block;margin-bottom:3px;">同步学习资料</strong><small style="color:var(--text-secondary,#94a3b8);line-height:1.5;">上传待同步文件并合并资料目录；其他设备在打开时才下载原文件。</small></span></label>
           <div id="cloudDownloadDiscardWarning" role="alert" style="display:none;margin:0 0 12px;padding:11px 12px;border:1px solid rgba(251,113,133,.65);border-radius:10px;background:rgba(190,24,93,.16);color:#fda4af;font-size:13px;line-height:1.55;">⚠️ 只同步云端将永久丢弃本浏览器未上传的修改、本地新增词和本地删除记录，并以云端数据完全覆盖本处。</div>
           <div id="cloudUploadOnlyNotice" role="alert" style="display:none;margin:0 0 12px;padding:11px 12px;border:1px solid rgba(251,113,133,.65);border-radius:10px;background:rgba(190,24,93,.16);color:#fda4af;font-size:13px;line-height:1.55;">⚠️ 只上传会以本浏览器完整词库覆盖云端；云端独有、但本地不存在的词将从云端最新版本中删除。</div>
           <button id="cloudSyncExecuteBtn" type="button" disabled onclick="if(window.app) window.app.runSelectedCloudSync()" style="width:100%;padding:11px;border:0;border-radius:11px;background:linear-gradient(135deg,var(--accent-primary,#ec4899),#8b5cf6);color:white;font-weight:700;cursor:pointer;">开始执行</button>
@@ -20052,8 +20053,10 @@ function createSupabaseSyncMethods(language) {
       }
       const uploadCheckbox = document.getElementById('cloudUploadLocalCheckbox');
       const downloadCheckbox = document.getElementById('cloudDownloadLatestCheckbox');
+      const resourcesCheckbox = document.getElementById('cloudSyncResourcesCheckbox');
       if (uploadCheckbox) uploadCheckbox.checked = false;
       if (downloadCheckbox) downloadCheckbox.checked = false;
+      if (resourcesCheckbox) resourcesCheckbox.checked = false;
       this.updateCloudSyncOptionState();
       modal.style.display = 'flex';
       this.resetModalScrollToTop(modal, '[data-modal-scroll]');
@@ -20067,13 +20070,15 @@ function createSupabaseSyncMethods(language) {
     updateCloudSyncOptionState() {
       const uploadCheckbox = document.getElementById('cloudUploadLocalCheckbox');
       const downloadCheckbox = document.getElementById('cloudDownloadLatestCheckbox');
+      const resourcesCheckbox = document.getElementById('cloudSyncResourcesCheckbox');
       const executeButton = document.getElementById('cloudSyncExecuteBtn');
       const discardWarning = document.getElementById('cloudDownloadDiscardWarning');
       const uploadOnlyNotice = document.getElementById('cloudUploadOnlyNotice');
       const uploadLocal = Boolean(uploadCheckbox && uploadCheckbox.checked);
       const downloadCloud = Boolean(downloadCheckbox && downloadCheckbox.checked);
+      const syncResources = Boolean(resourcesCheckbox && resourcesCheckbox.checked);
       if (executeButton) {
-        executeButton.disabled = !uploadLocal && !downloadCloud;
+        executeButton.disabled = !uploadLocal && !downloadCloud && !syncResources;
         executeButton.style.opacity = executeButton.disabled ? '.45' : '1';
         executeButton.style.cursor = executeButton.disabled ? 'not-allowed' : 'pointer';
       }
@@ -20084,11 +20089,13 @@ function createSupabaseSyncMethods(language) {
     async runSelectedCloudSync() {
       const uploadCheckbox = document.getElementById('cloudUploadLocalCheckbox');
       const downloadCheckbox = document.getElementById('cloudDownloadLatestCheckbox');
+      const resourcesCheckbox = document.getElementById('cloudSyncResourcesCheckbox');
       const syncOptions = {
         uploadLocal: Boolean(uploadCheckbox && uploadCheckbox.checked),
-        downloadCloud: Boolean(downloadCheckbox && downloadCheckbox.checked)
+        downloadCloud: Boolean(downloadCheckbox && downloadCheckbox.checked),
+        syncResources: Boolean(resourcesCheckbox && resourcesCheckbox.checked)
       };
-      if (!syncOptions.uploadLocal && !syncOptions.downloadCloud) {
+      if (!syncOptions.uploadLocal && !syncOptions.downloadCloud && !syncOptions.syncResources) {
         this.showToast('⚠️ 请至少选择一项云同步操作');
         return false;
       }
@@ -20789,13 +20796,14 @@ function createSupabaseSyncMethods(language) {
     async syncWithSupabase(showToastNotification = true, syncOptions = {}) {
       const uploadLocal = syncOptions.uploadLocal !== false;
       const downloadCloud = syncOptions.downloadCloud !== false;
-      if (!uploadLocal && !downloadCloud) {
+      const syncResources = syncOptions.syncResources === true;
+      if (!uploadLocal && !downloadCloud && !syncResources) {
         if (showToastNotification) this.showToast('⚠️ 请至少选择一项云同步操作');
         return false;
       }
       if (this._cloudSyncing) {
         this._cloudSyncPending = true;
-        this._cloudSyncPendingOptions = { uploadLocal, downloadCloud };
+        this._cloudSyncPendingOptions = { uploadLocal, downloadCloud, syncResources };
         if (showToastNotification) this.showToast('☁️ 正在同步，请稍候...');
         return false;
       }
@@ -20803,7 +20811,9 @@ function createSupabaseSyncMethods(language) {
       const syncBtn = document.getElementById('cloudSyncBtn');
       if (syncBtn) syncBtn.classList.add('syncing-active');
       if (showToastNotification) {
-        this.showToast(uploadLocal && downloadCloud
+        this.showToast(syncResources && !uploadLocal && !downloadCloud
+          ? '☁️ 正在同步学习资料...'
+          : uploadLocal && downloadCloud
           ? '☁️ 正在双向同步所有编辑...'
           : uploadLocal ? '☁️ 正在上传当前本地完整版本...' : '☁️ 正在获取云端最新内容...');
       }
@@ -20814,6 +20824,13 @@ function createSupabaseSyncMethods(language) {
         const jwtUser = this.decodeCloudUser(session.access_token);
         const userId = session.user && session.user.id || jwtUser && jwtUser.sub;
         if (!userId) throw new Error('无法识别云同步账号，请重新登录');
+        if (syncResources) {
+          await this.syncResourceLibraryWithSupabase(session, userId);
+          if (!uploadLocal && !downloadCloud) {
+            if (showToastNotification) this.showToast('✅ 学习资料同步完成');
+            return true;
+          }
+        }
         const cloudRows = await this.fetchCloudRows(session.access_token);
         const { metaRow, dataRows, revision: cloudRevision } = this.splitCloudRows(cloudRows);
 
@@ -20898,7 +20915,7 @@ function createSupabaseSyncMethods(language) {
         if (syncBtn) setTimeout(() => syncBtn.classList.remove('syncing-active'), 500);
         if (this._cloudSyncPending) {
           this._cloudSyncPending = false;
-          const pendingOptions = this._cloudSyncPendingOptions || { uploadLocal, downloadCloud };
+          const pendingOptions = this._cloudSyncPendingOptions || { uploadLocal, downloadCloud, syncResources };
           this._cloudSyncPendingOptions = null;
           setTimeout(() => this.syncWithSupabase(false, pendingOptions), 50);
         }
@@ -21100,6 +21117,9 @@ class KrVocabApp {
     this.reviewRatingSort = 'createdDesc';
     this.RESOURCE_DB_NAME = 'evie_vocab_resource_library_v1';
     this.RESOURCE_STORE_NAME = 'files';
+    this.RESOURCE_DELETION_STORE_NAME = 'deletions';
+    this.RESOURCE_DB_VERSION = 2;
+    this.RESOURCE_STORAGE_BUCKET = 'vocab-resources';
     this.RESOURCE_MAX_FILE_SIZE = 50 * 1024 * 1024;
     this.resourceFiles = [];
     this.init();
@@ -21807,12 +21827,16 @@ class KrVocabApp {
         reject(new Error('当前浏览器不支持本地资料持久化'));
         return;
       }
-      const request = window.indexedDB.open(this.RESOURCE_DB_NAME, 1);
+      const request = window.indexedDB.open(this.RESOURCE_DB_NAME, this.RESOURCE_DB_VERSION);
       request.onupgradeneeded = () => {
         const db = request.result;
         if (!db.objectStoreNames.contains(this.RESOURCE_STORE_NAME)) {
           const store = db.createObjectStore(this.RESOURCE_STORE_NAME, { keyPath: 'id' });
           store.createIndex('addedAt', 'addedAt', { unique: false });
+        }
+        if (!db.objectStoreNames.contains(this.RESOURCE_DELETION_STORE_NAME)) {
+          const deletionStore = db.createObjectStore(this.RESOURCE_DELETION_STORE_NAME, { keyPath: 'id' });
+          deletionStore.createIndex('deletedAt', 'deletedAt', { unique: false });
         }
       };
       request.onsuccess = () => resolve(request.result);
@@ -21831,7 +21855,20 @@ class KrVocabApp {
         request.onerror = () => reject(request.error || new Error('读取资料失败'));
       });
       db.close();
-      this.resourceFiles = records.sort((a, b) => Number(b.addedAt || 0) - Number(a.addedAt || 0));
+      const migrationTime = Date.now();
+      const normalizedRecords = records.map(record => ({
+        ...record,
+        updatedAt: Number(record.updatedAt || record.addedAt || migrationTime),
+        sha256: String(record.sha256 || ''),
+        storagePath: String(record.storagePath || ''),
+        cloudState: record.cloudState === 'synced' ? 'synced' : 'pending'
+      }));
+      const needsMigration = normalizedRecords.some((record, index) => {
+        const original = records[index] || {};
+        return !original.updatedAt || original.sha256 === undefined || original.storagePath === undefined || original.cloudState === undefined;
+      });
+      if (needsMigration) await this.putResourceRecords(normalizedRecords);
+      this.resourceFiles = normalizedRecords.sort((a, b) => Number(b.addedAt || 0) - Number(a.addedAt || 0));
       this.renderResourceFileList();
       this.setResourceFileStatus(this.resourceFiles.length ? `共 ${this.resourceFiles.length} 个文件` : '');
     } catch (error) {
@@ -21840,6 +21877,46 @@ class KrVocabApp {
       this.renderResourceFileList();
       this.setResourceFileStatus(error?.message || '资料库读取失败', true);
     }
+  }
+
+  async putResourceRecords(records) {
+    const items = (Array.isArray(records) ? records : [records]).filter(Boolean);
+    if (!items.length) return;
+    const db = await this.openResourceDatabase();
+    try {
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction(this.RESOURCE_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(this.RESOURCE_STORE_NAME);
+        items.forEach(record => store.put(record));
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error || new Error('资料保存失败'));
+        transaction.onabort = () => reject(transaction.error || new Error('资料保存已中止'));
+      });
+    } finally { db.close(); }
+  }
+
+  async getResourceDeletions() {
+    const db = await this.openResourceDatabase();
+    try {
+      return await new Promise((resolve, reject) => {
+        const transaction = db.transaction(this.RESOURCE_DELETION_STORE_NAME, 'readonly');
+        const request = transaction.objectStore(this.RESOURCE_DELETION_STORE_NAME).getAll();
+        request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+        request.onerror = () => reject(request.error || new Error('读取资料删除记录失败'));
+      });
+    } finally { db.close(); }
+  }
+
+  async removeResourceDeletion(resourceId) {
+    const db = await this.openResourceDatabase();
+    try {
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction(this.RESOURCE_DELETION_STORE_NAME, 'readwrite');
+        transaction.objectStore(this.RESOURCE_DELETION_STORE_NAME).delete(resourceId);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error || new Error('删除记录清理失败'));
+      });
+    } finally { db.close(); }
   }
 
   async handleResourceFiles(fileList) {
@@ -21854,12 +21931,17 @@ class KrVocabApp {
         rejected.push(`${file.name}（超过 50 MB）`);
       } else {
         const extension = this.getResourceFileExtension(file.name);
+        const now = Date.now();
         accepted.push({
           id: window.crypto?.randomUUID ? window.crypto.randomUUID() : `resource_${Date.now()}_${Math.random().toString(36).slice(2)}`,
           name: file.name,
           type: this.getResourceMimeType(extension, file.type),
           size: file.size,
-          addedAt: Date.now(),
+          addedAt: now,
+          updatedAt: now,
+          sha256: '',
+          storagePath: '',
+          cloudState: 'pending',
           blob: file.slice(0, file.size, this.getResourceMimeType(extension, file.type))
         });
       }
@@ -21870,19 +21952,10 @@ class KrVocabApp {
     }
     this.setResourceFileStatus(`正在保存 ${accepted.length} 个文件…`);
     try {
-      const db = await this.openResourceDatabase();
-      await new Promise((resolve, reject) => {
-        const transaction = db.transaction(this.RESOURCE_STORE_NAME, 'readwrite');
-        const store = transaction.objectStore(this.RESOURCE_STORE_NAME);
-        accepted.forEach(record => store.put(record));
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(transaction.error || new Error('文件保存失败'));
-        transaction.onabort = () => reject(transaction.error || new Error('文件保存已中止'));
-      });
-      db.close();
+      await this.putResourceRecords(accepted);
       await this.loadResourceFiles();
       const rejectedNote = rejected.length ? `；${rejected.join('；')}` : '';
-      this.setResourceFileStatus(`✅ 已保存 ${accepted.length} 个文件${rejectedNote}`, rejected.length > 0);
+      this.setResourceFileStatus(`✅ 已保存 ${accepted.length} 个文件，已加入云同步待处理队列${rejectedNote}`, rejected.length > 0);
     } catch (error) {
       console.warn('Resource library write failed:', error);
       this.setResourceFileStatus(`保存失败：${error?.message || '浏览器存储空间不足'}`, true);
@@ -21890,6 +21963,282 @@ class KrVocabApp {
       const input = document.getElementById('resourceFileInput');
       if (input) input.value = '';
     }
+  }
+
+  async calculateResourceSha256(blob) {
+    if (!blob || !window.crypto?.subtle) return '';
+    const buffer = await blob.arrayBuffer();
+    const digest = await window.crypto.subtle.digest('SHA-256', buffer);
+    return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  encodeResourceStoragePath(path = '') {
+    return String(path).split('/').filter(Boolean).map(segment => encodeURIComponent(segment)).join('/');
+  }
+
+  getResourceStoragePath(userId, record) {
+    const extension = this.getResourceFileExtension(record?.name || '') || 'bin';
+    return `${userId}/${record.id}/${record.id}.${extension}`;
+  }
+
+  async fetchResourceCloudRows(accessToken) {
+    const collected = [];
+    for (let start = 0; ; start += 500) {
+      const query = 'select=resource_id,name,mime_type,size,sha256,storage_path,updated_at,deleted_at&order=updated_at.asc';
+      const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/resource_files?${query}`, {
+        headers: this.cloudHeaders(accessToken, { 'Range-Unit': 'items', 'Range': `${start}-${start + 499}` })
+      });
+      const data = await response.json().catch(() => []);
+      if (!response.ok) {
+        const error = new Error(data.message || data.hint || `资料目录读取失败 (${response.status})`);
+        error.status = response.status;
+        error.code = data.code;
+        throw error;
+      }
+      const page = Array.isArray(data) ? data : [];
+      collected.push(...page);
+      if (page.length < 500) break;
+    }
+    return collected;
+  }
+
+  async upsertResourceMetadataRows(accessToken, userId, records) {
+    const rows = (records || []).map(record => ({
+      user_id: userId,
+      resource_id: String(record.id || record.resource_id),
+      name: String(record.name || ''),
+      mime_type: String(record.type || record.mime_type || 'application/octet-stream'),
+      size: Math.max(0, Number(record.size) || 0),
+      sha256: String(record.sha256 || ''),
+      storage_path: String(record.storagePath || record.storage_path || ''),
+      updated_at: Number(record.updatedAt || record.updated_at || Date.now()),
+      deleted_at: record.deletedAt || record.deleted_at ? Number(record.deletedAt || record.deleted_at) : null
+    }));
+    for (let index = 0; index < rows.length; index += 50) {
+      const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/resource_files?on_conflict=user_id,resource_id`, {
+        method: 'POST',
+        headers: this.cloudHeaders(accessToken, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+        body: JSON.stringify(rows.slice(index, index + 50))
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        const error = new Error(data.message || data.hint || `资料目录写入失败 (${response.status})`);
+        error.status = response.status;
+        error.code = data.code;
+        throw error;
+      }
+    }
+  }
+
+  uploadResourceBlobToStorage(accessToken, storagePath, record, onProgress) {
+    return new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open('POST', `${SUPABASE_CONFIG.url}/storage/v1/object/${this.RESOURCE_STORAGE_BUCKET}/${this.encodeResourceStoragePath(storagePath)}`);
+      request.setRequestHeader('apikey', SUPABASE_CONFIG.publishableKey);
+      request.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+      request.setRequestHeader('Content-Type', record.type || 'application/octet-stream');
+      request.setRequestHeader('cache-control', '3600');
+      request.setRequestHeader('x-upsert', 'true');
+      request.upload.onprogress = event => {
+        if (event.lengthComputable && typeof onProgress === 'function') {
+          onProgress(Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100))));
+        }
+      };
+      request.onload = () => {
+        if (request.status >= 200 && request.status < 300) resolve(true);
+        else {
+          let message = '';
+          try { message = JSON.parse(request.responseText || '{}').message || ''; } catch (error) {}
+          const uploadError = new Error(message || `文件上传失败 (${request.status})`);
+          uploadError.status = request.status;
+          reject(uploadError);
+        }
+      };
+      request.onerror = () => reject(new Error('文件上传网络中断'));
+      request.ontimeout = () => reject(new Error('文件上传超时'));
+      request.timeout = 120000;
+      request.send(record.blob);
+    });
+  }
+
+  async uploadResourceWithRetry(accessToken, storagePath, record) {
+    const retryDelays = [0, 1500, 4000];
+    let lastError = null;
+    for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
+      if (retryDelays[attempt]) await new Promise(resolve => setTimeout(resolve, retryDelays[attempt]));
+      try {
+        await this.uploadResourceBlobToStorage(accessToken, storagePath, record, percent => {
+          this.setResourceFileStatus(`☁️ 正在上传 ${record.name}：${percent}%（第 ${attempt + 1}/3 次）`);
+        });
+        return true;
+      } catch (error) {
+        lastError = error;
+        if (error?.status === 400 || error?.status === 401 || error?.status === 403 || error?.status === 413) break;
+      }
+    }
+    throw lastError || new Error('文件上传失败');
+  }
+
+  async downloadResourceBlobFromStorage(accessToken, storagePath) {
+    const response = await fetch(`${SUPABASE_CONFIG.url}/storage/v1/object/authenticated/${this.RESOURCE_STORAGE_BUCKET}/${this.encodeResourceStoragePath(storagePath)}`, {
+      headers: { 'apikey': SUPABASE_CONFIG.publishableKey, 'Authorization': `Bearer ${accessToken}` }
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      const error = new Error(data.message || `文件下载失败 (${response.status})`);
+      error.status = response.status;
+      throw error;
+    }
+    return response.blob();
+  }
+
+  async deleteResourceStorageObject(accessToken, storagePath) {
+    if (!storagePath) return true;
+    const response = await fetch(`${SUPABASE_CONFIG.url}/storage/v1/object/${this.RESOURCE_STORAGE_BUCKET}`, {
+      method: 'DELETE',
+      headers: this.cloudHeaders(accessToken),
+      body: JSON.stringify({ prefixes: [storagePath] })
+    });
+    if (response.ok || response.status === 404) return true;
+    const data = await response.json().catch(() => ({}));
+    const error = new Error(data.message || `云端文件删除失败 (${response.status})`);
+    error.status = response.status;
+    throw error;
+  }
+
+  async saveResourceDeletion(tombstone) {
+    const db = await this.openResourceDatabase();
+    try {
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction(this.RESOURCE_DELETION_STORE_NAME, 'readwrite');
+        transaction.objectStore(this.RESOURCE_DELETION_STORE_NAME).put(tombstone);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error || new Error('资料删除记录保存失败'));
+      });
+    } finally { db.close(); }
+  }
+
+  async applyResourceTombstone(tombstone) {
+    const db = await this.openResourceDatabase();
+    try {
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction([this.RESOURCE_STORE_NAME, this.RESOURCE_DELETION_STORE_NAME], 'readwrite');
+        transaction.objectStore(this.RESOURCE_DELETION_STORE_NAME).put(tombstone);
+        transaction.objectStore(this.RESOURCE_STORE_NAME).delete(tombstone.id);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error || new Error('资料删除状态保存失败'));
+        transaction.onabort = () => reject(transaction.error || new Error('资料删除状态保存已中止'));
+      });
+    } finally { db.close(); }
+  }
+
+  async syncResourceLibraryWithSupabase(session, userId) {
+    const accessToken = session?.access_token || '';
+    if (!accessToken || !userId) throw new Error('学习资料同步需要有效登录');
+    await this.loadResourceFiles();
+    const cloudRows = await this.fetchResourceCloudRows(accessToken);
+    const cloudById = new Map(cloudRows.map(row => [String(row.resource_id), row]));
+    let localById = new Map(this.resourceFiles.map(record => [String(record.id), record]));
+    let deletions = await this.getResourceDeletions();
+    let deletionById = new Map(deletions.map(record => [String(record.id), record]));
+
+    for (const cloudRow of cloudRows) {
+      const id = String(cloudRow.resource_id || '');
+      if (!id) continue;
+      const local = localById.get(id);
+      const localDeletion = deletionById.get(id);
+      const cloudUpdatedAt = Number(cloudRow.updated_at || 0);
+      const cloudDeletedAt = Number(cloudRow.deleted_at || 0);
+      const localUpdatedAt = Math.max(Number(local?.updatedAt || 0), Number(localDeletion?.deletedAt || 0));
+      if (cloudDeletedAt && cloudDeletedAt >= localUpdatedAt) {
+        const tombstone = {
+          id,
+          name: String(cloudRow.name || local?.name || ''),
+          storagePath: String(cloudRow.storage_path || local?.storagePath || ''),
+          deletedAt: cloudDeletedAt,
+          syncedAt: Date.now()
+        };
+        await this.applyResourceTombstone(tombstone);
+        localById.delete(id);
+        deletionById.set(id, tombstone);
+      } else if (!cloudDeletedAt && cloudUpdatedAt > localUpdatedAt) {
+        const cloudHash = String(cloudRow.sha256 || '');
+        const canKeepBlob = Boolean(local?.blob && cloudHash && cloudHash === String(local.sha256 || ''));
+        const merged = {
+          id,
+          name: String(cloudRow.name || '未命名资料'),
+          type: String(cloudRow.mime_type || 'application/octet-stream'),
+          size: Math.max(0, Number(cloudRow.size) || 0),
+          addedAt: Number(local?.addedAt || cloudUpdatedAt || Date.now()),
+          updatedAt: cloudUpdatedAt,
+          sha256: cloudHash,
+          storagePath: String(cloudRow.storage_path || ''),
+          cloudState: 'synced',
+          blob: canKeepBlob ? local.blob : null
+        };
+        await this.putResourceRecords(merged);
+        await this.removeResourceDeletion(id);
+        localById.set(id, merged);
+        deletionById.delete(id);
+      }
+    }
+
+    deletions = await this.getResourceDeletions();
+    for (const tombstone of deletions) {
+      const id = String(tombstone.id || '');
+      if (!id) continue;
+      const remote = cloudById.get(id);
+      const deletedAt = Number(tombstone.deletedAt || 0);
+      if (deletedAt >= Number(remote?.updated_at || 0) || !remote) {
+        await this.upsertResourceMetadataRows(accessToken, userId, [{ ...tombstone, updatedAt: deletedAt, deletedAt }]);
+        await this.deleteResourceStorageObject(accessToken, tombstone.storagePath || remote?.storage_path || '');
+        await this.saveResourceDeletion({ ...tombstone, syncedAt: Date.now() });
+      }
+    }
+
+    await this.loadResourceFiles();
+    for (const record of this.resourceFiles) {
+      const remote = cloudById.get(String(record.id));
+      const needsUpload = record?.blob instanceof Blob && (
+        record.cloudState !== 'synced'
+        || !remote
+        || Number(record.updatedAt || 0) > Number(remote.updated_at || 0)
+        || Boolean(remote.deleted_at)
+      );
+      if (!needsUpload) continue;
+      const sha256 = record.sha256 || await this.calculateResourceSha256(record.blob);
+      const storagePath = record.storagePath || this.getResourceStoragePath(userId, record);
+      const pendingRecord = { ...record, sha256, storagePath, cloudState: 'pending' };
+      await this.uploadResourceWithRetry(accessToken, storagePath, pendingRecord);
+      await this.putResourceRecords(pendingRecord);
+      await this.upsertResourceMetadataRows(accessToken, userId, [pendingRecord]);
+      await this.putResourceRecords({ ...pendingRecord, cloudState: 'synced' });
+      await this.removeResourceDeletion(record.id);
+    }
+    await this.loadResourceFiles();
+    this.setResourceFileStatus(this.resourceFiles.length ? `✅ 云同步完成，共 ${this.resourceFiles.length} 个文件` : '✅ 云同步完成，资料库为空');
+    return true;
+  }
+
+  async ensureResourceBlob(record) {
+    if (record?.blob instanceof Blob) return record;
+    if (!record?.storagePath) throw new Error('云端文件路径缺失，请重新上传');
+    this.setResourceFileStatus(`☁️ 正在下载 ${record.name}…`);
+    const session = await this.getValidCloudSession(true);
+    if (!session) throw new Error('请先登录云同步账号');
+    const blob = await this.downloadResourceBlobFromStorage(session.access_token, record.storagePath);
+    if (Number(record.size || 0) && blob.size !== Number(record.size)) throw new Error('下载文件大小校验失败');
+    if (record.sha256) {
+      const downloadedHash = await this.calculateResourceSha256(blob);
+      if (downloadedHash && downloadedHash !== record.sha256) throw new Error('下载文件完整性校验失败');
+    }
+    const cached = { ...record, blob, cloudState: 'synced' };
+    await this.putResourceRecords(cached);
+    const index = this.resourceFiles.findIndex(item => String(item.id) === String(record.id));
+    if (index >= 0) this.resourceFiles[index] = cached;
+    this.renderResourceFileList();
+    this.setResourceFileStatus(`✅ 已下载并缓存 ${record.name}`);
+    return cached;
   }
 
   getResourceFileIcon(record) {
@@ -21943,7 +22292,8 @@ class KrVocabApp {
       const meta = document.createElement('span');
       meta.className = 'resource-file-meta';
       const date = new Date(Number(record.addedAt || 0));
-      meta.textContent = `${this.getResourceFileExtension(record.name).toUpperCase()} · ${this.formatResourceFileSize(record.size)} · ${date.toLocaleDateString('zh-CN')}`;
+      const cloudLabel = record.cloudState === 'pending' ? '待云同步' : record.blob instanceof Blob ? '已缓存' : '云端文件';
+      meta.textContent = `${this.getResourceFileExtension(record.name).toUpperCase()} · ${this.formatResourceFileSize(record.size)} · ${date.toLocaleDateString('zh-CN')} · ${cloudLabel}`;
       main.append(name, meta);
       openButton.append(fileIcon, main);
       const actions = document.createElement('div');
@@ -21975,45 +22325,75 @@ class KrVocabApp {
     return url;
   }
 
-  openResourceFile(resourceId) {
+  async openResourceFile(resourceId) {
     const record = this.resourceFiles.find(item => String(item.id) === String(resourceId));
-    const url = this.createResourceObjectUrl(record);
-    if (!record || !url) {
-      this.setResourceFileStatus('文件读取失败，请重新上传', true);
-      return;
+    if (!record) {
+      this.setResourceFileStatus('文件记录不存在，请重新同步', true);
+      return false;
     }
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.target = '_blank';
-    anchor.rel = 'noopener noreferrer';
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    this.setResourceFileStatus('已打开文件；若浏览器不支持直接预览，请使用下载按钮后由系统应用查看');
+    const previewWindow = record.blob instanceof Blob ? null : window.open('', '_blank');
+    try {
+      const readyRecord = record.blob instanceof Blob ? record : await this.ensureResourceBlob(record);
+      const url = this.createResourceObjectUrl(readyRecord);
+      if (!url) throw new Error('文件读取失败，请重新上传');
+      if (previewWindow && !previewWindow.closed) {
+        previewWindow.opener = null;
+        previewWindow.location.href = url;
+      } else {
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.target = '_blank';
+        anchor.rel = 'noopener noreferrer';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
+      this.setResourceFileStatus('已打开文件；若浏览器不支持直接预览，请使用下载按钮后由系统应用查看');
+      return true;
+    } catch (error) {
+      if (previewWindow && !previewWindow.closed) previewWindow.close();
+      this.setResourceFileStatus(error?.message || '文件读取失败，请重新同步', true);
+      return false;
+    }
   }
 
-  downloadResourceFile(resourceId) {
+  async downloadResourceFile(resourceId) {
     const record = this.resourceFiles.find(item => String(item.id) === String(resourceId));
-    const url = this.createResourceObjectUrl(record);
-    if (!record || !url) {
-      this.setResourceFileStatus('文件读取失败，请重新上传', true);
-      return;
+    if (!record) {
+      this.setResourceFileStatus('文件记录不存在，请重新同步', true);
+      return false;
     }
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = record.name;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
+    try {
+      const readyRecord = record.blob instanceof Blob ? record : await this.ensureResourceBlob(record);
+      const url = this.createResourceObjectUrl(readyRecord);
+      if (!url) throw new Error('文件读取失败，请重新上传');
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = readyRecord.name;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      return true;
+    } catch (error) {
+      this.setResourceFileStatus(error?.message || '文件下载失败，请重新同步', true);
+      return false;
+    }
   }
 
   async deleteResourceFile(resourceId) {
     const record = this.resourceFiles.find(item => String(item.id) === String(resourceId));
-    if (!record || !window.confirm(`确定删除“${record.name}”吗？此操作只删除当前浏览器中的文件。`)) return;
+    if (!record || !window.confirm(`确定删除“${record.name}”吗？下次同步时也会从账号云端删除。`)) return;
     try {
       const db = await this.openResourceDatabase();
       await new Promise((resolve, reject) => {
-        const transaction = db.transaction(this.RESOURCE_STORE_NAME, 'readwrite');
+        const transaction = db.transaction([this.RESOURCE_STORE_NAME, this.RESOURCE_DELETION_STORE_NAME], 'readwrite');
+        transaction.objectStore(this.RESOURCE_DELETION_STORE_NAME).put({
+          id: record.id,
+          name: record.name,
+          storagePath: record.storagePath || '',
+          deletedAt: Date.now(),
+          syncedAt: 0
+        });
         transaction.objectStore(this.RESOURCE_STORE_NAME).delete(record.id);
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error || new Error('删除失败'));
@@ -22021,7 +22401,7 @@ class KrVocabApp {
       });
       db.close();
       await this.loadResourceFiles();
-      this.setResourceFileStatus(`已删除 ${record.name}`);
+      this.setResourceFileStatus(`已删除 ${record.name}，云端删除将在下次资料同步时完成`);
     } catch (error) {
       this.setResourceFileStatus(`删除失败：${error?.message || '请稍后重试'}`, true);
     }
