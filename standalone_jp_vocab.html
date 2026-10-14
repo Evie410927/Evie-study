@@ -153,6 +153,196 @@ html, body {
   background: rgba(255, 255, 255, 0.15);
 }
 
+.resource-library-sheet {
+  height: min(78dvh, 720px);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.resource-library-notice {
+  margin: -4px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: var(--radius-sm);
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.resource-upload-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 78px;
+  padding: 14px;
+  border: 1.5px dashed var(--accent-primary);
+  border-radius: var(--radius-md);
+  background: rgba(236, 72, 153, 0.06);
+  color: var(--text-primary);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.resource-upload-zone:hover,
+.resource-upload-zone:focus-visible,
+.resource-upload-zone.drag-active {
+  background: rgba(236, 72, 153, 0.14);
+  border-color: #a855f7;
+  outline: none;
+}
+
+.resource-upload-zone:active {
+  transform: scale(0.99);
+}
+
+.resource-upload-icon {
+  font-size: 27px;
+}
+
+.resource-upload-copy strong,
+.resource-upload-copy small {
+  display: block;
+}
+
+.resource-upload-copy strong {
+  margin-bottom: 3px;
+  font-size: 14px;
+}
+
+.resource-upload-copy small {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.resource-file-status {
+  min-height: 20px;
+  margin: 8px 2px 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.resource-file-status.is-error {
+  color: #fb7185;
+}
+
+.resource-file-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 2px calc(var(--safe-bottom) + 4px);
+}
+
+.resource-file-empty {
+  display: flex;
+  min-height: 180px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.65;
+}
+
+.resource-file-empty span {
+  margin-bottom: 8px;
+  font-size: 34px;
+  opacity: 0.78;
+}
+
+.resource-file-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  margin-top: 8px;
+  padding: 11px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+
+.resource-file-open {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.resource-file-icon {
+  display: flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: rgba(139, 92, 246, 0.13);
+  font-size: 23px;
+}
+
+.resource-file-main {
+  min-width: 0;
+}
+
+.resource-file-name {
+  display: block;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-file-meta {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.resource-file-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.resource-file-action {
+  width: 31px;
+  height: 31px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  cursor: pointer;
+}
+
+.resource-file-action.delete {
+  color: #fb7185;
+}
+
+@media (max-width: 390px) {
+  .header-actions { gap: 8px; }
+  .resource-file-card { grid-template-columns: minmax(0, 1fr) auto; }
+  .resource-file-open { grid-template-columns: 36px minmax(0, 1fr); }
+  .resource-file-icon { width: 36px; height: 36px; font-size: 20px; }
+}
+
 .main-content {
   flex: 1;
   min-height: 0;
@@ -2940,6 +3130,7 @@ body::-webkit-scrollbar,
       <div class="header-actions">
         <button id="cloudSyncBtn" class="icon-btn" title="选择云端同步方式" style="font-size:16px;" onclick="if(window.app) window.app.openCloudSyncOptionsModal()">☁️</button>
         <button id="themeToggleBtn" class="icon-btn" title="切换主题" onclick="if(window.app) window.app.toggleTheme()">🌙</button>
+        <button id="resourceLibraryBtn" class="icon-btn" type="button" title="打开学习资料库" aria-label="打开学习资料库" onclick="if(window.app) window.app.openResourceLibrary()">📁</button>
         <button id="quickAddBtn" class="icon-btn" title="添加日语单词" onclick="if(window.app) window.app.openWordModal()">➕</button>
       </div>
     </header>
@@ -3626,6 +3817,28 @@ body::-webkit-scrollbar,
 
           <button id="saveWordBtn" type="button" class="btn-primary" style="margin-top: 10px;">保存日语单词</button>
         </form>
+      </div>
+    </div>
+
+    <div id="resourceLibraryModal" class="modal-overlay" onclick="if(event.target.id === 'resourceLibraryModal' && window.app) window.app.closeResourceLibrary()">
+      <div class="modal-sheet resource-library-sheet" role="dialog" aria-modal="true" aria-labelledby="resourceLibraryTitle">
+        <div class="modal-header">
+          <h3 id="resourceLibraryTitle" class="modal-title">📚 学习资料库</h3>
+          <button id="closeResourceLibraryBtn" type="button" class="icon-btn" aria-label="关闭学习资料库" onclick="if(window.app) window.app.closeResourceLibrary()">✕</button>
+        </div>
+        <div class="resource-library-notice">🔒 文件仅保存在当前浏览器，不会加入词库备份或云同步。PDF、图片和文本可直接预览；Word / Excel 将由浏览器或系统应用打开。</div>
+        <label id="resourceUploadZone" class="resource-upload-zone" for="resourceFileInput" tabindex="0" role="button" aria-label="选择学习资料文件上传">
+          <span class="resource-upload-icon">📤</span>
+          <span class="resource-upload-copy">
+            <strong>点击选择或拖入文件</strong>
+            <small>支持 PDF、Word、Excel、CSV、TXT 和图片；单个文件不超过 50 MB</small>
+          </span>
+        </label>
+        <input id="resourceFileInput" type="file" multiple hidden accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain,image/png,image/jpeg,image/webp">
+        <div id="resourceFileStatus" class="resource-file-status" role="status" aria-live="polite"></div>
+        <div id="resourceFileList" class="resource-file-list">
+          <div class="resource-file-empty"><span>🗂️</span>还没有资料<br>上传后可随时从这里打开</div>
+        </div>
       </div>
     </div>
 
@@ -8344,6 +8557,10 @@ class JpVocabApp {
     this.pageSize = 50;
     this.ratingSort = 'createdDesc';
     this.reviewRatingSort = 'createdDesc';
+    this.RESOURCE_DB_NAME = 'evie_vocab_resource_library_v1';
+    this.RESOURCE_STORE_NAME = 'files';
+    this.RESOURCE_MAX_FILE_SIZE = 50 * 1024 * 1024;
+    this.resourceFiles = [];
     this.init();
   }
 
@@ -8999,6 +9216,303 @@ class JpVocabApp {
     this.startReviewSession();
   }
 
+  openResourceLibrary() {
+    const modal = document.getElementById('resourceLibraryModal');
+    if (!modal) return;
+    modal.classList.add('active');
+    this.setResourceFileStatus('正在读取本地资料…');
+    this.loadResourceFiles();
+  }
+
+  closeResourceLibrary() {
+    const modal = document.getElementById('resourceLibraryModal');
+    if (modal) modal.classList.remove('active');
+    const zone = document.getElementById('resourceUploadZone');
+    if (zone) zone.classList.remove('drag-active');
+  }
+
+  setResourceFileStatus(message = '', isError = false) {
+    const status = document.getElementById('resourceFileStatus');
+    if (!status) return;
+    status.textContent = message;
+    status.classList.toggle('is-error', Boolean(isError));
+  }
+
+  getResourceFileExtension(name = '') {
+    const lastDot = String(name).lastIndexOf('.');
+    return lastDot >= 0 ? String(name).slice(lastDot + 1).toLowerCase() : '';
+  }
+
+  getResourceMimeType(extension, providedType = '') {
+    const mimeTypes = {
+      pdf: 'application/pdf', doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xls: 'application/vnd.ms-excel',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      csv: 'text/csv', txt: 'text/plain', png: 'image/png', jpg: 'image/jpeg',
+      jpeg: 'image/jpeg', webp: 'image/webp'
+    };
+    return mimeTypes[extension] || providedType || 'application/octet-stream';
+  }
+
+  isAllowedResourceFile(file) {
+    const allowedExtensions = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'png', 'jpg', 'jpeg', 'webp']);
+    return Boolean(file && allowedExtensions.has(this.getResourceFileExtension(file.name)));
+  }
+
+  openResourceDatabase() {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) {
+        reject(new Error('当前浏览器不支持本地资料持久化'));
+        return;
+      }
+      const request = window.indexedDB.open(this.RESOURCE_DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(this.RESOURCE_STORE_NAME)) {
+          const store = db.createObjectStore(this.RESOURCE_STORE_NAME, { keyPath: 'id' });
+          store.createIndex('addedAt', 'addedAt', { unique: false });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('资料库打开失败'));
+      request.onblocked = () => reject(new Error('资料库正在被其他页面占用，请关闭旧页面后重试'));
+    });
+  }
+
+  async loadResourceFiles() {
+    try {
+      const db = await this.openResourceDatabase();
+      const records = await new Promise((resolve, reject) => {
+        const transaction = db.transaction(this.RESOURCE_STORE_NAME, 'readonly');
+        const request = transaction.objectStore(this.RESOURCE_STORE_NAME).getAll();
+        request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+        request.onerror = () => reject(request.error || new Error('读取资料失败'));
+      });
+      db.close();
+      this.resourceFiles = records.sort((a, b) => Number(b.addedAt || 0) - Number(a.addedAt || 0));
+      this.renderResourceFileList();
+      this.setResourceFileStatus(this.resourceFiles.length ? `共 ${this.resourceFiles.length} 个文件` : '');
+    } catch (error) {
+      console.warn('Resource library read failed:', error);
+      this.resourceFiles = [];
+      this.renderResourceFileList();
+      this.setResourceFileStatus(error?.message || '资料库读取失败', true);
+    }
+  }
+
+  async handleResourceFiles(fileList) {
+    const selectedFiles = Array.from(fileList || []);
+    if (!selectedFiles.length) return;
+    const rejected = [];
+    const accepted = [];
+    selectedFiles.forEach(file => {
+      if (!this.isAllowedResourceFile(file)) {
+        rejected.push(`${file.name}（格式不支持）`);
+      } else if (file.size > this.RESOURCE_MAX_FILE_SIZE) {
+        rejected.push(`${file.name}（超过 50 MB）`);
+      } else {
+        const extension = this.getResourceFileExtension(file.name);
+        accepted.push({
+          id: window.crypto?.randomUUID ? window.crypto.randomUUID() : `resource_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+          name: file.name,
+          type: this.getResourceMimeType(extension, file.type),
+          size: file.size,
+          addedAt: Date.now(),
+          blob: file.slice(0, file.size, this.getResourceMimeType(extension, file.type))
+        });
+      }
+    });
+    if (!accepted.length) {
+      this.setResourceFileStatus(`未保存：${rejected.join('；')}`, true);
+      return;
+    }
+    this.setResourceFileStatus(`正在保存 ${accepted.length} 个文件…`);
+    try {
+      const db = await this.openResourceDatabase();
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction(this.RESOURCE_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(this.RESOURCE_STORE_NAME);
+        accepted.forEach(record => store.put(record));
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error || new Error('文件保存失败'));
+        transaction.onabort = () => reject(transaction.error || new Error('文件保存已中止'));
+      });
+      db.close();
+      await this.loadResourceFiles();
+      const rejectedNote = rejected.length ? `；${rejected.join('；')}` : '';
+      this.setResourceFileStatus(`✅ 已保存 ${accepted.length} 个文件${rejectedNote}`, rejected.length > 0);
+    } catch (error) {
+      console.warn('Resource library write failed:', error);
+      this.setResourceFileStatus(`保存失败：${error?.message || '浏览器存储空间不足'}`, true);
+    } finally {
+      const input = document.getElementById('resourceFileInput');
+      if (input) input.value = '';
+    }
+  }
+
+  getResourceFileIcon(record) {
+    const extension = this.getResourceFileExtension(record?.name || '');
+    if (extension === 'pdf') return '📕';
+    if (extension === 'doc' || extension === 'docx') return '📘';
+    if (extension === 'xls' || extension === 'xlsx' || extension === 'csv') return '📗';
+    if (['png', 'jpg', 'jpeg', 'webp'].includes(extension)) return '🖼️';
+    return '📄';
+  }
+
+  formatResourceFileSize(bytes) {
+    const value = Math.max(0, Number(bytes) || 0);
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  renderResourceFileList() {
+    const list = document.getElementById('resourceFileList');
+    if (!list) return;
+    list.replaceChildren();
+    if (!this.resourceFiles.length) {
+      const empty = document.createElement('div');
+      empty.className = 'resource-file-empty';
+      const icon = document.createElement('span');
+      icon.textContent = '🗂️';
+      empty.append(icon, document.createTextNode('还没有资料'));
+      empty.appendChild(document.createElement('br'));
+      empty.appendChild(document.createTextNode('上传后可随时从这里打开'));
+      list.appendChild(empty);
+      return;
+    }
+    this.resourceFiles.forEach(record => {
+      const card = document.createElement('div');
+      card.className = 'resource-file-card';
+      card.dataset.resourceId = record.id;
+      const openButton = document.createElement('button');
+      openButton.type = 'button';
+      openButton.className = 'resource-file-open';
+      openButton.title = `打开 ${record.name}`;
+      openButton.addEventListener('click', () => this.openResourceFile(record.id));
+      const fileIcon = document.createElement('span');
+      fileIcon.className = 'resource-file-icon';
+      fileIcon.textContent = this.getResourceFileIcon(record);
+      const main = document.createElement('span');
+      main.className = 'resource-file-main';
+      const name = document.createElement('span');
+      name.className = 'resource-file-name';
+      name.textContent = record.name;
+      const meta = document.createElement('span');
+      meta.className = 'resource-file-meta';
+      const date = new Date(Number(record.addedAt || 0));
+      meta.textContent = `${this.getResourceFileExtension(record.name).toUpperCase()} · ${this.formatResourceFileSize(record.size)} · ${date.toLocaleDateString('zh-CN')}`;
+      main.append(name, meta);
+      openButton.append(fileIcon, main);
+      const actions = document.createElement('div');
+      actions.className = 'resource-file-actions';
+      const downloadButton = document.createElement('button');
+      downloadButton.type = 'button';
+      downloadButton.className = 'resource-file-action';
+      downloadButton.title = '下载原文件';
+      downloadButton.setAttribute('aria-label', `下载 ${record.name}`);
+      downloadButton.textContent = '⬇';
+      downloadButton.addEventListener('click', () => this.downloadResourceFile(record.id));
+      const deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.className = 'resource-file-action delete';
+      deleteButton.title = '删除文件';
+      deleteButton.setAttribute('aria-label', `删除 ${record.name}`);
+      deleteButton.textContent = '🗑';
+      deleteButton.addEventListener('click', () => this.deleteResourceFile(record.id));
+      actions.append(downloadButton, deleteButton);
+      card.append(openButton, actions);
+      list.appendChild(card);
+    });
+  }
+
+  createResourceObjectUrl(record) {
+    if (!record?.blob || !(record.blob instanceof Blob)) return '';
+    const url = URL.createObjectURL(record.blob);
+    window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    return url;
+  }
+
+  openResourceFile(resourceId) {
+    const record = this.resourceFiles.find(item => String(item.id) === String(resourceId));
+    const url = this.createResourceObjectUrl(record);
+    if (!record || !url) {
+      this.setResourceFileStatus('文件读取失败，请重新上传', true);
+      return;
+    }
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.target = '_blank';
+    anchor.rel = 'noopener noreferrer';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    this.setResourceFileStatus('已打开文件；若浏览器不支持直接预览，请使用下载按钮后由系统应用查看');
+  }
+
+  downloadResourceFile(resourceId) {
+    const record = this.resourceFiles.find(item => String(item.id) === String(resourceId));
+    const url = this.createResourceObjectUrl(record);
+    if (!record || !url) {
+      this.setResourceFileStatus('文件读取失败，请重新上传', true);
+      return;
+    }
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = record.name;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  }
+
+  async deleteResourceFile(resourceId) {
+    const record = this.resourceFiles.find(item => String(item.id) === String(resourceId));
+    if (!record || !window.confirm(`确定删除“${record.name}”吗？此操作只删除当前浏览器中的文件。`)) return;
+    try {
+      const db = await this.openResourceDatabase();
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction(this.RESOURCE_STORE_NAME, 'readwrite');
+        transaction.objectStore(this.RESOURCE_STORE_NAME).delete(record.id);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error || new Error('删除失败'));
+        transaction.onabort = () => reject(transaction.error || new Error('删除已中止'));
+      });
+      db.close();
+      await this.loadResourceFiles();
+      this.setResourceFileStatus(`已删除 ${record.name}`);
+    } catch (error) {
+      this.setResourceFileStatus(`删除失败：${error?.message || '请稍后重试'}`, true);
+    }
+  }
+
+  bindResourceLibraryEvents() {
+    const input = document.getElementById('resourceFileInput');
+    const zone = document.getElementById('resourceUploadZone');
+    const closeButton = document.getElementById('closeResourceLibraryBtn');
+    closeButton?.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeResourceLibrary();
+    });
+    input?.addEventListener('change', event => this.handleResourceFiles(event.target.files));
+    zone?.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        input?.click();
+      }
+    });
+    ['dragenter', 'dragover'].forEach(eventName => zone?.addEventListener(eventName, event => {
+      event.preventDefault();
+      zone.classList.add('drag-active');
+    }));
+    ['dragleave', 'drop'].forEach(eventName => zone?.addEventListener(eventName, event => {
+      event.preventDefault();
+      zone.classList.remove('drag-active');
+    }));
+    zone?.addEventListener('drop', event => this.handleResourceFiles(event.dataTransfer?.files));
+  }
+
   loadTheme() {
     const savedTheme = SafeStorage.getItem(this.THEME_KEY);
     const btn = document.getElementById('themeToggleBtn');
@@ -9026,6 +9540,7 @@ class JpVocabApp {
 
   bindEvents() {
     try {
+      this.bindResourceLibraryEvents();
       // 点击页面其他区域关闭标签下拉菜单
       document.addEventListener('click', (e) => {
         const partOfSpeechContainer = document.getElementById('partOfSpeechDropdownContainer');
@@ -11850,7 +12365,12 @@ class JpVocabApp {
   }
 
   exportHTML() {
-    let fullHtml = document.documentElement.outerHTML;
+    const exportDocument = document.documentElement.cloneNode(true);
+    const exportedResourceList = exportDocument.querySelector('#resourceFileList');
+    const exportedResourceStatus = exportDocument.querySelector('#resourceFileStatus');
+    if (exportedResourceList) exportedResourceList.innerHTML = '<div class="resource-file-empty"><span>🗂️</span>还没有资料<br>上传后可随时从这里打开</div>';
+    if (exportedResourceStatus) exportedResourceStatus.textContent = '';
+    let fullHtml = exportDocument.outerHTML;
 
     fullHtml = fullHtml.replace(/ class="modal-overlay active"/g, ' class="modal-overlay"');
     fullHtml = fullHtml.replace(/ class="is-flipped"/g, '');

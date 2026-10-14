@@ -56,7 +56,7 @@ class VocabAppTester:
             content = f.read()
 
         # ---------------------------------------------------------------------
-        # 测试点 1: Header 顶部 3 个图标按钮点击兜底测试 (Header Actions Buttons)
+        # 测试点 1: Header 顶部图标按钮点击兜底测试 (Header Actions Buttons)
         # ---------------------------------------------------------------------
         btn_cloud_sync = bool(re.search(r'id="cloudSyncBtn"[^>]*onclick="[^"]*openCloudSyncOptionsModal', content))
         self.assert_true(btn_cloud_sync, f"[{lang_name}] Header-☁️云端同步按钮兜底点击", "cloudSyncBtn 缺少行内同步方向选择窗口兜底绑定")
@@ -232,6 +232,56 @@ class VocabAppTester:
 
         btn_quick_add = bool(re.search(r'id="quickAddBtn"[^>]*onclick="[^"]*openWordModal', content))
         self.assert_true(btn_quick_add, f"[{lang_name}] Header-➕加词按钮兜底点击", "quickAddBtn 缺少行内 openWordModal 兜底绑定")
+
+        resource_button = bool(re.search(r'id="resourceLibraryBtn"[^>]*onclick="[^"]*openResourceLibrary', content))
+        resource_button_before_add = (
+            content.find('id="resourceLibraryBtn"') >= 0
+            and content.find('id="resourceLibraryBtn"') < content.find('id="quickAddBtn"')
+        )
+        self.assert_true(
+            resource_button and resource_button_before_add,
+            f"[{lang_name}] Header-资料库按钮位于新增词条按钮左侧且带点击兜底",
+            "resourceLibraryBtn 缺失、未调用 openResourceLibrary，或没有紧邻 quickAddBtn 左侧",
+        )
+
+        resource_modal_contract = all(token in content for token in (
+            'id="resourceLibraryModal"', 'id="closeResourceLibraryBtn"',
+            'id="resourceUploadZone"', 'id="resourceFileInput"', 'multiple hidden',
+            'id="resourceFileStatus"', 'id="resourceFileList"', 'resource-file-empty',
+            '文件仅保存在当前浏览器，不会加入词库备份或云同步',
+        ))
+        self.assert_true(
+            resource_modal_contract,
+            f"[{lang_name}] 资料库-弹窗、多文件上传、空状态与本地保存边界说明完整",
+            "资料库弹窗结构、空状态、上传入口或本地保存提示不完整",
+        )
+
+        resource_persistence_contract = all(token in content for token in (
+            "this.RESOURCE_DB_NAME = 'evie_vocab_resource_library_v1'",
+            "this.RESOURCE_STORE_NAME = 'files'", 'openResourceDatabase()',
+            "db.createObjectStore(this.RESOURCE_STORE_NAME, { keyPath: 'id' })",
+            'transaction.oncomplete = () => resolve()', 'this.resourceFiles = records.sort',
+            'this.RESOURCE_MAX_FILE_SIZE = 50 * 1024 * 1024',
+            "new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'png', 'jpg', 'jpeg', 'webp'])",
+        ))
+        self.assert_true(
+            resource_persistence_contract,
+            f"[{lang_name}] 资料库-独立 IndexedDB 持久化、白名单与 50MB 上限",
+            "资料附件没有使用独立 IndexedDB、缺少事务成功门禁、文件白名单或大小上限",
+        )
+
+        resource_actions_contract = all(token in content for token in (
+            'openResourceFile(resourceId)', 'downloadResourceFile(resourceId)',
+            'async deleteResourceFile(resourceId)', 'window.confirm(`确定删除',
+            'URL.createObjectURL(record.blob)', 'URL.revokeObjectURL(url)',
+            "anchor.target = '_blank'", 'anchor.download = record.name',
+            "exportedResourceList.innerHTML = '<div class=\"resource-file-empty\"",
+        ))
+        self.assert_true(
+            resource_actions_contract,
+            f"[{lang_name}] 资料库-打开、下载、确认删除、临时 URL 回收与 HTML 导出脱敏",
+            "资料文件操作不完整，或导出 HTML 可能固化当前本地文件名",
+        )
 
         # ---------------------------------------------------------------------
         # 测试点 2: 卡片宽度与响应式布局测试 (Card Width & Layout)
@@ -2411,7 +2461,8 @@ class VocabAppTester:
 
             required_methods = (
                 'toggleTheme', 'openWordModal', 'showDetailModal', 'switchTab',
-                'syncWithSupabase', 'mergeCloudRows', 'submitCloudAuth'
+                'syncWithSupabase', 'mergeCloudRows', 'submitCloudAuth',
+                'openResourceLibrary', 'handleResourceFiles', 'deleteResourceFile'
             )
             app_ready = driver.execute_script(
                 "return !!window.app && arguments[0].every("
@@ -2422,6 +2473,122 @@ class VocabAppTester:
                 app_ready,
                 f"[{lang_name}] 浏览器运行期-window.app 初始化且核心交互方法可调用",
                 "window.app 未正确实例化，或 toggleTheme/openWordModal/showDetailModal/switchTab 缺失",
+            )
+
+            driver.find_element(By.ID, 'resourceLibraryBtn').click()
+            WebDriverWait(driver, 5).until(
+                lambda active_driver: active_driver.execute_script(
+                    "return document.getElementById('resourceLibraryModal')?.classList.contains('active');"
+                )
+            )
+            resource_initial_state = driver.execute_script("""
+                const modal = document.getElementById('resourceLibraryModal');
+                const input = document.getElementById('resourceFileInput');
+                const notice = modal?.querySelector('.resource-library-notice');
+                return !!modal && !!input && input.multiple && !!notice
+                  && notice.textContent.includes('不会加入词库备份或云同步');
+            """)
+            self.assert_true(
+                bool(resource_initial_state),
+                f"[{lang_name}] 浏览器资料库-点击 Header 按钮打开弹窗并显示本地保存边界",
+                "资料库弹窗未打开、多文件选择器无效或未显示本地保存提示",
+            )
+
+            resource_upload_result = driver.execute_async_script("""
+                const done = arguments[0];
+                const file = new File(['vocab resource regression'], 'selenium-resource.txt', {type:'text/plain'});
+                window.app.handleResourceFiles([file]).then(() => {
+                  const card = document.querySelector('#resourceFileList .resource-file-card');
+                  done({
+                    count: window.app.resourceFiles.length,
+                    name: card?.querySelector('.resource-file-name')?.textContent || '',
+                    persisted: window.app.resourceFiles[0]?.blob instanceof Blob,
+                    status: document.getElementById('resourceFileStatus')?.textContent || ''
+                  });
+                }).catch(error => done({error:String(error)}));
+            """)
+            self.assert_true(
+                bool(
+                    resource_upload_result
+                    and resource_upload_result.get('count') == 1
+                    and resource_upload_result.get('name') == 'selenium-resource.txt'
+                    and resource_upload_result.get('persisted')
+                    and '已保存 1 个文件' in resource_upload_result.get('status', '')
+                ),
+                f"[{lang_name}] 浏览器资料库-文本文件写入 IndexedDB 后才显示并报告成功",
+                f"资料文件未持久化、未渲染或成功状态错误：{resource_upload_result}",
+            )
+
+            resource_reload_result = driver.execute_async_script("""
+                const done = arguments[0];
+                window.app.resourceFiles = [];
+                window.app.loadResourceFiles().then(() => done({
+                  count: window.app.resourceFiles.length,
+                  name: window.app.resourceFiles[0]?.name || '',
+                  cardCount: document.querySelectorAll('#resourceFileList .resource-file-card').length
+                })).catch(error => done({error:String(error)}));
+            """)
+            self.assert_true(
+                bool(
+                    resource_reload_result
+                    and resource_reload_result.get('count') == 1
+                    and resource_reload_result.get('name') == 'selenium-resource.txt'
+                    and resource_reload_result.get('cardCount') == 1
+                ),
+                f"[{lang_name}] 浏览器资料库-清空内存后仍能从 IndexedDB 恢复列表",
+                f"资料只停留在内存或重读未刷新列表：{resource_reload_result}",
+            )
+
+            resource_action_result = driver.execute_script("""
+                const id = window.app.resourceFiles[0]?.id;
+                const originalClick = HTMLAnchorElement.prototype.click;
+                const clicks = [];
+                HTMLAnchorElement.prototype.click = function() {
+                  clicks.push({target:this.target || '', download:this.download || '', href:this.href || ''});
+                };
+                window.app.openResourceFile(id);
+                window.app.downloadResourceFile(id);
+                HTMLAnchorElement.prototype.click = originalClick;
+                return clicks;
+            """)
+            self.assert_true(
+                bool(
+                    resource_action_result
+                    and len(resource_action_result) == 2
+                    and resource_action_result[0].get('target') == '_blank'
+                    and resource_action_result[0].get('href', '').startswith('blob:')
+                    and resource_action_result[1].get('download') == 'selenium-resource.txt'
+                ),
+                f"[{lang_name}] 浏览器资料库-文件卡片打开与原文件下载使用 Blob URL",
+                f"打开或下载动作没有保留原文件：{resource_action_result}",
+            )
+
+            resource_delete_result = driver.execute_async_script("""
+                const done = arguments[0];
+                const id = window.app.resourceFiles[0]?.id;
+                const originalConfirm = window.confirm;
+                window.confirm = () => true;
+                window.app.deleteResourceFile(id).then(() => {
+                  window.confirm = originalConfirm;
+                  done({
+                    count: window.app.resourceFiles.length,
+                    empty: !!document.querySelector('#resourceFileList .resource-file-empty')
+                  });
+                }).catch(error => {
+                  window.confirm = originalConfirm;
+                  done({error:String(error)});
+                });
+            """)
+            self.assert_true(
+                bool(resource_delete_result and resource_delete_result.get('count') == 0 and resource_delete_result.get('empty')),
+                f"[{lang_name}] 浏览器资料库-确认删除后持久化移除并恢复空状态",
+                f"文件删除后 IndexedDB 或空状态未同步：{resource_delete_result}",
+            )
+            driver.find_element(By.ID, 'closeResourceLibraryBtn').click()
+            self.assert_true(
+                not driver.execute_script("return document.getElementById('resourceLibraryModal')?.classList.contains('active');"),
+                f"[{lang_name}] 浏览器资料库-关闭按钮退出弹窗",
+                "资料库关闭按钮点击后弹窗仍处于 active 状态",
             )
 
             default_page_size_result = driver.execute_script("""

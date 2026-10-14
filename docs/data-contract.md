@@ -44,3 +44,12 @@
 - 删除使用带时间戳的墓碑传播。
 - 云端版本变化时先无损合并，再上传仍属于本机的待处理字段。
 - 只下载模式可以覆盖本机数据，但必须先向用户明确提示不可逆影响。
+
+## 本地资料库契约
+
+- 资料文件不属于单词数据，不得添加到 `this.words`、词库 localStorage 快照、JSON/HTML 词库导出或 Supabase payload。
+- KR/JP 同源页面共用独立 IndexedDB `evie_vocab_resource_library_v1` 的 `files` object store；每条记录至少包含稳定 `id`、原始 `name`、可信白名单内的 `type`、`size`、`addedAt` 与原始 `blob`。
+- 允许 PDF、Word、Excel、CSV、纯文本及常见位图格式；拒绝不在白名单内的可执行或网页类文件。单文件大小上限为 50 MiB，支持一次选择多个文件。
+- 只有 IndexedDB 事务完成后才能提示上传成功；失败时保留弹窗上下文并展示明确错误，不得以内存缓存冒充持久化成功。
+- 删除必须经过用户确认并等待 IndexedDB 删除事务完成；文件列表随后重新读取并更新空状态。
+- PDF、图片和文本使用浏览器原生能力预览；Office 文件以原始 Blob 打开，浏览器无法内联显示时允许下载后由系统应用查看。
