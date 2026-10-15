@@ -287,6 +287,22 @@ class VocabAppTester:
             "资料文件操作不完整，或导出 HTML 可能固化当前本地文件名",
         )
 
+        resource_image_preview_contract = all(token in content for token in (
+            'id="resourceImagePreviewModal"', 'id="resourceImagePreview"',
+            'id="closeResourceImagePreviewBtn"', 'resource-image-preview-stage',
+            'isResourceImage(record)', 'openResourceImagePreview(record)',
+            'closeResourceImagePreview()', 'releaseResourceImagePreviewUrl()',
+            "const previewWindow = imageFile || record.blob instanceof Blob ? null : window.open('', '_blank')",
+            "this.setResourceFileStatus('已在当前页面打开图片预览')",
+            "URL.revokeObjectURL(this._resourceImagePreviewObjectUrl)",
+            "exportedResourcePreview.removeAttribute('src')",
+        ))
+        self.assert_true(
+            resource_image_preview_contract,
+            f"[{lang_name}] 资料库-图片使用当前页面预览层且关闭释放临时 URL",
+            "图片仍可能打开新页面，或页内预览关闭/导出脱敏/Blob URL 释放不完整",
+        )
+
         resource_cloud_contract = all(token in content for token in (
             "this.RESOURCE_STORAGE_BUCKET = 'vocab-resources'",
             'async fetchResourceCloudRows(accessToken)',
@@ -2689,6 +2705,99 @@ class VocabAppTester:
                 ),
                 f"[{lang_name}] 浏览器资料库-文件卡片打开与原文件下载使用 Blob URL",
                 f"打开或下载动作没有保留原文件：{resource_action_result}",
+            )
+
+            resource_image_preview_result = driver.execute_async_script("""
+                const done = arguments[0];
+                (async () => {
+                  const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+                  const bytes = Uint8Array.from(atob(pngBase64), char => char.charCodeAt(0));
+                  const file = new File([bytes], 'preview-regression.png', {type:'image/png'});
+                  const originalOpen = window.open;
+                  let openedWindows = 0;
+                  try {
+                    await window.app.handleResourceFiles([file]);
+                    const record = window.app.resourceFiles.find(item => item.name === file.name);
+                    window.open = () => { openedWindows += 1; return null; };
+                    const opened = await window.app.openResourceFile(record?.id);
+                    const modal = document.getElementById('resourceImagePreviewModal');
+                    const image = document.getElementById('resourceImagePreview');
+                    const title = document.getElementById('resourceImagePreviewTitle');
+                    done({
+                      id: record?.id || '', opened, openedWindows,
+                      modalActive: !!modal?.classList.contains('active'),
+                      ariaHidden: modal?.getAttribute('aria-hidden'),
+                      imageSrc: image?.getAttribute('src') || '',
+                      imageAlt: image?.alt || '', title: title?.textContent || '',
+                      libraryActive: !!document.getElementById('resourceLibraryModal')?.classList.contains('active'),
+                      objectUrlTracked: String(window.app._resourceImagePreviewObjectUrl || '').startsWith('blob:')
+                    });
+                  } catch (error) {
+                    done({error:String(error), openedWindows});
+                  } finally {
+                    window.open = originalOpen;
+                  }
+                })();
+            """)
+            self.assert_true(
+                bool(
+                    resource_image_preview_result
+                    and resource_image_preview_result.get('opened')
+                    and resource_image_preview_result.get('openedWindows') == 0
+                    and resource_image_preview_result.get('modalActive')
+                    and resource_image_preview_result.get('ariaHidden') == 'false'
+                    and resource_image_preview_result.get('imageSrc', '').startswith('blob:')
+                    and resource_image_preview_result.get('imageAlt') == 'preview-regression.png'
+                    and resource_image_preview_result.get('title') == 'preview-regression.png'
+                    and resource_image_preview_result.get('libraryActive')
+                    and resource_image_preview_result.get('objectUrlTracked')
+                ),
+                f"[{lang_name}] 浏览器资料图片-点击后在当前页面预览且不新开窗口",
+                f"图片没有进入页内预览层或仍触发新窗口：{resource_image_preview_result}",
+            )
+
+            driver.find_element(By.ID, 'closeResourceImagePreviewBtn').click()
+            resource_image_close_result = driver.execute_script("""
+                const modal = document.getElementById('resourceImagePreviewModal');
+                const image = document.getElementById('resourceImagePreview');
+                return {
+                  modalActive: !!modal?.classList.contains('active'),
+                  ariaHidden: modal?.getAttribute('aria-hidden'),
+                  hasImageSrc: image?.hasAttribute('src'),
+                  trackedUrl: window.app._resourceImagePreviewObjectUrl || '',
+                  libraryActive: !!document.getElementById('resourceLibraryModal')?.classList.contains('active')
+                };
+            """)
+            self.assert_true(
+                bool(
+                    resource_image_close_result
+                    and not resource_image_close_result.get('modalActive')
+                    and resource_image_close_result.get('ariaHidden') == 'true'
+                    and not resource_image_close_result.get('hasImageSrc')
+                    and not resource_image_close_result.get('trackedUrl')
+                    and resource_image_close_result.get('libraryActive')
+                ),
+                f"[{lang_name}] 浏览器资料图片-点击×关闭后回到列表并释放 Blob URL",
+                f"关闭图片预览后没有恢复资料列表或仍残留临时图片：{resource_image_close_result}",
+            )
+
+            resource_image_cleanup = driver.execute_async_script("""
+                const resourceId = arguments[0];
+                const done = arguments[1];
+                const originalConfirm = window.confirm;
+                window.confirm = () => true;
+                window.app.deleteResourceFile(resourceId).then(() => {
+                  window.confirm = originalConfirm;
+                  done(window.app.resourceFiles.map(item => item.name));
+                }).catch(error => {
+                  window.confirm = originalConfirm;
+                  done({error:String(error)});
+                });
+            """, resource_image_preview_result.get('id') if resource_image_preview_result else None)
+            self.assert_true(
+                resource_image_cleanup == ['selenium-resource.txt'],
+                f"[{lang_name}] 浏览器资料图片-预览测试文件清理后不影响原资料",
+                f"图片测试文件清理异常：{resource_image_cleanup}",
             )
 
             resource_delete_result = driver.execute_async_script("""

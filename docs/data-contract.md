@@ -52,7 +52,7 @@
 - 允许 PDF、Word、Excel、CSV、纯文本及常见位图格式；拒绝不在白名单内的可执行或网页类文件。单文件大小上限为 50 MiB，支持一次选择多个文件。
 - 只有 IndexedDB 事务完成后才能提示上传成功；失败时保留弹窗上下文并展示明确错误，不得以内存缓存冒充持久化成功。
 - 删除必须经过用户确认并等待 IndexedDB 删除事务完成；文件列表随后重新读取并更新空状态。
-- PDF、图片和文本使用浏览器原生能力预览；Office 文件以原始 Blob 打开，浏览器无法内联显示时允许下载后由系统应用查看。
+- PNG、JPEG、WebP 等常见位图必须在当前单词本页面的 `#resourceImagePreviewModal` 中预览，右上角 `×` 关闭后恢复资料列表且不得新开标签页；PDF、文本继续使用浏览器原生能力，Office 文件以原始 Blob 打开，浏览器无法内联显示时允许下载后由系统应用查看。
 - 云端二进制文件只保存在私有 Storage bucket `vocab-resources`，对象路径固定为 `user_id/resource_id/resource_id.extension`；`resource_files` 表只保存元数据与墓碑。Storage 和元数据表都必须启用 RLS，并仅允许已登录用户访问自己的目录或行。
 - 新增文件先作为 `cloudState=pending` 持久化到 IndexedDB；点击云同步并勾选“同步学习资料”后才上传。已有旧版本地文件在装载时迁移为待上传，不得静默丢弃。
 - 云端列表同步只下载元数据；远端独有文件的 `blob` 保持为空，点击打开或下载时再使用当前有效登录令牌获取 Blob，成功后写入 IndexedDB 作为离线缓存。

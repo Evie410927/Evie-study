@@ -336,6 +336,83 @@ html, body {
   color: #fb7185;
 }
 
+.resource-image-preview-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 450;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom));
+  background: rgba(2, 6, 23, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.resource-image-preview-modal.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.resource-image-preview-sheet {
+  display: flex;
+  width: min(960px, 100%);
+  height: min(90dvh, 900px);
+  max-height: 92vh;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-highlight);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card-solid);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.48);
+  transform: scale(0.97);
+  transition: transform 0.2s ease;
+}
+
+.resource-image-preview-modal.active .resource-image-preview-sheet {
+  transform: scale(1);
+}
+
+.resource-image-preview-header {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px 9px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.resource-image-preview-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-image-preview-stage {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 12px;
+  background: #050914;
+}
+
+.resource-image-preview-stage img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
 @media (max-width: 390px) {
   .header-actions { gap: 8px; }
   .resource-file-card { grid-template-columns: minmax(0, 1fr) auto; }
@@ -3838,6 +3915,18 @@ body::-webkit-scrollbar,
         <div id="resourceFileStatus" class="resource-file-status" role="status" aria-live="polite"></div>
         <div id="resourceFileList" class="resource-file-list">
           <div class="resource-file-empty"><span>🗂️</span>还没有资料<br>上传后可随时从这里打开</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="resourceImagePreviewModal" class="resource-image-preview-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="resourceImagePreviewTitle" onclick="if(event.target.id === 'resourceImagePreviewModal' && window.app) window.app.closeResourceImagePreview()">
+      <div class="resource-image-preview-sheet">
+        <div class="resource-image-preview-header">
+          <div id="resourceImagePreviewTitle" class="resource-image-preview-title">图片预览</div>
+          <button id="closeResourceImagePreviewBtn" type="button" class="icon-btn" aria-label="关闭图片预览" onclick="if(window.app) window.app.closeResourceImagePreview()">✕</button>
+        </div>
+        <div class="resource-image-preview-stage">
+          <img id="resourceImagePreview" alt="">
         </div>
       </div>
     </div>
@@ -9245,6 +9334,7 @@ class JpVocabApp {
   }
 
   closeResourceLibrary() {
+    this.closeResourceImagePreview();
     const modal = document.getElementById('resourceLibraryModal');
     if (modal) modal.classList.remove('active');
     const zone = document.getElementById('resourceUploadZone');
@@ -9784,15 +9874,70 @@ class JpVocabApp {
     return url;
   }
 
+  isResourceImage(record) {
+    const extension = this.getResourceFileExtension(record?.name || '');
+    return String(record?.type || '').startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp'].includes(extension);
+  }
+
+  releaseResourceImagePreviewUrl() {
+    if (!this._resourceImagePreviewObjectUrl) return;
+    URL.revokeObjectURL(this._resourceImagePreviewObjectUrl);
+    this._resourceImagePreviewObjectUrl = '';
+  }
+
+  openResourceImagePreview(record) {
+    const modal = document.getElementById('resourceImagePreviewModal');
+    const image = document.getElementById('resourceImagePreview');
+    const title = document.getElementById('resourceImagePreviewTitle');
+    if (!modal || !image || !(record?.blob instanceof Blob)) return false;
+    this.releaseResourceImagePreviewUrl();
+    this._resourceImagePreviewTrigger = typeof document.activeElement?.focus === 'function' ? document.activeElement : null;
+    const url = URL.createObjectURL(record.blob);
+    this._resourceImagePreviewObjectUrl = url;
+    image.src = url;
+    image.alt = record.name || '学习资料图片';
+    if (title) title.textContent = record.name || '图片预览';
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+    const closeButton = document.getElementById('closeResourceImagePreviewBtn');
+    if (closeButton) window.setTimeout(() => closeButton.focus(), 20);
+    return true;
+  }
+
+  closeResourceImagePreview() {
+    const modal = document.getElementById('resourceImagePreviewModal');
+    const image = document.getElementById('resourceImagePreview');
+    const title = document.getElementById('resourceImagePreviewTitle');
+    if (modal) {
+      modal.classList.remove('active');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+    if (image) {
+      image.removeAttribute('src');
+      image.alt = '';
+    }
+    if (title) title.textContent = '图片预览';
+    this.releaseResourceImagePreviewUrl();
+    const trigger = this._resourceImagePreviewTrigger;
+    this._resourceImagePreviewTrigger = null;
+    if (trigger && typeof trigger.focus === 'function') window.setTimeout(() => trigger.focus(), 0);
+  }
+
   async openResourceFile(resourceId) {
     const record = this.resourceFiles.find(item => String(item.id) === String(resourceId));
     if (!record) {
       this.setResourceFileStatus('文件记录不存在，请重新同步', true);
       return false;
     }
-    const previewWindow = record.blob instanceof Blob ? null : window.open('', '_blank');
+    const imageFile = this.isResourceImage(record);
+    const previewWindow = imageFile || record.blob instanceof Blob ? null : window.open('', '_blank');
     try {
       const readyRecord = record.blob instanceof Blob ? record : await this.ensureResourceBlob(record);
+      if (imageFile) {
+        if (!this.openResourceImagePreview(readyRecord)) throw new Error('图片预览打开失败');
+        this.setResourceFileStatus('已在当前页面打开图片预览');
+        return true;
+      }
       const url = this.createResourceObjectUrl(readyRecord);
       if (!url) throw new Error('文件读取失败，请重新上传');
       if (previewWindow && !previewWindow.closed) {
@@ -9891,6 +10036,13 @@ class JpVocabApp {
       zone.classList.remove('drag-active');
     }));
     zone?.addEventListener('drop', event => this.handleResourceFiles(event.dataTransfer?.files));
+    document.addEventListener('keydown', event => {
+      const previewModal = document.getElementById('resourceImagePreviewModal');
+      if (event.key !== 'Escape' || !previewModal?.classList.contains('active')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeResourceImagePreview();
+    }, true);
   }
 
   loadTheme() {
@@ -12748,8 +12900,20 @@ class JpVocabApp {
     const exportDocument = document.documentElement.cloneNode(true);
     const exportedResourceList = exportDocument.querySelector('#resourceFileList');
     const exportedResourceStatus = exportDocument.querySelector('#resourceFileStatus');
+    const exportedResourcePreviewModal = exportDocument.querySelector('#resourceImagePreviewModal');
+    const exportedResourcePreview = exportDocument.querySelector('#resourceImagePreview');
+    const exportedResourcePreviewTitle = exportDocument.querySelector('#resourceImagePreviewTitle');
     if (exportedResourceList) exportedResourceList.innerHTML = '<div class="resource-file-empty"><span>🗂️</span>还没有资料<br>上传后可随时从这里打开</div>';
     if (exportedResourceStatus) exportedResourceStatus.textContent = '';
+    if (exportedResourcePreviewModal) {
+      exportedResourcePreviewModal.classList.remove('active');
+      exportedResourcePreviewModal.setAttribute('aria-hidden', 'true');
+    }
+    if (exportedResourcePreview) {
+      exportedResourcePreview.removeAttribute('src');
+      exportedResourcePreview.alt = '';
+    }
+    if (exportedResourcePreviewTitle) exportedResourcePreviewTitle.textContent = '图片预览';
     let fullHtml = exportDocument.outerHTML;
 
     fullHtml = fullHtml.replace(/ class="modal-overlay active"/g, ' class="modal-overlay"');

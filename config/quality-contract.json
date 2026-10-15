@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-10-14.2",
+  "contractVersion": "2026-10-15.1",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -231,7 +231,11 @@
         "webp"
       ],
       "multipleUpload": true,
-      "openBehavior": "browser-preview-when-supported-otherwise-original-file-open-or-download",
+      "imagePreviewModalId": "resourceImagePreviewModal",
+      "imagePreviewElementId": "resourceImagePreview",
+      "imagePreviewCloseButtonId": "closeResourceImagePreviewBtn",
+      "imageOpenBehavior": "same-page-modal-with-close-returning-to-resource-list",
+      "nonImageOpenBehavior": "browser-preview-when-supported-otherwise-original-file-open-or-download",
       "deleteRequiresConfirmation": true,
       "emptyStateRequired": true,
       "localOnlyNoticeRequired": true
