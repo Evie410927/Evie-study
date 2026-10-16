@@ -110,6 +110,28 @@ class VocabAppTester:
         ))
         self.assert_true(directional_sync_options, f"[{lang_name}] 云同步-点击云朵先明确选择上传、下载或双向同步", "缺少双 Checkbox 方向选择、下载覆盖警告或三种同步分支")
 
+        cloud_sync_undo = all(token in content for token in (
+            'id="cloudSyncUndoBtn"', 'id="cloudSyncHistoryBtn"',
+            "modal.id = 'cloudSyncHistoryModal'", "modal.id = 'cloudSyncUndoConfirmModal'",
+            "getCloudSyncUndoHistoryKey()", "saveCloudSyncUndoSnapshot(cloudRows, options, userId)",
+            "[snapshot, ...history].slice(0, 5)",
+            "async restoreCloudSyncSnapshot(restoreCloud = false)",
+            "buildCloudUndoRestoreRows", "upsertRawCloudRows",
+            "Math.max(currentRevision, Number(snapshot.cloud && snapshot.cloud.revision || 0)) + 1",
+            "同步前安全快照未能保存，已停止本次词库同步以保护数据",
+            "await this.applyLocalCloudSyncUndoSnapshot(snapshot, nextRevision)",
+            "该快照属于另一个云同步账号",
+        ))
+        snapshot_before_word_mutation = (
+            content.find("await this.saveCloudSyncUndoSnapshot(cloudRows") >= 0
+            and content.find("await this.saveCloudSyncUndoSnapshot(cloudRows") < content.find("await this.replaceLocalWithCloudRows(dataRows)")
+        )
+        self.assert_true(
+            cloud_sync_undo and snapshot_before_word_mutation,
+            f"[{lang_name}] 云同步-同步前双端快照、最近五次历史与两种恢复模式",
+            "缺少撤销/历史入口、同步前复合快照门禁、五份上限、账号隔离或单调递增恢复 revision",
+        )
+
         per_word_sync = all(token in content for token in (
             "word_id", "payload", "updated_at", "deleted_at",
             "on_conflict=user_id,language,word_id", "resolution=merge-duplicates",
@@ -3376,6 +3398,25 @@ class VocabAppTester:
                 "打开云同步选择窗口后有选项被默认勾选，仍可能误传或误覆盖",
             )
 
+            cloud_undo_controls = driver.execute_async_script("""
+                const done = arguments[0];
+                (async () => {
+                  const history = await window.app.getCloudSyncUndoHistory();
+                  const undo = document.getElementById('cloudSyncUndoBtn');
+                  const historyButton = document.getElementById('cloudSyncHistoryBtn');
+                  done({
+                    historyLength:history.length,
+                    controlsPresent:!!undo && !!historyButton,
+                    stateMatches:!!undo && !!historyButton && undo.disabled === (history.length === 0) && historyButton.disabled === (history.length === 0)
+                  });
+                })().catch(error => done({error:String(error && error.message || error)}));
+            """)
+            self.assert_true(
+                bool(cloud_undo_controls and cloud_undo_controls.get('controlsPresent') and cloud_undo_controls.get('stateMatches')),
+                f"[{lang_name}] 浏览器云同步-撤销与历史按钮按本机快照状态安全启停",
+                f"撤销入口缺失或没有根据 IndexedDB 历史启停：{cloud_undo_controls}",
+            )
+
             driver.find_element(By.ID, 'cloudSyncResourcesCheckbox').click()
             resource_only_option = driver.execute_script("""
                 const execute = document.getElementById('cloudSyncExecuteBtn');
@@ -3717,6 +3758,9 @@ class VocabAppTester:
                   fetchCloudRows:app.fetchCloudRows,
                   upsertCloudRows:app.upsertCloudRows,
                   upsertCloudMeta:app.upsertCloudMeta,
+                  upsertRawCloudRows:app.upsertRawCloudRows,
+                  saveCloudSyncUndoSnapshot:app.saveCloudSyncUndoSnapshot,
+                  syncResourceLibraryWithSupabase:app.syncResourceLibraryWithSupabase,
                   showToast:app.showToast
                 };
                 const prefix = originalWords[0] && String(originalWords[0].id).startsWith('jp_') ? 'jp' : 'kr';
@@ -3848,6 +3892,9 @@ class VocabAppTester:
                   fetchCloudRows:app.fetchCloudRows,
                   upsertCloudRows:app.upsertCloudRows,
                   upsertCloudMeta:app.upsertCloudMeta,
+                  upsertRawCloudRows:app.upsertRawCloudRows,
+                  saveCloudSyncUndoSnapshot:app.saveCloudSyncUndoSnapshot,
+                  syncResourceLibraryWithSupabase:app.syncResourceLibraryWithSupabase,
                   showToast:app.showToast
                 };
                 const prefix = originalWords[0] && String(originalWords[0].id).startsWith('jp_') ? 'jp' : 'kr';
@@ -3897,6 +3944,8 @@ class VocabAppTester:
                   const downloadStart = toasts.length;
                   const downloadOk = await app.syncWithSupabase(true, {uploadLocal:false, downloadCloud:true});
                   const downloadToasts = toasts.slice(downloadStart);
+                  const historyAfterDownload = await app.getCloudSyncUndoHistory();
+                  const downloadSnapshot = historyAfterDownload[0];
                   const downloadOnlyReplacedLocal = downloadOk
                     && rowUploadCalls === 0 && metaUploadCalls === 0
                     && app.words.length === 2
@@ -3907,6 +3956,12 @@ class VocabAppTester:
                     && Object.keys(app.getDeletedRecords()).length === 0
                     && app.getCloudBaselineRevision() === 7
                     && downloadToasts.includes('✅ 同步完成');
+                  const downloadSnapshotCapturedBothSides = !!downloadSnapshot
+                    && downloadSnapshot.action === '同步云端内容'
+                    && downloadSnapshot.local.words.some(word => word.id === localOnlyId)
+                    && Object.keys(downloadSnapshot.local.pendingCloudChanges || {}).length === 2
+                    && downloadSnapshot.cloud.revision === 7
+                    && downloadSnapshot.cloud.rows.some(row => row.word_id === cloudOnlyId);
 
                   rowUploadCalls = 0;
                   metaUploadCalls = 0;
@@ -3925,6 +3980,8 @@ class VocabAppTester:
                   const uploadStart = toasts.length;
                   const uploadOk = await app.syncWithSupabase(true, {uploadLocal:true, downloadCloud:false});
                   const uploadToasts = toasts.slice(uploadStart);
+                  const historyAfterUpload = await app.getCloudSyncUndoHistory();
+                  const uploadSnapshot = historyAfterUpload[0];
                   const cloudOnlyTombstone = uploadedRows.find(row => row.word_id === cloudOnlyId);
                   const uploadOnlyPublishedLocalVersion = uploadOk
                     && rowUploadCalls === 1 && metaUploadCalls === 1 && uploadedRevision === 8
@@ -3937,17 +3994,84 @@ class VocabAppTester:
                     && Object.keys(app.getPendingCloudChanges()).length === 0
                     && app.getCloudBaselineRevision() === 8
                     && uploadToasts.includes('✅ 上传完成');
+                  const uploadSnapshotCapturedBothSides = !!uploadSnapshot
+                    && uploadSnapshot.action === '上传本地版本'
+                    && uploadSnapshot.local.words.length === 3
+                    && uploadSnapshot.local.words.some(word => word.id === localUnchangedId)
+                    && uploadSnapshot.cloud.rows.some(row => row.word_id === cloudOnlyId)
+                    && historyAfterUpload.length <= 5;
+
+                  app.words = [{id:prefix + '_after_wrong_sync', word:'误操作后的词', meaning:'应被恢复', tags:[], updatedAt:9999}];
+                  app.saveDeletedRecords({});
+                  app.savePendingCloudChanges({});
+                  SafeStorage.setItem(app.CLOUD_BASE_REVISION_KEY, '99');
+                  app.pendingCloudSyncUndoSnapshotId = uploadSnapshot.id;
+                  const localRestoreOk = await app.restoreCloudSyncSnapshot(false);
+                  const localOnlyRestorePreservedCloudAndPending = localRestoreOk
+                    && app.words.length === 3
+                    && app.words.some(word => word.id === localUnchangedId)
+                    && Object.keys(app.getPendingCloudChanges()).length === 2
+                    && app.getCloudBaselineRevision() === 3;
+
+                  let rawRestoreRows = [];
+                  let restoredRevision = null;
+                  const currentExtraId = prefix + '_cloud_added_after_snapshot';
+                  app.fetchCloudRows = async () => [
+                    {word_id:'__sync_meta__', updated_at:9500, deleted_at:null, payload:{schema:1, revision:8}},
+                    ...cloudRows.filter(row => row.word_id !== '__sync_meta__'),
+                    {word_id:currentExtraId, updated_at:9501, deleted_at:null, payload:{id:currentExtraId, word:'快照后云端新增', meaning:'恢复时应写墓碑', tags:[]}}
+                  ];
+                  app.upsertRawCloudRows = async (token, rows) => { rawRestoreRows = rows; return rows.length; };
+                  app.upsertCloudMeta = async (token, userId, revision) => { restoredRevision = revision; return true; };
+                  app.pendingCloudSyncUndoSnapshotId = uploadSnapshot.id;
+                  const cloudRestoreOk = await app.restoreCloudSyncSnapshot(true);
+                  const extraTombstone = rawRestoreRows.find(row => row.word_id === currentExtraId);
+                  const cloudRestoreReplaysSnapshotWithNewRevision = cloudRestoreOk
+                    && restoredRevision === 9
+                    && rawRestoreRows.some(row => row.word_id === cloudOnlyId && !row.deleted_at)
+                    && !!extraTombstone && extraTombstone.deleted_at > 0
+                    && app.getCloudBaselineRevision() === 9
+                    && (await app.getCloudSyncUndoHistory()).some(item => item.id === uploadSnapshot.id);
+
+                  const historyBeforeResourceOnly = await app.getCloudSyncUndoHistory();
+                  app.syncResourceLibraryWithSupabase = async () => true;
+                  const resourceOnlyOk = await app.syncWithSupabase(false, {uploadLocal:false, downloadCloud:false, syncResources:true});
+                  const historyAfterResourceOnly = await app.getCloudSyncUndoHistory();
+                  const resourceOnlySkippedWordSnapshot = resourceOnlyOk
+                    && historyAfterResourceOnly.map(item => item.id).join(',') === historyBeforeResourceOnly.map(item => item.id).join(',');
+
+                  let snapshotGateUploadCalls = 0;
+                  app.saveCloudSyncUndoSnapshot = async () => false;
+                  app.fetchCloudRows = async () => cloudRows;
+                  app.upsertCloudRows = async () => { snapshotGateUploadCalls += 1; return []; };
+                  const snapshotGateStoppedSync = !(await app.syncWithSupabase(false, {uploadLocal:true, downloadCloud:false}))
+                    && snapshotGateUploadCalls === 0;
+                  app.saveCloudSyncUndoSnapshot = originals.saveCloudSyncUndoSnapshot;
+                  app.syncResourceLibraryWithSupabase = originals.syncResourceLibraryWithSupabase;
 
                   const callsBeforeEmptySelection = sessionCalls;
                   const emptySelectionRejected = !(await app.syncWithSupabase(true, {uploadLocal:false, downloadCloud:false}))
                     && sessionCalls === callsBeforeEmptySelection
                     && toasts.includes('⚠️ 请至少选择一项云同步操作');
-                  done({downloadOnlyReplacedLocal, uploadOnlyPublishedLocalVersion, emptySelectionRejected});
+                  done({
+                    downloadOnlyReplacedLocal,
+                    downloadSnapshotCapturedBothSides,
+                    uploadOnlyPublishedLocalVersion,
+                    uploadSnapshotCapturedBothSides,
+                    localOnlyRestorePreservedCloudAndPending,
+                    cloudRestoreReplaysSnapshotWithNewRevision,
+                    resourceOnlySkippedWordSnapshot,
+                    snapshotGateStoppedSync,
+                    emptySelectionRejected
+                  });
                 })().catch(error => done({error:String(error && error.message || error)})).finally(() => {
                   app.getValidCloudSession = originals.getValidCloudSession;
                   app.fetchCloudRows = originals.fetchCloudRows;
                   app.upsertCloudRows = originals.upsertCloudRows;
                   app.upsertCloudMeta = originals.upsertCloudMeta;
+                  app.upsertRawCloudRows = originals.upsertRawCloudRows;
+                  app.saveCloudSyncUndoSnapshot = originals.saveCloudSyncUndoSnapshot;
+                  app.syncResourceLibraryWithSupabase = originals.syncResourceLibraryWithSupabase;
                   app.showToast = originals.showToast;
                   app.words = originalWords;
                   app.saveDeletedRecords(originalDeleted);
@@ -3968,9 +4092,39 @@ class VocabAppTester:
                 f"下载覆盖仍发生上传、保留了本地独有内容或未清空待上传队列：{directional_sync_result}",
             )
             self.assert_true(
+                bool(directional_sync_result and directional_sync_result.get('downloadSnapshotCapturedBothSides')),
+                f"[{lang_name}] 浏览器云同步撤销-下载覆盖前同时保存本地待办与云端整库",
+                f"下载前复合快照缺少本地或云端一侧：{directional_sync_result}",
+            )
+            self.assert_true(
                 bool(directional_sync_result and directional_sync_result.get('uploadOnlyPublishedLocalVersion')),
                 f"[{lang_name}] 浏览器云同步-只上传时以本地完整词库发布云端最新版本",
                 f"仅上传没有上传本地全量、未删除云端独有词或没有更新本机云端基线：{directional_sync_result}",
+            )
+            self.assert_true(
+                bool(directional_sync_result and directional_sync_result.get('uploadSnapshotCapturedBothSides')),
+                f"[{lang_name}] 浏览器云同步撤销-上传覆盖前保存双端状态且历史最多五份",
+                f"上传前快照缺字段、未包含云端独有词或超过五份：{directional_sync_result}",
+            )
+            self.assert_true(
+                bool(directional_sync_result and directional_sync_result.get('localOnlyRestorePreservedCloudAndPending')),
+                f"[{lang_name}] 浏览器云同步撤销-只恢复本机词库、待上传字段、墓碑与原基线",
+                f"仅本地恢复没有完整还原同步前状态：{directional_sync_result}",
+            )
+            self.assert_true(
+                bool(directional_sync_result and directional_sync_result.get('cloudRestoreReplaysSnapshotWithNewRevision')),
+                f"[{lang_name}] 浏览器云同步撤销-恢复双端并为快照外云端词写墓碑和新 revision",
+                f"双端恢复没有复原云端独有词、清理快照外词或递增 revision：{directional_sync_result}",
+            )
+            self.assert_true(
+                bool(directional_sync_result and directional_sync_result.get('resourceOnlySkippedWordSnapshot')),
+                f"[{lang_name}] 浏览器云同步撤销-纯学习资料同步不污染词库历史",
+                f"只同步资料仍创建了词库撤销快照：{directional_sync_result}",
+            )
+            self.assert_true(
+                bool(directional_sync_result and directional_sync_result.get('snapshotGateStoppedSync')),
+                f"[{lang_name}] 浏览器云同步撤销-安全快照写入失败时阻止词库上传",
+                f"快照落盘失败后仍继续写云端：{directional_sync_result}",
             )
             self.assert_true(
                 bool(directional_sync_result and directional_sync_result.get('emptySelectionRejected')),

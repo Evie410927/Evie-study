@@ -7593,6 +7593,10 @@ function createSupabaseSyncMethods(language) {
           <div id="cloudDownloadDiscardWarning" role="alert" style="display:none;margin:0 0 12px;padding:11px 12px;border:1px solid rgba(251,113,133,.65);border-radius:10px;background:rgba(190,24,93,.16);color:#fda4af;font-size:13px;line-height:1.55;">⚠️ 只同步云端将永久丢弃本浏览器未上传的修改、本地新增词和本地删除记录，并以云端数据完全覆盖本处。</div>
           <div id="cloudUploadOnlyNotice" role="alert" style="display:none;margin:0 0 12px;padding:11px 12px;border:1px solid rgba(251,113,133,.65);border-radius:10px;background:rgba(190,24,93,.16);color:#fda4af;font-size:13px;line-height:1.55;">⚠️ 只上传会以本浏览器完整词库覆盖云端；云端独有、但本地不存在的词将从云端最新版本中删除。</div>
           <button id="cloudSyncExecuteBtn" type="button" disabled onclick="if(window.app) window.app.runSelectedCloudSync()" style="width:100%;padding:11px;border:0;border-radius:11px;background:linear-gradient(135deg,var(--accent-primary,#ec4899),#8b5cf6);color:white;font-weight:700;cursor:pointer;">开始执行</button>
+          <div style="display:flex;gap:9px;margin-top:10px;">
+            <button id="cloudSyncUndoBtn" type="button" disabled onclick="if(window.app) window.app.openCloudSyncUndoConfirm()" style="flex:1;padding:9px 8px;border:1px solid var(--border-color,#475569);border-radius:10px;background:rgba(15,23,42,.35);color:inherit;font-weight:650;cursor:pointer;">↩ 撤销上次同步</button>
+            <button id="cloudSyncHistoryBtn" type="button" disabled onclick="if(window.app) window.app.openCloudSyncHistoryModal()" style="flex:1;padding:9px 8px;border:1px solid var(--border-color,#475569);border-radius:10px;background:rgba(15,23,42,.35);color:inherit;font-weight:650;cursor:pointer;">🕘 同步历史</button>
+          </div>
         </div>`;
         document.body.appendChild(modal);
       }
@@ -7605,6 +7609,7 @@ function createSupabaseSyncMethods(language) {
       this.updateCloudSyncOptionState();
       modal.style.display = 'flex';
       this.resetModalScrollToTop(modal, '[data-modal-scroll]');
+      if (this.refreshCloudSyncUndoControls) this.refreshCloudSyncUndoControls();
     },
 
     closeCloudSyncOptionsModal() {
@@ -7647,6 +7652,193 @@ function createSupabaseSyncMethods(language) {
       this.pendingCloudSyncSelection = syncOptions;
       this.closeCloudSyncOptionsModal();
       return await this.syncWithSupabase(true, syncOptions);
+    },
+
+    cloneCloudSyncUndoValue(value) {
+      return JSON.parse(JSON.stringify(value === undefined ? null : value));
+    },
+
+    getCloudSyncUndoHistoryKey() {
+      return `${this.STORAGE_KEY}_cloud_sync_undo_history_v1`;
+    },
+
+    async getCloudSyncUndoHistory() {
+      try {
+        const stored = await DurableStorage.getItem(this.getCloudSyncUndoHistoryKey());
+        if (!Array.isArray(stored)) return [];
+        return stored.filter(item => item && item.schema === 1 && item.id && item.local && item.cloud).slice(0, 5);
+      } catch (error) {
+        console.warn('Cloud sync undo history read failed:', error);
+        return [];
+      }
+    },
+
+    getCloudSyncActionLabel(options = {}) {
+      if (options.uploadLocal && options.downloadCloud) return '双向同步';
+      if (options.uploadLocal) return '上传本地版本';
+      if (options.downloadCloud) return '同步云端内容';
+      return '词库同步';
+    },
+
+    countActiveCloudSnapshotRows(rows) {
+      return (Array.isArray(rows) ? rows : []).filter(row => {
+        const id = String(row && row.word_id || '');
+        return id && id !== '__sync_meta__' && Number(row && row.deleted_at || 0) <= 0;
+      }).length;
+    },
+
+    async saveCloudSyncUndoSnapshot(cloudRows, options, userId) {
+      try {
+        const storedHistory = await DurableStorage.getItem(this.getCloudSyncUndoHistoryKey());
+        const history = Array.isArray(storedHistory)
+          ? storedHistory.filter(item => item && item.schema === 1 && item.id && item.local && item.cloud).slice(0, 5)
+          : [];
+        const createdAt = Date.now();
+        const snapshot = {
+          schema: 1,
+          id: `sync_${createdAt}_${Math.random().toString(36).slice(2, 10)}`,
+          createdAt,
+          language,
+          userId: String(userId || ''),
+          deviceId: this.getCloudDeviceId(),
+          action: this.getCloudSyncActionLabel(options),
+          options: {
+            uploadLocal: Boolean(options && options.uploadLocal),
+            downloadCloud: Boolean(options && options.downloadCloud)
+          },
+          local: {
+            words: this.cloneCloudSyncUndoValue(Array.isArray(this.words) ? this.words : []),
+            pendingCloudChanges: this.cloneCloudSyncUndoValue(this.getPendingCloudChanges()),
+            deletedRecords: this.cloneCloudSyncUndoValue(this.getDeletedRecords()),
+            cloudBaselineRevision: this.getCloudBaselineRevision()
+          },
+          cloud: {
+            rows: this.cloneCloudSyncUndoValue(Array.isArray(cloudRows) ? cloudRows : []),
+            revision: this.splitCloudRows(cloudRows).revision
+          }
+        };
+        const saved = await DurableStorage.setItem(this.getCloudSyncUndoHistoryKey(), [snapshot, ...history].slice(0, 5));
+        if (!saved) return false;
+        if (this.refreshCloudSyncUndoControls) this.refreshCloudSyncUndoControls();
+        return true;
+      } catch (error) {
+        console.warn('Cloud sync undo snapshot failed:', error);
+        return false;
+      }
+    },
+
+    async refreshCloudSyncUndoControls() {
+      const undoButton = document.getElementById('cloudSyncUndoBtn');
+      const historyButton = document.getElementById('cloudSyncHistoryBtn');
+      if (!undoButton && !historyButton) return;
+      const history = await this.getCloudSyncUndoHistory();
+      const disabled = history.length === 0;
+      [undoButton, historyButton].forEach(button => {
+        if (!button) return;
+        button.disabled = disabled;
+        button.style.opacity = disabled ? '.45' : '1';
+        button.style.cursor = disabled ? 'not-allowed' : 'pointer';
+      });
+      if (undoButton) undoButton.textContent = disabled ? '↩ 暂无可撤销同步' : '↩ 撤销上次同步';
+    },
+
+    formatCloudSyncSnapshotTime(value) {
+      const date = new Date(Number(value || 0));
+      return Number.isFinite(date.getTime()) ? date.toLocaleString('zh-CN', { hour12: false }) : '未知时间';
+    },
+
+    closeCloudSyncHistoryModal() {
+      const modal = document.getElementById('cloudSyncHistoryModal');
+      if (modal) modal.style.display = 'none';
+    },
+
+    async openCloudSyncHistoryModal() {
+      let modal = document.getElementById('cloudSyncHistoryModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'cloudSyncHistoryModal';
+        modal.style.cssText = 'position:fixed;inset:0;z-index:10020;background:rgba(5,10,24,.82);display:none;align-items:center;justify-content:center;padding:20px;';
+        modal.innerHTML = `<div data-modal-scroll style="width:min(460px,100%);max-height:calc(100vh - 40px);overflow-y:auto;background:var(--bg-secondary,#1e293b);border:1px solid var(--border-color,#334155);border-radius:18px;padding:20px;color:var(--text-primary,#f8fafc);box-shadow:0 20px 55px rgba(0,0,0,.45);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><strong style="font-size:18px;">🕘 同步历史</strong><button type="button" aria-label="关闭" onclick="if(window.app) window.app.closeCloudSyncHistoryModal()" style="border:0;background:transparent;color:inherit;font-size:22px;cursor:pointer;">×</button></div>
+          <p style="margin:0 0 14px;color:var(--text-secondary,#94a3b8);font-size:13px;line-height:1.55;">仅保存在当前浏览器，最多保留最近 5 份同步前快照。</p>
+          <div id="cloudSyncHistoryList"></div>
+        </div>`;
+        document.body.appendChild(modal);
+      }
+      const list = document.getElementById('cloudSyncHistoryList');
+      const history = await this.getCloudSyncUndoHistory();
+      if (list) {
+        list.replaceChildren();
+        if (history.length === 0) {
+          const empty = document.createElement('div');
+          empty.textContent = '暂无可恢复的同步历史。';
+          empty.style.cssText = 'padding:18px 10px;text-align:center;color:var(--text-secondary,#94a3b8);font-size:13px;';
+          list.appendChild(empty);
+        } else {
+          history.forEach((snapshot, index) => {
+            const card = document.createElement('div');
+            card.style.cssText = 'margin-bottom:10px;padding:13px;border:1px solid var(--border-color,#475569);border-radius:12px;background:rgba(15,23,42,.32);';
+            const title = document.createElement('strong');
+            title.textContent = `${index === 0 ? '最近一次 · ' : ''}${snapshot.action || '词库同步'}`;
+            title.style.cssText = 'display:block;margin-bottom:5px;font-size:14px;';
+            const detail = document.createElement('div');
+            const localCount = Array.isArray(snapshot.local && snapshot.local.words) ? snapshot.local.words.length : 0;
+            const cloudCount = this.countActiveCloudSnapshotRows(snapshot.cloud && snapshot.cloud.rows);
+            detail.textContent = `${this.formatCloudSyncSnapshotTime(snapshot.createdAt)} · 本地 ${localCount} 条 · 云端 ${cloudCount} 条`;
+            detail.style.cssText = 'color:var(--text-secondary,#94a3b8);font-size:12px;line-height:1.5;';
+            const restoreButton = document.createElement('button');
+            restoreButton.type = 'button';
+            restoreButton.textContent = '选择恢复方式';
+            restoreButton.style.cssText = 'width:100%;margin-top:10px;padding:8px;border:1px solid rgba(236,72,153,.5);border-radius:9px;background:rgba(236,72,153,.1);color:inherit;font-weight:650;cursor:pointer;';
+            restoreButton.addEventListener('click', () => this.openCloudSyncUndoConfirm(snapshot.id));
+            card.append(title, detail, restoreButton);
+            list.appendChild(card);
+          });
+        }
+      }
+      modal.style.display = 'flex';
+      this.resetModalScrollToTop(modal, '[data-modal-scroll]');
+    },
+
+    closeCloudSyncUndoConfirm() {
+      const modal = document.getElementById('cloudSyncUndoConfirmModal');
+      if (modal) modal.style.display = 'none';
+      this.pendingCloudSyncUndoSnapshotId = null;
+    },
+
+    async openCloudSyncUndoConfirm(snapshotId = null) {
+      const history = await this.getCloudSyncUndoHistory();
+      const snapshot = snapshotId ? history.find(item => item.id === snapshotId) : history[0];
+      if (!snapshot) {
+        this.showToast('⚠️ 暂无可撤销的同步快照');
+        if (this.refreshCloudSyncUndoControls) this.refreshCloudSyncUndoControls();
+        return false;
+      }
+      this.pendingCloudSyncUndoSnapshotId = snapshot.id;
+      let modal = document.getElementById('cloudSyncUndoConfirmModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'cloudSyncUndoConfirmModal';
+        modal.style.cssText = 'position:fixed;inset:0;z-index:10030;background:rgba(5,10,24,.86);display:none;align-items:center;justify-content:center;padding:20px;';
+        modal.innerHTML = `<div data-modal-scroll style="width:min(440px,100%);max-height:calc(100vh - 40px);overflow-y:auto;background:var(--bg-secondary,#1e293b);border:1px solid var(--border-color,#334155);border-radius:18px;padding:21px;color:var(--text-primary,#f8fafc);box-shadow:0 20px 55px rgba(0,0,0,.5);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><strong style="font-size:18px;">↩ 恢复同步前状态</strong><button type="button" aria-label="关闭" onclick="if(window.app) window.app.closeCloudSyncUndoConfirm()" style="border:0;background:transparent;color:inherit;font-size:22px;cursor:pointer;">×</button></div>
+          <div id="cloudSyncUndoSummary" style="margin:0 0 14px;color:var(--text-secondary,#94a3b8);font-size:13px;line-height:1.65;"></div>
+          <button id="cloudUndoRestoreLocalBtn" type="button" onclick="if(window.app) window.app.restoreCloudSyncSnapshot(false)" style="width:100%;margin-bottom:9px;padding:11px;border:1px solid var(--border-color,#475569);border-radius:10px;background:rgba(15,23,42,.35);color:inherit;font-weight:700;cursor:pointer;">只恢复到本浏览器</button>
+          <button id="cloudUndoRestoreBothBtn" type="button" onclick="if(window.app) window.app.restoreCloudSyncSnapshot(true)" style="width:100%;padding:11px;border:0;border-radius:10px;background:linear-gradient(135deg,var(--accent-primary,#ec4899),#8b5cf6);color:white;font-weight:700;cursor:pointer;">恢复本地与云端</button>
+          <p style="margin:12px 0 0;color:#fda4af;font-size:12px;line-height:1.55;">恢复云端会创建一个新的版本，并删除该快照之后才出现在云端的词条。所选快照不会被删除。</p>
+        </div>`;
+        document.body.appendChild(modal);
+      }
+      const summary = document.getElementById('cloudSyncUndoSummary');
+      if (summary) {
+        const localCount = Array.isArray(snapshot.local && snapshot.local.words) ? snapshot.local.words.length : 0;
+        const cloudCount = this.countActiveCloudSnapshotRows(snapshot.cloud && snapshot.cloud.rows);
+        summary.textContent = `${this.formatCloudSyncSnapshotTime(snapshot.createdAt)}，${snapshot.action || '词库同步'}前的快照。本地将恢复为 ${localCount} 条；选择恢复云端时，云端将恢复为当时的 ${cloudCount} 条有效词条。`;
+      }
+      this.closeCloudSyncHistoryModal();
+      modal.style.display = 'flex';
+      this.resetModalScrollToTop(modal, '[data-modal-scroll]');
+      return true;
     },
 
     openCloudAuthModal() {
@@ -8208,6 +8400,138 @@ function createSupabaseSyncMethods(language) {
       return row;
     },
 
+    async upsertRawCloudRows(accessToken, rows) {
+      const normalizedRows = Array.isArray(rows) ? rows.filter(row => row && row.word_id && row.word_id !== '__sync_meta__') : [];
+      for (let index = 0; index < normalizedRows.length; index += 50) {
+        const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/vocab_items?on_conflict=user_id,language,word_id`, {
+          method: 'POST',
+          headers: this.cloudHeaders(accessToken, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+          body: JSON.stringify(normalizedRows.slice(index, index + 50))
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          const error = new Error(data.message || data.hint || `云端恢复写入失败 (${response.status})`);
+          error.status = response.status;
+          error.code = data.code;
+          throw error;
+        }
+      }
+      return normalizedRows.length;
+    },
+
+    buildCloudUndoRestoreRows(snapshotRows, currentRows, userId, restoredAt) {
+      const snapshotMap = new Map();
+      (Array.isArray(snapshotRows) ? snapshotRows : []).forEach(row => {
+        const id = String(row && row.word_id || '');
+        if (id && id !== '__sync_meta__') snapshotMap.set(id, row);
+      });
+      const currentMap = new Map();
+      (Array.isArray(currentRows) ? currentRows : []).forEach(row => {
+        const id = String(row && row.word_id || '');
+        if (id && id !== '__sync_meta__') currentMap.set(id, row);
+      });
+      const restoredRows = [];
+      snapshotMap.forEach((row, id) => {
+        const wasDeleted = Number(row && row.deleted_at || 0) > 0;
+        const payload = row && row.payload && typeof row.payload === 'object'
+          ? this.cloneCloudSyncUndoValue(row.payload)
+          : { id, word: '' };
+        payload.id = String(payload.id || id);
+        if (!wasDeleted) payload.updatedAt = restoredAt;
+        restoredRows.push({
+          user_id: userId,
+          language,
+          word_id: id,
+          payload,
+          updated_at: restoredAt,
+          deleted_at: wasDeleted ? restoredAt : null
+        });
+      });
+      currentMap.forEach((row, id) => {
+        if (snapshotMap.has(id)) return;
+        restoredRows.push({
+          user_id: userId,
+          language,
+          word_id: id,
+          payload: { id, word: row && row.payload && row.payload.word || '' },
+          updated_at: restoredAt,
+          deleted_at: restoredAt
+        });
+      });
+      return restoredRows;
+    },
+
+    async applyLocalCloudSyncUndoSnapshot(snapshot, baselineRevision) {
+      if (!snapshot || !snapshot.local || !Array.isArray(snapshot.local.words)) {
+        throw new Error('同步历史中的本地快照无效');
+      }
+      this.words = this.cloneCloudSyncUndoValue(snapshot.local.words);
+      this.savePendingCloudChanges(this.cloneCloudSyncUndoValue(snapshot.local.pendingCloudChanges || {}));
+      this.saveDeletedRecords(this.cloneCloudSyncUndoValue(snapshot.local.deletedRecords || {}));
+      const revision = baselineRevision === undefined ? snapshot.local.cloudBaselineRevision : baselineRevision;
+      if (revision === null || revision === undefined || !Number.isFinite(Number(revision))) {
+        SafeStorage.removeItem(this.CLOUD_BASE_REVISION_KEY);
+      } else {
+        SafeStorage.setItem(this.CLOUD_BASE_REVISION_KEY, String(Math.max(0, Number(revision) || 0)));
+      }
+      if (this.backfillPronunciationNoteTags) this.backfillPronunciationNoteTags(this.words, { trackCloud: false, touchMetadata: false });
+      if (!await this.persistSyncedData()) throw new Error('恢复后的词库未能持久保存，请检查浏览器存储权限后重试');
+      if (this.refreshWordFingerprints) this.refreshWordFingerprints();
+      this.currentPage = 1;
+      this.renderWordList();
+      this.updateStats();
+      return this.words.length;
+    },
+
+    async restoreCloudSyncSnapshot(restoreCloud = false) {
+      if (this._cloudSyncRestoring) {
+        this.showToast('↩ 正在恢复，请稍候...');
+        return false;
+      }
+      const history = await this.getCloudSyncUndoHistory();
+      const snapshot = history.find(item => item.id === this.pendingCloudSyncUndoSnapshotId);
+      if (!snapshot) {
+        this.showToast('⚠️ 所选同步快照不存在或已失效');
+        return false;
+      }
+      this._cloudSyncRestoring = true;
+      const localButton = document.getElementById('cloudUndoRestoreLocalBtn');
+      const bothButton = document.getElementById('cloudUndoRestoreBothBtn');
+      [localButton, bothButton].forEach(button => { if (button) button.disabled = true; });
+      this.showToast(restoreCloud ? '↩ 正在恢复本地与云端...' : '↩ 正在恢复本浏览器...');
+      try {
+        let nextRevision;
+        if (restoreCloud) {
+          const session = await this.getValidCloudSession(true);
+          if (!session) return false;
+          const jwtUser = this.decodeCloudUser(session.access_token);
+          const userId = String(session.user && session.user.id || jwtUser && jwtUser.sub || '');
+          if (!userId) throw new Error('无法识别云同步账号，请重新登录');
+          if (snapshot.userId && String(snapshot.userId) !== userId) throw new Error('该快照属于另一个云同步账号，不能写入当前账号');
+          const currentRows = await this.fetchCloudRows(session.access_token);
+          const currentRevision = this.splitCloudRows(currentRows).revision;
+          const restoredAt = Date.now();
+          const rows = this.buildCloudUndoRestoreRows(snapshot.cloud && snapshot.cloud.rows, currentRows, userId, restoredAt);
+          await this.upsertRawCloudRows(session.access_token, rows);
+          nextRevision = Math.max(currentRevision, Number(snapshot.cloud && snapshot.cloud.revision || 0)) + 1;
+          await this.upsertCloudMeta(session.access_token, userId, nextRevision);
+        }
+        await this.applyLocalCloudSyncUndoSnapshot(snapshot, nextRevision);
+        this.closeCloudSyncUndoConfirm();
+        this.closeCloudSyncOptionsModal();
+        if (this.refreshCloudSyncUndoControls) this.refreshCloudSyncUndoControls();
+        this.showToast(restoreCloud ? '✅ 本地与云端已恢复到同步前状态' : '✅ 本浏览器已恢复到同步前状态');
+        return true;
+      } catch (error) {
+        console.warn('Cloud sync undo restore failed:', error);
+        this.showToast(`⚠️ 恢复失败：${error.message || '请检查网络和浏览器存储'}`);
+        return false;
+      } finally {
+        this._cloudSyncRestoring = false;
+        [localButton, bothButton].forEach(button => { if (button) button.disabled = false; });
+      }
+    },
+
     async mergeCloudRows(rows) {
       const localMap = new Map((this.words || []).filter(w => w && w.id).map(w => [String(w.id), w]));
       const deleted = this.getDeletedRecords();
@@ -8378,6 +8702,9 @@ function createSupabaseSyncMethods(language) {
         }
         const cloudRows = await this.fetchCloudRows(session.access_token);
         const { metaRow, dataRows, revision: cloudRevision } = this.splitCloudRows(cloudRows);
+        if ((uploadLocal || downloadCloud) && !await this.saveCloudSyncUndoSnapshot(cloudRows, { uploadLocal, downloadCloud }, userId)) {
+          throw new Error('同步前安全快照未能保存，已停止本次词库同步以保护数据');
+        }
 
         if (!uploadLocal && downloadCloud) {
           await this.replaceLocalWithCloudRows(dataRows);
