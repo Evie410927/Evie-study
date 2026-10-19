@@ -57,13 +57,24 @@ create table if not exists public.resource_files (
   size bigint not null default 0 check (size >= 0 and size <= 52428800),
   sha256 text not null default '',
   storage_path text not null default '',
+  sort_order bigint not null default 0,
+  order_updated_at bigint not null default 0,
   updated_at bigint not null default ((extract(epoch from now()) * 1000)::bigint),
   deleted_at bigint,
   primary key (user_id, resource_id)
 );
 
+alter table public.resource_files
+  add column if not exists sort_order bigint not null default 0;
+
+alter table public.resource_files
+  add column if not exists order_updated_at bigint not null default 0;
+
 create index if not exists resource_files_user_updated_idx
   on public.resource_files (user_id, updated_at desc);
+
+create index if not exists resource_files_user_sort_idx
+  on public.resource_files (user_id, sort_order asc);
 
 alter table public.resource_files enable row level security;
 

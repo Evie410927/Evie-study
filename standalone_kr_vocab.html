@@ -267,6 +267,15 @@ html, body {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   background: var(--bg-primary);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease, transform 0.16s ease;
+}
+
+.resource-file-card.resource-sort-dragging {
+  z-index: 2;
+  border-color: var(--accent-color);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.26);
+  opacity: 0.78;
+  transform: scale(0.99);
 }
 
 .resource-file-open {
@@ -318,7 +327,35 @@ html, body {
 
 .resource-file-actions {
   display: flex;
+  align-items: center;
   gap: 5px;
+}
+
+.resource-file-drag-handle {
+  display: inline-flex;
+  width: 27px;
+  height: 31px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: grab;
+  font-size: 19px;
+  line-height: 1;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.resource-file-drag-handle:hover,
+.resource-file-drag-handle:focus-visible {
+  color: var(--accent-color);
+}
+
+.resource-file-drag-handle:active {
+  cursor: grabbing;
 }
 
 .resource-file-action {
@@ -21538,6 +21575,8 @@ class KrVocabApp {
     this.RESOURCE_STORAGE_BUCKET = 'vocab-resources';
     this.RESOURCE_MAX_FILE_SIZE = 50 * 1024 * 1024;
     this.resourceFiles = [];
+    this._resourceOrderCloudSupported = null;
+    this._resourceFileSortState = null;
     this.init();
   }
 
@@ -22202,6 +22241,7 @@ class KrVocabApp {
   }
 
   closeResourceLibrary() {
+    this.cancelResourceFileSort(true);
     this.closeResourceImagePreview();
     const modal = document.getElementById('resourceLibraryModal');
     if (modal) modal.classList.remove('active');
@@ -22273,19 +22313,32 @@ class KrVocabApp {
       });
       db.close();
       const migrationTime = Date.now();
+      const legacyOrderById = new Map(
+        [...records]
+          .sort((a, b) => Number(b?.addedAt || 0) - Number(a?.addedAt || 0) || String(a?.id || '').localeCompare(String(b?.id || '')))
+          .map((record, index) => [String(record?.id || ''), index])
+      );
       const normalizedRecords = records.map(record => ({
         ...record,
         updatedAt: Number(record.updatedAt || record.addedAt || migrationTime),
         sha256: String(record.sha256 || ''),
         storagePath: String(record.storagePath || ''),
-        cloudState: record.cloudState === 'synced' ? 'synced' : 'pending'
+        cloudState: record.cloudState === 'synced' ? 'synced' : 'pending',
+        sortOrder: record.sortOrder !== undefined && record.sortOrder !== null && record.sortOrder !== '' && Number.isFinite(Number(record.sortOrder))
+          ? Number(record.sortOrder)
+          : Number(legacyOrderById.get(String(record.id)) || 0),
+        orderUpdatedAt: Number(record.orderUpdatedAt || migrationTime),
+        orderDirty: typeof record.orderDirty === 'boolean'
+          ? record.orderDirty
+          : !(record.sortOrder !== undefined && record.sortOrder !== null && record.sortOrder !== '' && Number.isFinite(Number(record.sortOrder)) && Number(record.orderUpdatedAt || 0) > 0)
       }));
       const needsMigration = normalizedRecords.some((record, index) => {
         const original = records[index] || {};
-        return !original.updatedAt || original.sha256 === undefined || original.storagePath === undefined || original.cloudState === undefined;
+        return !original.updatedAt || original.sha256 === undefined || original.storagePath === undefined || original.cloudState === undefined
+          || original.sortOrder === undefined || !original.orderUpdatedAt || original.orderDirty === undefined;
       });
       if (needsMigration) await this.putResourceRecords(normalizedRecords);
-      this.resourceFiles = normalizedRecords.sort((a, b) => Number(b.addedAt || 0) - Number(a.addedAt || 0));
+      this.resourceFiles = this.sortResourceRecords(normalizedRecords);
       this.renderResourceFileList();
       this.setResourceFileStatus(this.resourceFiles.length ? `共 ${this.resourceFiles.length} 个文件` : '');
     } catch (error) {
@@ -22310,6 +22363,16 @@ class KrVocabApp {
         transaction.onabort = () => reject(transaction.error || new Error('资料保存已中止'));
       });
     } finally { db.close(); }
+  }
+
+  sortResourceRecords(records) {
+    return [...(Array.isArray(records) ? records : [])].sort((a, b) => {
+      const aOrder = Number.isFinite(Number(a?.sortOrder)) ? Number(a.sortOrder) : Number.MAX_SAFE_INTEGER;
+      const bOrder = Number.isFinite(Number(b?.sortOrder)) ? Number(b.sortOrder) : Number.MAX_SAFE_INTEGER;
+      return aOrder - bOrder
+        || Number(b?.addedAt || 0) - Number(a?.addedAt || 0)
+        || String(a?.id || '').localeCompare(String(b?.id || ''));
+    });
   }
 
   async getResourceDeletions() {
@@ -22359,6 +22422,9 @@ class KrVocabApp {
           sha256: '',
           storagePath: '',
           cloudState: 'pending',
+          sortOrder: 0,
+          orderUpdatedAt: now,
+          orderDirty: true,
           blob: file.slice(0, file.size, this.getResourceMimeType(extension, file.type))
         });
       }
@@ -22367,6 +22433,14 @@ class KrVocabApp {
       this.setResourceFileStatus(`未保存：${rejected.join('；')}`, true);
       return;
     }
+    const existingOrders = this.resourceFiles.map(record => Number(record.sortOrder)).filter(Number.isFinite);
+    const firstOrder = existingOrders.length ? Math.min(...existingOrders) : 0;
+    const orderUpdatedAt = Date.now();
+    accepted.forEach((record, index) => {
+      record.sortOrder = firstOrder - accepted.length + index;
+      record.orderUpdatedAt = orderUpdatedAt;
+      record.orderDirty = true;
+    });
     this.setResourceFileStatus(`正在保存 ${accepted.length} 个文件…`);
     try {
       await this.putResourceRecords(accepted);
@@ -22398,25 +22472,46 @@ class KrVocabApp {
     return `${userId}/${record.id}/${record.id}.${extension}`;
   }
 
+  isResourceOrderSchemaError(data, status = 0) {
+    const detail = `${data?.code || ''} ${data?.message || ''} ${data?.hint || ''}`.toLowerCase();
+    return Number(status) === 400 && (detail.includes('pgrst204') || detail.includes('42703') || detail.includes('sort_order') || detail.includes('order_updated_at'));
+  }
+
   async fetchResourceCloudRows(accessToken) {
-    const collected = [];
-    for (let start = 0; ; start += 500) {
-      const query = 'select=resource_id,name,mime_type,size,sha256,storage_path,updated_at,deleted_at&order=updated_at.asc';
-      const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/resource_files?${query}`, {
-        headers: this.cloudHeaders(accessToken, { 'Range-Unit': 'items', 'Range': `${start}-${start + 499}` })
-      });
-      const data = await response.json().catch(() => []);
-      if (!response.ok) {
-        const error = new Error(data.message || data.hint || `资料目录读取失败 (${response.status})`);
-        error.status = response.status;
-        error.code = data.code;
-        throw error;
+    const fetchPages = async includeOrderFields => {
+      const collected = [];
+      for (let start = 0; ; start += 500) {
+        const fields = includeOrderFields
+          ? 'resource_id,name,mime_type,size,sha256,storage_path,sort_order,order_updated_at,updated_at,deleted_at'
+          : 'resource_id,name,mime_type,size,sha256,storage_path,updated_at,deleted_at';
+        const query = `select=${fields}&order=updated_at.asc`;
+        const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/resource_files?${query}`, {
+          headers: this.cloudHeaders(accessToken, { 'Range-Unit': 'items', 'Range': `${start}-${start + 499}` })
+        });
+        const data = await response.json().catch(() => []);
+        if (!response.ok) {
+          const error = new Error(data.message || data.hint || `资料目录读取失败 (${response.status})`);
+          error.status = response.status;
+          error.code = data.code;
+          error.resourceOrderSchemaMissing = includeOrderFields && this.isResourceOrderSchemaError(data, response.status);
+          throw error;
+        }
+        const page = Array.isArray(data) ? data : [];
+        collected.push(...page);
+        if (page.length < 500) break;
       }
-      const page = Array.isArray(data) ? data : [];
-      collected.push(...page);
-      if (page.length < 500) break;
+      return collected;
+    };
+    if (this._resourceOrderCloudSupported === false) return fetchPages(false);
+    try {
+      const rows = await fetchPages(true);
+      this._resourceOrderCloudSupported = true;
+      return rows;
+    } catch (error) {
+      if (!error?.resourceOrderSchemaMissing) throw error;
+      this._resourceOrderCloudSupported = false;
+      return fetchPages(false);
     }
-    return collected;
   }
 
   async upsertResourceMetadataRows(accessToken, userId, records) {
@@ -22428,22 +22523,84 @@ class KrVocabApp {
       size: Math.max(0, Number(record.size) || 0),
       sha256: String(record.sha256 || ''),
       storage_path: String(record.storagePath || record.storage_path || ''),
+      sort_order: Number.isFinite(Number(record.sortOrder ?? record.sort_order)) ? Number(record.sortOrder ?? record.sort_order) : 0,
+      order_updated_at: Math.max(0, Number(record.orderUpdatedAt || record.order_updated_at || 0)),
       updated_at: Number(record.updatedAt || record.updated_at || Date.now()),
       deleted_at: record.deletedAt || record.deleted_at ? Number(record.deletedAt || record.deleted_at) : null
     }));
-    for (let index = 0; index < rows.length; index += 50) {
-      const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/resource_files?on_conflict=user_id,resource_id`, {
-        method: 'POST',
-        headers: this.cloudHeaders(accessToken, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
-        body: JSON.stringify(rows.slice(index, index + 50))
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        const error = new Error(data.message || data.hint || `资料目录写入失败 (${response.status})`);
-        error.status = response.status;
-        error.code = data.code;
-        throw error;
+    const writeRows = async includeOrderFields => {
+      for (let index = 0; index < rows.length; index += 50) {
+        const batch = rows.slice(index, index + 50).map(row => {
+          if (includeOrderFields) return row;
+          const { sort_order, order_updated_at, ...legacyRow } = row;
+          return legacyRow;
+        });
+        const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/resource_files?on_conflict=user_id,resource_id`, {
+          method: 'POST',
+          headers: this.cloudHeaders(accessToken, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+          body: JSON.stringify(batch)
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          const error = new Error(data.message || data.hint || `资料目录写入失败 (${response.status})`);
+          error.status = response.status;
+          error.code = data.code;
+          error.resourceOrderSchemaMissing = includeOrderFields && this.isResourceOrderSchemaError(data, response.status);
+          throw error;
+        }
       }
+    };
+    if (this._resourceOrderCloudSupported === false) {
+      await writeRows(false);
+      return false;
+    }
+    try {
+      await writeRows(true);
+      this._resourceOrderCloudSupported = true;
+      return true;
+    } catch (error) {
+      if (!error?.resourceOrderSchemaMissing) throw error;
+      this._resourceOrderCloudSupported = false;
+      await writeRows(false);
+      return false;
+    }
+  }
+
+  async upsertResourceOrderRows(accessToken, userId, records) {
+    if (this._resourceOrderCloudSupported === false) return false;
+    const rows = (records || []).map(record => ({
+      user_id: userId,
+      resource_id: String(record.id || record.resource_id),
+      sort_order: Number.isFinite(Number(record.sortOrder ?? record.sort_order)) ? Number(record.sortOrder ?? record.sort_order) : 0,
+      order_updated_at: Math.max(0, Number(record.orderUpdatedAt || record.order_updated_at || 0))
+    }));
+    try {
+      for (let index = 0; index < rows.length; index += 50) {
+        const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/resource_files?on_conflict=user_id,resource_id`, {
+          method: 'POST',
+          headers: this.cloudHeaders(accessToken, { 'Prefer': 'resolution=merge-duplicates,return=minimal,missing=default' }),
+          body: JSON.stringify(rows.slice(index, index + 50))
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          if (this.isResourceOrderSchemaError(data, response.status)) {
+            this._resourceOrderCloudSupported = false;
+            return false;
+          }
+          const error = new Error(data.message || data.hint || `资料顺序写入失败 (${response.status})`);
+          error.status = response.status;
+          error.code = data.code;
+          throw error;
+        }
+      }
+      this._resourceOrderCloudSupported = true;
+      return true;
+    } catch (error) {
+      if (error?.resourceOrderSchemaMissing) {
+        this._resourceOrderCloudSupported = false;
+        return false;
+      }
+      throw error;
     }
   }
 
@@ -22567,6 +22724,11 @@ class KrVocabApp {
       const cloudUpdatedAt = Number(cloudRow.updated_at || 0);
       const cloudDeletedAt = Number(cloudRow.deleted_at || 0);
       const localUpdatedAt = Math.max(Number(local?.updatedAt || 0), Number(localDeletion?.deletedAt || 0));
+      const cloudOrderUpdatedAt = Math.max(0, Number(cloudRow.order_updated_at || 0));
+      const cloudHasOrder = cloudRow.sort_order !== undefined && cloudRow.sort_order !== null
+        && Number.isFinite(Number(cloudRow.sort_order)) && cloudOrderUpdatedAt > 0;
+      const localOrderUpdatedAt = Math.max(0, Number(local?.orderUpdatedAt || 0));
+      const cloudOrderIsNewer = cloudHasOrder && cloudOrderUpdatedAt > localOrderUpdatedAt;
       if (cloudDeletedAt && cloudDeletedAt >= localUpdatedAt) {
         const tombstone = {
           id,
@@ -22591,12 +22753,19 @@ class KrVocabApp {
           sha256: cloudHash,
           storagePath: String(cloudRow.storage_path || ''),
           cloudState: 'synced',
+          sortOrder: cloudOrderIsNewer || !local ? Number(cloudRow.sort_order || 0) : Number(local.sortOrder || 0),
+          orderUpdatedAt: cloudOrderIsNewer || !local ? cloudOrderUpdatedAt : localOrderUpdatedAt,
+          orderDirty: cloudOrderIsNewer ? false : (local ? Boolean(local.orderDirty) : !cloudHasOrder),
           blob: canKeepBlob ? local.blob : null
         };
         await this.putResourceRecords(merged);
         await this.removeResourceDeletion(id);
         localById.set(id, merged);
         deletionById.delete(id);
+      } else if (local && cloudOrderIsNewer) {
+        const reordered = { ...local, sortOrder: Number(cloudRow.sort_order), orderUpdatedAt: cloudOrderUpdatedAt, orderDirty: false };
+        await this.putResourceRecords(reordered);
+        localById.set(id, reordered);
       }
     }
 
@@ -22622,15 +22791,22 @@ class KrVocabApp {
         || Number(record.updatedAt || 0) > Number(remote.updated_at || 0)
         || Boolean(remote.deleted_at)
       );
-      if (!needsUpload) continue;
-      const sha256 = record.sha256 || await this.calculateResourceSha256(record.blob);
-      const storagePath = record.storagePath || this.getResourceStoragePath(userId, record);
-      const pendingRecord = { ...record, sha256, storagePath, cloudState: 'pending' };
-      await this.uploadResourceWithRetry(accessToken, storagePath, pendingRecord);
-      await this.putResourceRecords(pendingRecord);
-      await this.upsertResourceMetadataRows(accessToken, userId, [pendingRecord]);
-      await this.putResourceRecords({ ...pendingRecord, cloudState: 'synced' });
-      await this.removeResourceDeletion(record.id);
+      if (needsUpload) {
+        const sha256 = record.sha256 || await this.calculateResourceSha256(record.blob);
+        const storagePath = record.storagePath || this.getResourceStoragePath(userId, record);
+        const pendingRecord = { ...record, sha256, storagePath, cloudState: 'pending' };
+        await this.uploadResourceWithRetry(accessToken, storagePath, pendingRecord);
+        await this.putResourceRecords(pendingRecord);
+        const orderSynced = await this.upsertResourceMetadataRows(accessToken, userId, [pendingRecord]);
+        await this.putResourceRecords({ ...pendingRecord, cloudState: 'synced', orderDirty: orderSynced === false ? Boolean(pendingRecord.orderDirty) : false });
+        await this.removeResourceDeletion(record.id);
+        continue;
+      }
+      const remoteOrderUpdatedAt = Math.max(0, Number(remote?.order_updated_at || 0));
+      if (remote && (record.orderDirty || Number(record.orderUpdatedAt || 0) > remoteOrderUpdatedAt)) {
+        const orderSynced = await this.upsertResourceOrderRows(accessToken, userId, [record]);
+        if (orderSynced !== false) await this.putResourceRecords({ ...record, orderDirty: false });
+      }
     }
     await this.loadResourceFiles();
     this.setResourceFileStatus(this.resourceFiles.length ? `✅ 云同步完成，共 ${this.resourceFiles.length} 个文件` : '✅ 云同步完成，资料库为空');
@@ -22715,6 +22891,18 @@ class KrVocabApp {
       openButton.append(fileIcon, main);
       const actions = document.createElement('div');
       actions.className = 'resource-file-actions';
+      const dragHandle = document.createElement('button');
+      dragHandle.type = 'button';
+      dragHandle.className = 'resource-file-drag-handle';
+      dragHandle.title = '按住拖动排序；也可使用方向键';
+      dragHandle.setAttribute('aria-label', `拖动 ${record.name} 排序`);
+      dragHandle.textContent = '≡';
+      dragHandle.addEventListener('pointerdown', event => this.startResourceFileSort(event, record.id));
+      dragHandle.addEventListener('keydown', event => this.handleResourceFileSortKey(event, record.id));
+      dragHandle.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
       const downloadButton = document.createElement('button');
       downloadButton.type = 'button';
       downloadButton.className = 'resource-file-action';
@@ -22729,10 +22917,129 @@ class KrVocabApp {
       deleteButton.setAttribute('aria-label', `删除 ${record.name}`);
       deleteButton.textContent = '🗑';
       deleteButton.addEventListener('click', () => this.deleteResourceFile(record.id));
-      actions.append(downloadButton, deleteButton);
+      actions.append(dragHandle, downloadButton, deleteButton);
       card.append(openButton, actions);
       list.appendChild(card);
     });
+  }
+
+  async persistResourceFileOrder(orderedIds, focusResourceId = '') {
+    const ids = (Array.isArray(orderedIds) ? orderedIds : []).map(String);
+    const currentById = new Map(this.resourceFiles.map(record => [String(record.id), record]));
+    if (ids.length !== this.resourceFiles.length || new Set(ids).size !== ids.length || ids.some(id => !currentById.has(id))) return false;
+    const previous = [...this.resourceFiles];
+    const orderUpdatedAt = Date.now();
+    const reordered = ids.map((id, index) => ({
+      ...currentById.get(id),
+      sortOrder: index,
+      orderUpdatedAt,
+      orderDirty: true
+    }));
+    try {
+      await this.putResourceRecords(reordered);
+      this.resourceFiles = reordered;
+      this.renderResourceFileList();
+      this.setResourceFileStatus(`✅ 已保存资料顺序，共 ${reordered.length} 个文件`);
+      if (focusResourceId) window.requestAnimationFrame(() => {
+        Array.from(document.querySelectorAll('.resource-file-card')).find(card => String(card.dataset.resourceId || '') === String(focusResourceId))
+          ?.querySelector('.resource-file-drag-handle')?.focus();
+      });
+      return true;
+    } catch (error) {
+      this.resourceFiles = previous;
+      this.renderResourceFileList();
+      this.setResourceFileStatus(`排序保存失败：${error?.message || '请稍后重试'}`, true);
+      return false;
+    }
+  }
+
+  async handleResourceFileSortKey(event, resourceId) {
+    const keys = ['ArrowUp', 'ArrowDown', 'Home', 'End'];
+    if (!keys.includes(event.key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const ids = this.resourceFiles.map(record => String(record.id));
+    const sourceIndex = ids.indexOf(String(resourceId));
+    if (sourceIndex < 0) return;
+    let targetIndex = sourceIndex;
+    if (event.key === 'ArrowUp') targetIndex = Math.max(0, sourceIndex - 1);
+    if (event.key === 'ArrowDown') targetIndex = Math.min(ids.length - 1, sourceIndex + 1);
+    if (event.key === 'Home') targetIndex = 0;
+    if (event.key === 'End') targetIndex = ids.length - 1;
+    if (targetIndex === sourceIndex) return;
+    const [movedId] = ids.splice(sourceIndex, 1);
+    ids.splice(targetIndex, 0, movedId);
+    await this.persistResourceFileOrder(ids, resourceId);
+  }
+
+  startResourceFileSort(event, resourceId) {
+    if (!event || (event.button !== undefined && event.button !== 0)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (this._resourceFileSortState) return;
+    const handle = event.currentTarget;
+    const card = handle?.closest?.('.resource-file-card');
+    const list = card?.closest?.('#resourceFileList');
+    if (!handle || !card || !list) return;
+    const state = {
+      pointerId: event.pointerId,
+      startX: Number(event.clientX || 0),
+      startY: Number(event.clientY || 0),
+      card,
+      list,
+      handle,
+      resourceId: String(resourceId),
+      moved: false
+    };
+    state.onMove = moveEvent => this.moveResourceFileSort(moveEvent);
+    state.onEnd = endEvent => this.finishResourceFileSort(endEvent, false);
+    state.onCancel = cancelEvent => this.finishResourceFileSort(cancelEvent, true);
+    this._resourceFileSortState = state;
+    card.classList.add('resource-sort-dragging');
+    handle.setPointerCapture?.(event.pointerId);
+    document.addEventListener('pointermove', state.onMove, { passive: false });
+    document.addEventListener('pointerup', state.onEnd);
+    document.addEventListener('pointercancel', state.onCancel);
+  }
+
+  moveResourceFileSort(event) {
+    const state = this._resourceFileSortState;
+    if (!state || (state.pointerId !== undefined && event.pointerId !== state.pointerId)) return;
+    event.preventDefault();
+    if (!state.moved && Math.hypot(Number(event.clientX || 0) - state.startX, Number(event.clientY || 0) - state.startY) < 4) return;
+    state.moved = true;
+    const listRect = state.list.getBoundingClientRect();
+    if (event.clientY < listRect.top + 44) state.list.scrollTop -= 18;
+    else if (event.clientY > listRect.bottom - 44) state.list.scrollTop += 18;
+    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('.resource-file-card');
+    if (!target || target === state.card || target.parentElement !== state.list) return;
+    const targetRect = target.getBoundingClientRect();
+    if (event.clientY < targetRect.top + targetRect.height / 2) target.before(state.card);
+    else target.after(state.card);
+  }
+
+  async finishResourceFileSort(event, cancelled = false) {
+    const state = this._resourceFileSortState;
+    if (!state || (event?.pointerId !== undefined && state.pointerId !== undefined && event.pointerId !== state.pointerId)) return;
+    this.cancelResourceFileSort(false);
+    if (cancelled || !state.moved) {
+      if (cancelled) this.renderResourceFileList();
+      return;
+    }
+    const orderedIds = Array.from(state.list.querySelectorAll('.resource-file-card')).map(card => String(card.dataset.resourceId || ''));
+    await this.persistResourceFileOrder(orderedIds, state.resourceId);
+  }
+
+  cancelResourceFileSort(restoreView = false) {
+    const state = this._resourceFileSortState;
+    if (!state) return;
+    document.removeEventListener('pointermove', state.onMove);
+    document.removeEventListener('pointerup', state.onEnd);
+    document.removeEventListener('pointercancel', state.onCancel);
+    state.card?.classList.remove('resource-sort-dragging');
+    try { state.handle?.releasePointerCapture?.(state.pointerId); } catch (error) {}
+    this._resourceFileSortState = null;
+    if (restoreView) this.renderResourceFileList();
   }
 
   createResourceObjectUrl(record) {
@@ -22905,6 +23212,12 @@ class KrVocabApp {
     }));
     zone?.addEventListener('drop', event => this.handleResourceFiles(event.dataTransfer?.files));
     document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && this._resourceFileSortState) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.cancelResourceFileSort(true);
+        return;
+      }
       const previewModal = document.getElementById('resourceImagePreviewModal');
       if (event.key !== 'Escape' || !previewModal?.classList.contains('active')) return;
       event.preventDefault();

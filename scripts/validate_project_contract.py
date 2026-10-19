@@ -234,6 +234,39 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
         if forbidden_markup in content:
             fail(errors, f"{relative_path}: 搜索框下方仍会渲染旧 Tag 摘要 {forbidden_markup}")
 
+    resource_contract = contract["uiContracts"]["resourceLibrary"]
+    if resource_contract.get("manualOrderField") == "sortOrder":
+        required_resource_order_tokens = (
+            ".resource-file-drag-handle {",
+            "touch-action: none;",
+            "dragHandle.addEventListener('pointerdown'",
+            "dragHandle.addEventListener('keydown'",
+            "async persistResourceFileOrder(orderedIds, focusResourceId = '')",
+            "await this.putResourceRecords(reordered);",
+            "sortOrder: index,",
+            "orderUpdatedAt,",
+            "orderDirty: true",
+            "isResourceOrderSchemaError(data, status = 0)",
+            "async upsertResourceOrderRows(accessToken, userId, records)",
+            "missing=default",
+            "sort_order",
+            "order_updated_at",
+            "orderSynced === false",
+        )
+        for token in required_resource_order_tokens:
+            if token not in content:
+                fail(errors, f"{relative_path}: 学习资料手动排序缺少实现标记 {token}")
+        if resource_contract.get("manualOrderCloudFallback") == "local-order-remains-pending-when-columns-unavailable":
+            fallback_tokens = (
+                "this._resourceOrderCloudSupported = false;",
+                "return fetchPages(false);",
+                "await writeRows(false);",
+                "Boolean(pendingRecord.orderDirty)",
+            )
+            for token in fallback_tokens:
+                if token not in content:
+                    fail(errors, f"{relative_path}: 旧资料云表排序字段降级缺少实现标记 {token}")
+
     similar_contract = contract["dataContracts"]["similarWords"]
     if similar_contract["mode"] == "manual-only":
         required_manual_tokens = (

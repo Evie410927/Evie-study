@@ -286,7 +286,7 @@ class VocabAppTester:
             'this.RESOURCE_DB_VERSION = 2', 'openResourceDatabase()',
             "db.createObjectStore(this.RESOURCE_STORE_NAME, { keyPath: 'id' })",
             "db.createObjectStore(this.RESOURCE_DELETION_STORE_NAME, { keyPath: 'id' })",
-            'transaction.oncomplete = () => resolve()', 'this.resourceFiles = normalizedRecords.sort',
+            'transaction.oncomplete = () => resolve()', 'this.resourceFiles = this.sortResourceRecords(normalizedRecords)',
             'this.RESOURCE_MAX_FILE_SIZE = 50 * 1024 * 1024',
             "new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'png', 'jpg', 'jpeg', 'webp'])",
         ))
@@ -360,6 +360,24 @@ class VocabAppTester:
             resource_tombstone_contract,
             f"[{lang_name}] 资料云同步-删除墓碑先于对象删除并防止跨设备复活",
             "资料删除没有持久墓碑，或未按先元数据后 Storage 对象的顺序传播",
+        )
+
+        resource_manual_order_contract = all(token in content for token in (
+            '.resource-file-drag-handle {', 'touch-action: none;',
+            "dragHandle.addEventListener('pointerdown'", "dragHandle.addEventListener('keydown'",
+            'async persistResourceFileOrder(orderedIds, focusResourceId = \'\')',
+            'startResourceFileSort(event, resourceId)', 'moveResourceFileSort(event)',
+            'finishResourceFileSort(event, cancelled = false)', 'cancelResourceFileSort(restoreView = false)',
+            'await this.putResourceRecords(reordered);', 'sortOrder: index,', 'orderUpdatedAt,', 'orderDirty: true',
+            'sort_order', 'order_updated_at', 'isResourceOrderSchemaError(data, status = 0)',
+            'async upsertResourceOrderRows(accessToken, userId, records)', 'missing=default',
+            'this._resourceOrderCloudSupported = false;', 'return fetchPages(false);', 'await writeRows(false);',
+            'orderSynced === false ? Boolean(pendingRecord.orderDirty) : false',
+        ))
+        self.assert_true(
+            resource_manual_order_contract,
+            f"[{lang_name}] 资料库排序-鼠标触屏拖动、键盘兜底、IndexedDB 与云端元数据持久化",
+            "资料卡片缺少拖动手柄、Pointer/键盘交互、原子顺序保存、独立云端排序版本或旧表降级保护",
         )
 
         # ---------------------------------------------------------------------
@@ -2619,6 +2637,65 @@ class VocabAppTester:
                 f"资料只停留在内存或重读未刷新列表：{resource_reload_result}",
             )
 
+            resource_order_result = driver.execute_async_script("""
+                const done = arguments[0];
+                (async () => {
+                  const app = window.app;
+                  try {
+                    const extras = [
+                      new File(['order-a'], 'resource-order-a.txt', {type:'text/plain'}),
+                      new File(['order-b'], 'resource-order-b.txt', {type:'text/plain'})
+                    ];
+                    await app.handleResourceFiles(extras);
+                    const before = app.resourceFiles.map(item => item.name);
+                    const moved = app.resourceFiles[app.resourceFiles.length - 1];
+                    const movedCard = Array.from(document.querySelectorAll('#resourceFileList .resource-file-card'))
+                      .find(card => String(card.dataset.resourceId || '') === String(moved?.id || ''));
+                    const handle = movedCard?.querySelector('.resource-file-drag-handle');
+                    handle?.dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowUp', bubbles:true, cancelable:true}));
+                    for (let attempt = 0; attempt < 40; attempt += 1) {
+                      if ((document.getElementById('resourceFileStatus')?.textContent || '').includes('已保存资料顺序')) break;
+                      await new Promise(resolve => setTimeout(resolve, 25));
+                    }
+                    const afterDom = Array.from(document.querySelectorAll('#resourceFileList .resource-file-name')).map(node => node.textContent);
+                    app.resourceFiles = [];
+                    await app.loadResourceFiles();
+                    const afterReload = app.resourceFiles.map(item => item.name);
+                    const normalizedOrder = app.resourceFiles.every((item, index) => item.sortOrder === index && item.orderDirty === true && item.orderUpdatedAt > 0);
+                    const extraIds = app.resourceFiles.filter(item => item.name.startsWith('resource-order-')).map(item => item.id);
+                    const db = await app.openResourceDatabase();
+                    await new Promise((resolve, reject) => {
+                      const transaction = db.transaction(app.RESOURCE_STORE_NAME, 'readwrite');
+                      const store = transaction.objectStore(app.RESOURCE_STORE_NAME);
+                      extraIds.forEach(id => store.delete(id));
+                      transaction.oncomplete = resolve;
+                      transaction.onerror = () => reject(transaction.error || new Error('排序测试清理失败'));
+                    });
+                    db.close();
+                    await app.loadResourceFiles();
+                    done({
+                      handleCount: document.querySelectorAll('#resourceFileList .resource-file-drag-handle').length,
+                      before, afterDom, afterReload, normalizedOrder,
+                      remaining: app.resourceFiles.map(item => item.name)
+                    });
+                  } catch (error) {
+                    done({error:String(error)});
+                  }
+                })();
+            """)
+            self.assert_true(
+                bool(
+                    resource_order_result
+                    and resource_order_result.get('before') != resource_order_result.get('afterDom')
+                    and resource_order_result.get('afterDom') == resource_order_result.get('afterReload')
+                    and resource_order_result.get('normalizedOrder')
+                    and resource_order_result.get('remaining') == ['selenium-resource.txt']
+                    and resource_order_result.get('handleCount') == 1
+                ),
+                f"[{lang_name}] 浏览器资料排序-键盘移动复用拖动持久化入口并在重载后保持",
+                f"资料排序手柄、顺序重排、IndexedDB 持久化或测试清理失败：{resource_order_result}",
+            )
+
             resource_cloud_result = driver.execute_async_script("""
                 const done = arguments[0];
                 (async () => {
@@ -2628,6 +2705,7 @@ class VocabAppTester:
                     fetch: app.fetchResourceCloudRows,
                     upload: app.uploadResourceWithRetry,
                     upsert: app.upsertResourceMetadataRows,
+                    order: app.upsertResourceOrderRows,
                     remove: app.deleteResourceStorageObject,
                     session: app.getValidCloudSession,
                     download: app.downloadResourceBlobFromStorage
@@ -2650,6 +2728,9 @@ class VocabAppTester:
                     app.upsertResourceMetadataRows = async (token, uid, records) => {
                       events.push({kind:'metadata', ids:records.map(item => String(item.id || item.resource_id))});
                     };
+                    app.upsertResourceOrderRows = async (token, uid, records) => {
+                      events.push({kind:'order-metadata', ids:records.map(item => String(item.id || item.resource_id))});
+                    };
                     app.deleteResourceStorageObject = async () => true;
                     await app.syncResourceLibraryWithSupabase({access_token:'resource-test-token'}, userId);
                     const local = app.resourceFiles.find(item => item.name === 'selenium-resource.txt');
@@ -2658,6 +2739,19 @@ class VocabAppTester:
                       && local.sha256.length === 64
                       && events.some(event => event.kind === 'upload' && event.name === local.name)
                       && events.some(event => event.kind === 'metadata' && event.ids.includes(String(local.id)));
+
+                    events.length = 0;
+                    await app.persistResourceFileOrder(app.resourceFiles.map(item => item.id));
+                    const orderOnlyLocal = app.resourceFiles.find(item => item.name === 'selenium-resource.txt');
+                    app.fetchResourceCloudRows = async () => [{
+                      resource_id: orderOnlyLocal.id, name: orderOnlyLocal.name, mime_type: orderOnlyLocal.type,
+                      size: orderOnlyLocal.size, sha256: orderOnlyLocal.sha256, storage_path: orderOnlyLocal.storagePath,
+                      sort_order: orderOnlyLocal.sortOrder, order_updated_at: 0,
+                      updated_at: orderOnlyLocal.updatedAt, deleted_at: null
+                    }];
+                    await app.syncResourceLibraryWithSupabase({access_token:'resource-test-token'}, userId);
+                    const orderMetadataOnly = events.some(event => event.kind === 'order-metadata')
+                      && !events.some(event => event.kind === 'upload');
 
                     const remoteId = 'remote-resource-regression';
                     const remoteUpdatedAt = Date.now() + 1000;
@@ -2680,13 +2774,14 @@ class VocabAppTester:
                     await app.applyResourceTombstone({id:remoteId, name:'remote-only.txt', storagePath:remoteBefore.storagePath, deletedAt:Date.now() + 2000, syncedAt:Date.now()});
                     await app.removeResourceDeletion(remoteId);
                     await app.loadResourceFiles();
-                    done({failedUploadPreserved, uploaded, lazyDownloaded, remaining:app.resourceFiles.map(item => item.name), events});
+                    done({failedUploadPreserved, uploaded, orderMetadataOnly, lazyDownloaded, remaining:app.resourceFiles.map(item => item.name), events});
                   } catch (error) {
                     done({error:String(error), events});
                   } finally {
                     app.fetchResourceCloudRows = originals.fetch;
                     app.uploadResourceWithRetry = originals.upload;
                     app.upsertResourceMetadataRows = originals.upsert;
+                    app.upsertResourceOrderRows = originals.order;
                     app.deleteResourceStorageObject = originals.remove;
                     app.getValidCloudSession = originals.session;
                     app.downloadResourceBlobFromStorage = originals.download;
@@ -2698,6 +2793,7 @@ class VocabAppTester:
                     resource_cloud_result
                     and resource_cloud_result.get('failedUploadPreserved')
                     and resource_cloud_result.get('uploaded')
+                    and resource_cloud_result.get('orderMetadataOnly')
                     and resource_cloud_result.get('lazyDownloaded')
                     and resource_cloud_result.get('remaining') == ['selenium-resource.txt']
                 ),
@@ -7213,6 +7309,9 @@ class VocabAppTester:
         resource_schema = all(token in sql for token in (
             'create table if not exists public.resource_files',
             'resource_id text not null', 'mime_type text', 'size bigint', 'sha256 text',
+            'sort_order bigint not null default 0', 'order_updated_at bigint not null default 0',
+            'add column if not exists sort_order', 'add column if not exists order_updated_at',
+            'resource_files_user_sort_idx',
             'storage_path text', 'primary key (user_id, resource_id)',
             'revoke all on table public.resource_files from anon',
         ))

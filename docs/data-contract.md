@@ -61,3 +61,6 @@
 - 云端列表同步只下载元数据；远端独有文件的 `blob` 保持为空，点击打开或下载时再使用当前有效登录令牌获取 Blob，成功后写入 IndexedDB 作为离线缓存。
 - 删除先写本地 `deletions` 墓碑，再向 `resource_files` Upsert `deleted_at`；只有墓碑写入成功后才调用 Storage API 删除对象。其他设备读到更新的墓碑时必须删除本地缓存并保留删除记忆，防止旧数据复活。
 - 上传必须展示文件级进度、对瞬时失败进行有限重试，并在失败后保留本地 Blob 与待上传状态。元数据成功写入后才可把 `cloudState` 改为 `synced`。
+- 每条资料额外保存数值型 `sortOrder`、排序更新时间 `orderUpdatedAt` 和仅本地使用的 `orderDirty`。列表严格按 `sortOrder` 升序展示；历史记录缺少排序字段时，按原有新增时间倒序生成稳定顺序并标记待同步。
+- 鼠标拖动、触屏拖动或键盘移动完成后，必须在同一个 IndexedDB 事务中重写全部可见资料的连续 `sortOrder` 和同一 `orderUpdatedAt`；事务失败时恢复原顺序并禁止提示成功。
+- 排序版本与文件内容 `updatedAt` 独立。云端元数据使用 `sort_order` 与 `order_updated_at`，逐条采用较新的排序时间，纯排序不得重新上传 Blob。旧云表缺少排序列时继续使用旧元数据协议，本地顺序和 `orderDirty` 必须保留到未来成功同步。

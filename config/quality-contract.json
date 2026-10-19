@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-10-16.1",
+  "contractVersion": "2026-10-19.1",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -17,7 +17,8 @@
       "docs/decisions/ADR-009-tag-filter-reset-parity.md",
       "docs/decisions/ADR-010-similar-word-pronunciation-note.md",
       "docs/decisions/ADR-012-resource-library-cloud-sync.md",
-      "docs/decisions/ADR-013-cloud-sync-undo-history.md"
+      "docs/decisions/ADR-013-cloud-sync-undo-history.md",
+      "docs/decisions/ADR-014-resource-library-manual-order.md"
     ]
   },
   "mirroredApps": [
@@ -218,6 +219,20 @@
       "uploadProgress": true,
       "uploadRetry": true,
       "deletePropagation": "metadata-tombstone-before-storage-delete",
+      "manualOrderField": "sortOrder",
+      "manualOrderTimestampField": "orderUpdatedAt",
+      "manualOrderPendingField": "orderDirty",
+      "manualOrderPersistence": "IndexedDB-transaction-before-success",
+      "manualOrderCloudColumns": [
+        "sort_order",
+        "order_updated_at"
+      ],
+      "manualOrderInteractions": [
+        "pointer-mouse",
+        "pointer-touch",
+        "keyboard"
+      ],
+      "manualOrderCloudFallback": "local-order-remains-pending-when-columns-unavailable",
       "acceptedExtensions": [
         "pdf",
         "doc",
@@ -310,7 +325,10 @@
       "offlineCache": true,
       "localPendingMigration": true,
       "deleteTombstones": true,
-      "wordPayloadIsolation": true
+      "wordPayloadIsolation": true,
+      "manualOrder": "sortOrder-ascending",
+      "manualOrderConflictResolution": "newest-orderUpdatedAt-wins",
+      "manualOrderSharedAcrossLanguages": true
     },
     "mainSearch": {
       "krFields": ["word", "reading", "meaning"],
