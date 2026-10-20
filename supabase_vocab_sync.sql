@@ -51,6 +51,7 @@ grant select, insert, update, delete on table public.vocab_items to authenticate
 
 create table if not exists public.resource_files (
   user_id uuid not null references auth.users(id) on delete cascade,
+  language text not null default 'jp' check (language in ('kr', 'jp')),
   resource_id text not null,
   name text not null default '',
   mime_type text not null default 'application/octet-stream',
@@ -61,8 +62,39 @@ create table if not exists public.resource_files (
   order_updated_at bigint not null default 0,
   updated_at bigint not null default ((extract(epoch from now()) * 1000)::bigint),
   deleted_at bigint,
-  primary key (user_id, resource_id)
+  primary key (user_id, language, resource_id)
 );
+
+alter table public.resource_files
+  add column if not exists language text;
+
+update public.resource_files
+set language = 'jp'
+where language is null or language not in ('kr', 'jp');
+
+alter table public.resource_files
+  alter column language set default 'jp',
+  alter column language set not null;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.resource_files'::regclass
+      and conname = 'resource_files_language_check'
+  ) then
+    alter table public.resource_files
+      add constraint resource_files_language_check check (language in ('kr', 'jp'));
+  end if;
+end
+$$;
+
+alter table public.resource_files
+  drop constraint if exists resource_files_pkey;
+
+alter table public.resource_files
+  add primary key (user_id, language, resource_id);
 
 alter table public.resource_files
   add column if not exists sort_order bigint not null default 0;
@@ -75,6 +107,12 @@ create index if not exists resource_files_user_updated_idx
 
 create index if not exists resource_files_user_sort_idx
   on public.resource_files (user_id, sort_order asc);
+
+create index if not exists resource_files_user_language_updated_idx
+  on public.resource_files (user_id, language, updated_at desc);
+
+create index if not exists resource_files_user_language_sort_idx
+  on public.resource_files (user_id, language, sort_order asc);
 
 alter table public.resource_files enable row level security;
 

@@ -283,10 +283,13 @@ class VocabAppTester:
         resource_persistence_contract = all(token in content for token in (
             "this.RESOURCE_DB_NAME = 'evie_vocab_resource_library_v1'",
             "this.RESOURCE_STORE_NAME = 'files'", "this.RESOURCE_DELETION_STORE_NAME = 'deletions'",
-            'this.RESOURCE_DB_VERSION = 2', 'openResourceDatabase()',
+            'this.RESOURCE_DB_VERSION = 3', 'openResourceDatabase()',
             "db.createObjectStore(this.RESOURCE_STORE_NAME, { keyPath: 'id' })",
             "db.createObjectStore(this.RESOURCE_DELETION_STORE_NAME, { keyPath: 'id' })",
-            'transaction.oncomplete = () => resolve()', 'this.resourceFiles = this.sortResourceRecords(normalizedRecords)',
+            "store.createIndex('language', 'language', { unique: false })",
+            "deletionStore.createIndex('language', 'language', { unique: false })",
+            'transaction.oncomplete = () => resolve()',
+            'this.resourceFiles = this.sortResourceRecords(normalizedRecords.filter(record => record.language === this.RESOURCE_LANGUAGE))',
             'this.RESOURCE_MAX_FILE_SIZE = 50 * 1024 * 1024',
             "new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'png', 'jpg', 'jpeg', 'webp'])",
         ))
@@ -294,6 +297,21 @@ class VocabAppTester:
             resource_persistence_contract,
             f"[{lang_name}] 资料库-独立 IndexedDB 持久化、白名单与 50MB 上限",
             "资料附件没有使用独立 IndexedDB、缺少事务成功门禁、文件白名单或大小上限",
+        )
+
+        resource_language_isolation_contract = all(token in content for token in (
+            f"this.RESOURCE_LANGUAGE = '{lang_code}'",
+            "this.RESOURCE_LEGACY_LANGUAGE = 'jp'",
+            'language: this.RESOURCE_LANGUAGE,',
+            'language=eq.${encodeURIComponent(this.RESOURCE_LANGUAGE)}',
+            'on_conflict=user_id,language,resource_id',
+            '${userId}/${this.RESOURCE_LANGUAGE}/${record.id}/${record.id}.${extension}',
+            '资料云同步尚未完成语言隔离升级，请先执行最新版 supabase_vocab_sync.sql',
+        ))
+        self.assert_true(
+            resource_language_isolation_contract,
+            f"[{lang_name}] 资料库-本地、云端元数据与 Storage 路径按当前语言隔离",
+            "资料记录缺少语言字段、当前语言过滤、复合冲突键、分语言路径或旧云表安全失败提示",
         )
 
         resource_actions_contract = all(token in content for token in (
@@ -328,7 +346,7 @@ class VocabAppTester:
         resource_cloud_contract = all(token in content for token in (
             "this.RESOURCE_STORAGE_BUCKET = 'vocab-resources'",
             'async fetchResourceCloudRows(accessToken)',
-            'on_conflict=user_id,resource_id',
+            'on_conflict=user_id,language,resource_id',
             'async syncResourceLibraryWithSupabase(session, userId)',
             'async ensureResourceBlob(record)',
             '/storage/v1/object/authenticated/',
@@ -2521,6 +2539,8 @@ class VocabAppTester:
 
         driver = None
         browser_profile = None
+        lang_code = "kr" if lang_name == "韩语" else "jp"
+        other_lang = "jp" if lang_code == "kr" else "kr"
         try:
             from selenium import webdriver
             from selenium.webdriver.chrome.options import Options
@@ -2592,6 +2612,67 @@ class VocabAppTester:
                 "资料库弹窗未打开、多文件选择器无效或未显示本地保存提示",
             )
 
+            resource_language_isolation_result = driver.execute_async_script("""
+                const currentLanguage = arguments[0];
+                const otherLanguage = arguments[1];
+                const done = arguments[2];
+                (async () => {
+                  const app = window.app;
+                  const now = Date.now();
+                  const foreignId = 'foreign-language-resource';
+                  const legacyId = 'legacy-language-resource';
+                  try {
+                    const db = await app.openResourceDatabase();
+                    await new Promise((resolve, reject) => {
+                      const transaction = db.transaction(app.RESOURCE_STORE_NAME, 'readwrite');
+                      const store = transaction.objectStore(app.RESOURCE_STORE_NAME);
+                      store.put({id:foreignId, language:otherLanguage, name:'foreign-language.txt', type:'text/plain', size:1, addedAt:now, updatedAt:now, sortOrder:0, orderUpdatedAt:now, orderDirty:false, cloudState:'pending'});
+                      store.put({id:legacyId, name:'legacy-language.txt', type:'text/plain', size:1, addedAt:now - 1, updatedAt:now - 1, sortOrder:1, orderUpdatedAt:now - 1, orderDirty:false, cloudState:'pending'});
+                      transaction.oncomplete = () => resolve();
+                      transaction.onerror = () => reject(transaction.error);
+                    });
+                    db.close();
+                    await app.loadResourceFiles();
+                    const visible = app.resourceFiles.map(item => item.name);
+                    const inspectDb = await app.openResourceDatabase();
+                    const allRecords = await new Promise((resolve, reject) => {
+                      const transaction = inspectDb.transaction(app.RESOURCE_STORE_NAME, 'readonly');
+                      const request = transaction.objectStore(app.RESOURCE_STORE_NAME).getAll();
+                      request.onsuccess = () => resolve(request.result || []);
+                      request.onerror = () => reject(request.error);
+                    });
+                    inspectDb.close();
+                    const migratedLanguage = allRecords.find(item => item.id === legacyId)?.language || '';
+                    const cleanupDb = await app.openResourceDatabase();
+                    await new Promise((resolve, reject) => {
+                      const transaction = cleanupDb.transaction(app.RESOURCE_STORE_NAME, 'readwrite');
+                      const store = transaction.objectStore(app.RESOURCE_STORE_NAME);
+                      store.delete(foreignId);
+                      store.delete(legacyId);
+                      transaction.oncomplete = () => resolve();
+                      transaction.onerror = () => reject(transaction.error);
+                    });
+                    cleanupDb.close();
+                    await app.loadResourceFiles();
+                    done({currentLanguage, visible, migratedLanguage, remaining:app.resourceFiles.length});
+                  } catch (error) {
+                    done({error:String(error)});
+                  }
+                })();
+            """, lang_code, other_lang)
+            expected_legacy_visible = ['legacy-language.txt'] if lang_code == 'jp' else []
+            self.assert_true(
+                bool(
+                    resource_language_isolation_result
+                    and resource_language_isolation_result.get('currentLanguage') == lang_code
+                    and resource_language_isolation_result.get('visible') == expected_legacy_visible
+                    and resource_language_isolation_result.get('migratedLanguage') == 'jp'
+                    and resource_language_isolation_result.get('remaining') == 0
+                ),
+                f"[{lang_name}] 浏览器资料库-隐藏另一语言记录并将旧无语言资料确定迁移到 JP",
+                f"资料语言隔离或旧数据迁移错误：{resource_language_isolation_result}",
+            )
+
             resource_upload_result = driver.execute_async_script("""
                 const done = arguments[0];
                 const file = new File(['vocab resource regression'], 'selenium-resource.txt', {type:'text/plain'});
@@ -2601,6 +2682,7 @@ class VocabAppTester:
                     count: window.app.resourceFiles.length,
                     name: card?.querySelector('.resource-file-name')?.textContent || '',
                     persisted: window.app.resourceFiles[0]?.blob instanceof Blob,
+                    language: window.app.resourceFiles[0]?.language || '',
                     status: document.getElementById('resourceFileStatus')?.textContent || ''
                   });
                 }).catch(error => done({error:String(error)}));
@@ -2611,6 +2693,7 @@ class VocabAppTester:
                     and resource_upload_result.get('count') == 1
                     and resource_upload_result.get('name') == 'selenium-resource.txt'
                     and resource_upload_result.get('persisted')
+                    and resource_upload_result.get('language') == lang_code
                     and '已保存 1 个文件' in resource_upload_result.get('status', '')
                 ),
                 f"[{lang_name}] 浏览器资料库-文本文件写入 IndexedDB 后才显示并报告成功",
@@ -2735,7 +2818,7 @@ class VocabAppTester:
                     await app.syncResourceLibraryWithSupabase({access_token:'resource-test-token'}, userId);
                     const local = app.resourceFiles.find(item => item.name === 'selenium-resource.txt');
                     const uploaded = !!local && local.cloudState === 'synced'
-                      && local.storagePath.startsWith(userId + '/' + local.id + '/')
+                      && local.storagePath.startsWith(userId + '/' + app.RESOURCE_LANGUAGE + '/' + local.id + '/')
                       && local.sha256.length === 64
                       && events.some(event => event.kind === 'upload' && event.name === local.name)
                       && events.some(event => event.kind === 'metadata' && event.ids.includes(String(local.id)));
@@ -2744,6 +2827,7 @@ class VocabAppTester:
                     await app.persistResourceFileOrder(app.resourceFiles.map(item => item.id));
                     const orderOnlyLocal = app.resourceFiles.find(item => item.name === 'selenium-resource.txt');
                     app.fetchResourceCloudRows = async () => [{
+                      language: app.RESOURCE_LANGUAGE,
                       resource_id: orderOnlyLocal.id, name: orderOnlyLocal.name, mime_type: orderOnlyLocal.type,
                       size: orderOnlyLocal.size, sha256: orderOnlyLocal.sha256, storage_path: orderOnlyLocal.storagePath,
                       sort_order: orderOnlyLocal.sortOrder, order_updated_at: 0,
@@ -2756,12 +2840,14 @@ class VocabAppTester:
                     const remoteId = 'remote-resource-regression';
                     const remoteUpdatedAt = Date.now() + 1000;
                     app.fetchResourceCloudRows = async () => [{
+                      language: app.RESOURCE_LANGUAGE,
                       resource_id: local.id, name: local.name, mime_type: local.type,
                       size: local.size, sha256: local.sha256, storage_path: local.storagePath,
                       updated_at: local.updatedAt, deleted_at: null
                     }, {
+                      language: app.RESOURCE_LANGUAGE,
                       resource_id: remoteId, name: 'remote-only.txt', mime_type: 'text/plain',
-                      size: 19, sha256: '', storage_path: userId + '/' + remoteId + '/' + remoteId + '.txt',
+                      size: 19, sha256: '', storage_path: userId + '/' + app.RESOURCE_LANGUAGE + '/' + remoteId + '/' + remoteId + '.txt',
                       updated_at: remoteUpdatedAt, deleted_at: null
                     }];
                     await app.syncResourceLibraryWithSupabase({access_token:'resource-test-token'}, userId);
@@ -2771,7 +2857,7 @@ class VocabAppTester:
                     const remoteCached = await app.ensureResourceBlob(remoteBefore);
                     const lazyDownloaded = !!remoteBefore && !(remoteBefore.blob instanceof Blob)
                       && remoteCached.blob instanceof Blob && remoteCached.blob.size === 19;
-                    await app.applyResourceTombstone({id:remoteId, name:'remote-only.txt', storagePath:remoteBefore.storagePath, deletedAt:Date.now() + 2000, syncedAt:Date.now()});
+                    await app.applyResourceTombstone({id:remoteId, language:app.RESOURCE_LANGUAGE, name:'remote-only.txt', storagePath:remoteBefore.storagePath, deletedAt:Date.now() + 2000, syncedAt:Date.now()});
                     await app.removeResourceDeletion(remoteId);
                     await app.loadResourceFiles();
                     done({failedUploadPreserved, uploaded, orderMetadataOnly, lazyDownloaded, remaining:app.resourceFiles.map(item => item.name), events});
@@ -7308,11 +7394,13 @@ class VocabAppTester:
 
         resource_schema = all(token in sql for token in (
             'create table if not exists public.resource_files',
+            "language text not null default 'jp'", "language in ('kr', 'jp')",
             'resource_id text not null', 'mime_type text', 'size bigint', 'sha256 text',
             'sort_order bigint not null default 0', 'order_updated_at bigint not null default 0',
             'add column if not exists sort_order', 'add column if not exists order_updated_at',
-            'resource_files_user_sort_idx',
-            'storage_path text', 'primary key (user_id, resource_id)',
+            'add column if not exists language text', "set language = 'jp'",
+            'resource_files_user_language_sort_idx',
+            'storage_path text', 'primary key (user_id, language, resource_id)',
             'revoke all on table public.resource_files from anon',
         ))
         self.assert_true(resource_schema, "[Supabase] resource_files 私有元数据表与复合主键完整", "学习资料元数据表字段、主键或匿名权限限制不完整")

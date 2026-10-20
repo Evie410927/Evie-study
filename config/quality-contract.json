@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-10-19.1",
+  "contractVersion": "2026-10-20.1",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -18,7 +18,8 @@
       "docs/decisions/ADR-010-similar-word-pronunciation-note.md",
       "docs/decisions/ADR-012-resource-library-cloud-sync.md",
       "docs/decisions/ADR-013-cloud-sync-undo-history.md",
-      "docs/decisions/ADR-014-resource-library-manual-order.md"
+      "docs/decisions/ADR-014-resource-library-manual-order.md",
+      "docs/decisions/ADR-015-resource-library-language-isolation.md"
     ]
   },
   "mirroredApps": [
@@ -207,7 +208,12 @@
       "modalId": "resourceLibraryModal",
       "fileInputId": "resourceFileInput",
       "listId": "resourceFileList",
-      "persistence": "shared-origin-IndexedDB",
+      "persistence": "language-partitioned-shared-origin-IndexedDB",
+      "languageField": "language",
+      "allowedLanguages": ["kr", "jp"],
+      "legacyLanguage": "jp",
+      "localIsolation": "filter-by-current-language",
+      "cloudIsolation": "user-RLS-and-language",
       "cloudSync": true,
       "cloudSyncCheckboxId": "cloudSyncResourcesCheckbox",
       "cloudMetadataTable": "resource_files",
@@ -315,10 +321,14 @@
       "strictSupersetRecoveryRespectsDeletionTombstones": true
     },
     "resourceCloudSync": {
-      "sharedAcrossLanguages": true,
+      "sharedAcrossLanguages": false,
+      "languagePartitioned": true,
+      "languageField": "language",
+      "legacyLanguage": "jp",
       "metadataTable": "resource_files",
       "storageBucket": "vocab-resources",
-      "storagePath": "user-id/resource-id/resource-id.extension",
+      "storagePath": "user-id/language/resource-id/resource-id.extension",
+      "metadataConflictKey": "user-id-language-resource-id",
       "contentHash": "SHA-256-when-WebCrypto-available",
       "remoteMetadataFirst": true,
       "downloadOnOpen": true,
@@ -328,7 +338,8 @@
       "wordPayloadIsolation": true,
       "manualOrder": "sortOrder-ascending",
       "manualOrderConflictResolution": "newest-orderUpdatedAt-wins",
-      "manualOrderSharedAcrossLanguages": true
+      "manualOrderSharedAcrossLanguages": false,
+      "manualOrderScopedByLanguage": true
     },
     "mainSearch": {
       "krFields": ["word", "reading", "meaning"],

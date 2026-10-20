@@ -9030,7 +9030,9 @@ class JpVocabApp {
     this.RESOURCE_DB_NAME = 'evie_vocab_resource_library_v1';
     this.RESOURCE_STORE_NAME = 'files';
     this.RESOURCE_DELETION_STORE_NAME = 'deletions';
-    this.RESOURCE_DB_VERSION = 2;
+    this.RESOURCE_DB_VERSION = 3;
+    this.RESOURCE_LANGUAGE = 'jp';
+    this.RESOURCE_LEGACY_LANGUAGE = 'jp';
     this.RESOURCE_STORAGE_BUCKET = 'vocab-resources';
     this.RESOURCE_MAX_FILE_SIZE = 50 * 1024 * 1024;
     this.resourceFiles = [];
@@ -9746,14 +9748,20 @@ class JpVocabApp {
       const request = window.indexedDB.open(this.RESOURCE_DB_NAME, this.RESOURCE_DB_VERSION);
       request.onupgradeneeded = () => {
         const db = request.result;
-        if (!db.objectStoreNames.contains(this.RESOURCE_STORE_NAME)) {
-          const store = db.createObjectStore(this.RESOURCE_STORE_NAME, { keyPath: 'id' });
+        const store = db.objectStoreNames.contains(this.RESOURCE_STORE_NAME)
+          ? request.transaction.objectStore(this.RESOURCE_STORE_NAME)
+          : db.createObjectStore(this.RESOURCE_STORE_NAME, { keyPath: 'id' });
+        if (!store.indexNames.contains('addedAt')) {
           store.createIndex('addedAt', 'addedAt', { unique: false });
         }
-        if (!db.objectStoreNames.contains(this.RESOURCE_DELETION_STORE_NAME)) {
-          const deletionStore = db.createObjectStore(this.RESOURCE_DELETION_STORE_NAME, { keyPath: 'id' });
+        if (!store.indexNames.contains('language')) store.createIndex('language', 'language', { unique: false });
+        const deletionStore = db.objectStoreNames.contains(this.RESOURCE_DELETION_STORE_NAME)
+          ? request.transaction.objectStore(this.RESOURCE_DELETION_STORE_NAME)
+          : db.createObjectStore(this.RESOURCE_DELETION_STORE_NAME, { keyPath: 'id' });
+        if (!deletionStore.indexNames.contains('deletedAt')) {
           deletionStore.createIndex('deletedAt', 'deletedAt', { unique: false });
         }
+        if (!deletionStore.indexNames.contains('language')) deletionStore.createIndex('language', 'language', { unique: false });
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error || new Error('资料库打开失败'));
@@ -9779,6 +9787,9 @@ class JpVocabApp {
       );
       const normalizedRecords = records.map(record => ({
         ...record,
+        language: ['kr', 'jp'].includes(String(record.language || '').toLowerCase())
+          ? String(record.language).toLowerCase()
+          : this.RESOURCE_LEGACY_LANGUAGE,
         updatedAt: Number(record.updatedAt || record.addedAt || migrationTime),
         sha256: String(record.sha256 || ''),
         storagePath: String(record.storagePath || ''),
@@ -9794,10 +9805,11 @@ class JpVocabApp {
       const needsMigration = normalizedRecords.some((record, index) => {
         const original = records[index] || {};
         return !original.updatedAt || original.sha256 === undefined || original.storagePath === undefined || original.cloudState === undefined
-          || original.sortOrder === undefined || !original.orderUpdatedAt || original.orderDirty === undefined;
+          || original.sortOrder === undefined || !original.orderUpdatedAt || original.orderDirty === undefined
+          || !['kr', 'jp'].includes(String(original.language || '').toLowerCase());
       });
       if (needsMigration) await this.putResourceRecords(normalizedRecords);
-      this.resourceFiles = this.sortResourceRecords(normalizedRecords);
+      this.resourceFiles = this.sortResourceRecords(normalizedRecords.filter(record => record.language === this.RESOURCE_LANGUAGE));
       this.renderResourceFileList();
       this.setResourceFileStatus(this.resourceFiles.length ? `共 ${this.resourceFiles.length} 个文件` : '');
     } catch (error) {
@@ -9836,14 +9848,25 @@ class JpVocabApp {
 
   async getResourceDeletions() {
     const db = await this.openResourceDatabase();
+    let records = [];
     try {
-      return await new Promise((resolve, reject) => {
+      records = await new Promise((resolve, reject) => {
         const transaction = db.transaction(this.RESOURCE_DELETION_STORE_NAME, 'readonly');
         const request = transaction.objectStore(this.RESOURCE_DELETION_STORE_NAME).getAll();
         request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
         request.onerror = () => reject(request.error || new Error('读取资料删除记录失败'));
       });
     } finally { db.close(); }
+    const normalizedRecords = records.map(record => ({
+      ...record,
+      language: ['kr', 'jp'].includes(String(record.language || '').toLowerCase())
+        ? String(record.language).toLowerCase()
+        : this.RESOURCE_LEGACY_LANGUAGE
+    }));
+    if (normalizedRecords.some((record, index) => record.language !== records[index]?.language)) {
+      await Promise.all(normalizedRecords.map(record => this.saveResourceDeletion(record)));
+    }
+    return normalizedRecords.filter(record => record.language === this.RESOURCE_LANGUAGE);
   }
 
   async removeResourceDeletion(resourceId) {
@@ -9873,6 +9896,7 @@ class JpVocabApp {
         const now = Date.now();
         accepted.push({
           id: window.crypto?.randomUUID ? window.crypto.randomUUID() : `resource_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+          language: this.RESOURCE_LANGUAGE,
           name: file.name,
           type: this.getResourceMimeType(extension, file.type),
           size: file.size,
@@ -9928,12 +9952,17 @@ class JpVocabApp {
 
   getResourceStoragePath(userId, record) {
     const extension = this.getResourceFileExtension(record?.name || '') || 'bin';
-    return `${userId}/${record.id}/${record.id}.${extension}`;
+    return `${userId}/${this.RESOURCE_LANGUAGE}/${record.id}/${record.id}.${extension}`;
+  }
+
+  isResourceLanguageSchemaError(data, status = 0) {
+    const detail = `${data?.code || ''} ${data?.message || ''} ${data?.hint || ''}`.toLowerCase();
+    return Number(status) === 400 && detail.includes('language') && (detail.includes('pgrst204') || detail.includes('42703') || detail.includes('column'));
   }
 
   isResourceOrderSchemaError(data, status = 0) {
     const detail = `${data?.code || ''} ${data?.message || ''} ${data?.hint || ''}`.toLowerCase();
-    return Number(status) === 400 && (detail.includes('pgrst204') || detail.includes('42703') || detail.includes('sort_order') || detail.includes('order_updated_at'));
+    return Number(status) === 400 && (detail.includes('sort_order') || detail.includes('order_updated_at'));
   }
 
   async fetchResourceCloudRows(accessToken) {
@@ -9941,17 +9970,21 @@ class JpVocabApp {
       const collected = [];
       for (let start = 0; ; start += 500) {
         const fields = includeOrderFields
-          ? 'resource_id,name,mime_type,size,sha256,storage_path,sort_order,order_updated_at,updated_at,deleted_at'
-          : 'resource_id,name,mime_type,size,sha256,storage_path,updated_at,deleted_at';
-        const query = `select=${fields}&order=updated_at.asc`;
+          ? 'language,resource_id,name,mime_type,size,sha256,storage_path,sort_order,order_updated_at,updated_at,deleted_at'
+          : 'language,resource_id,name,mime_type,size,sha256,storage_path,updated_at,deleted_at';
+        const query = `select=${fields}&language=eq.${encodeURIComponent(this.RESOURCE_LANGUAGE)}&order=updated_at.asc`;
         const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/resource_files?${query}`, {
           headers: this.cloudHeaders(accessToken, { 'Range-Unit': 'items', 'Range': `${start}-${start + 499}` })
         });
         const data = await response.json().catch(() => []);
         if (!response.ok) {
-          const error = new Error(data.message || data.hint || `资料目录读取失败 (${response.status})`);
+          const languageSchemaMissing = this.isResourceLanguageSchemaError(data, response.status);
+          const error = new Error(languageSchemaMissing
+            ? '资料云同步尚未完成语言隔离升级，请先执行最新版 supabase_vocab_sync.sql'
+            : (data.message || data.hint || `资料目录读取失败 (${response.status})`));
           error.status = response.status;
           error.code = data.code;
+          error.resourceLanguageSchemaMissing = languageSchemaMissing;
           error.resourceOrderSchemaMissing = includeOrderFields && this.isResourceOrderSchemaError(data, response.status);
           throw error;
         }
@@ -9976,6 +10009,7 @@ class JpVocabApp {
   async upsertResourceMetadataRows(accessToken, userId, records) {
     const rows = (records || []).map(record => ({
       user_id: userId,
+      language: this.RESOURCE_LANGUAGE,
       resource_id: String(record.id || record.resource_id),
       name: String(record.name || ''),
       mime_type: String(record.type || record.mime_type || 'application/octet-stream'),
@@ -9994,16 +10028,20 @@ class JpVocabApp {
           const { sort_order, order_updated_at, ...legacyRow } = row;
           return legacyRow;
         });
-        const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/resource_files?on_conflict=user_id,resource_id`, {
+        const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/resource_files?on_conflict=user_id,language,resource_id`, {
           method: 'POST',
           headers: this.cloudHeaders(accessToken, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
           body: JSON.stringify(batch)
         });
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
-          const error = new Error(data.message || data.hint || `资料目录写入失败 (${response.status})`);
+          const languageSchemaMissing = this.isResourceLanguageSchemaError(data, response.status);
+          const error = new Error(languageSchemaMissing
+            ? '资料云同步尚未完成语言隔离升级，请先执行最新版 supabase_vocab_sync.sql'
+            : (data.message || data.hint || `资料目录写入失败 (${response.status})`));
           error.status = response.status;
           error.code = data.code;
+          error.resourceLanguageSchemaMissing = languageSchemaMissing;
           error.resourceOrderSchemaMissing = includeOrderFields && this.isResourceOrderSchemaError(data, response.status);
           throw error;
         }
@@ -10029,19 +10067,23 @@ class JpVocabApp {
     if (this._resourceOrderCloudSupported === false) return false;
     const rows = (records || []).map(record => ({
       user_id: userId,
+      language: this.RESOURCE_LANGUAGE,
       resource_id: String(record.id || record.resource_id),
       sort_order: Number.isFinite(Number(record.sortOrder ?? record.sort_order)) ? Number(record.sortOrder ?? record.sort_order) : 0,
       order_updated_at: Math.max(0, Number(record.orderUpdatedAt || record.order_updated_at || 0))
     }));
     try {
       for (let index = 0; index < rows.length; index += 50) {
-        const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/resource_files?on_conflict=user_id,resource_id`, {
+        const response = await fetch(`${SUPABASE_CONFIG.url}/rest/v1/resource_files?on_conflict=user_id,language,resource_id`, {
           method: 'POST',
           headers: this.cloudHeaders(accessToken, { 'Prefer': 'resolution=merge-duplicates,return=minimal,missing=default' }),
           body: JSON.stringify(rows.slice(index, index + 50))
         });
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
+          if (this.isResourceLanguageSchemaError(data, response.status)) {
+            throw new Error('资料云同步尚未完成语言隔离升级，请先执行最新版 supabase_vocab_sync.sql');
+          }
           if (this.isResourceOrderSchemaError(data, response.status)) {
             this._resourceOrderCloudSupported = false;
             return false;
@@ -10152,6 +10194,11 @@ class JpVocabApp {
   }
 
   async applyResourceTombstone(tombstone) {
+    const language = ['kr', 'jp'].includes(String(tombstone?.language || '').toLowerCase())
+      ? String(tombstone.language).toLowerCase()
+      : this.RESOURCE_LEGACY_LANGUAGE;
+    if (language !== this.RESOURCE_LANGUAGE) return false;
+    tombstone = { ...tombstone, language };
     const db = await this.openResourceDatabase();
     try {
       await new Promise((resolve, reject) => {
@@ -10163,13 +10210,19 @@ class JpVocabApp {
         transaction.onabort = () => reject(transaction.error || new Error('资料删除状态保存已中止'));
       });
     } finally { db.close(); }
+    return true;
   }
 
   async syncResourceLibraryWithSupabase(session, userId) {
     const accessToken = session?.access_token || '';
     if (!accessToken || !userId) throw new Error('学习资料同步需要有效登录');
     await this.loadResourceFiles();
-    const cloudRows = await this.fetchResourceCloudRows(accessToken);
+    const cloudRows = (await this.fetchResourceCloudRows(accessToken)).filter(row => {
+      const language = ['kr', 'jp'].includes(String(row?.language || '').toLowerCase())
+        ? String(row.language).toLowerCase()
+        : this.RESOURCE_LEGACY_LANGUAGE;
+      return language === this.RESOURCE_LANGUAGE;
+    });
     const cloudById = new Map(cloudRows.map(row => [String(row.resource_id), row]));
     let localById = new Map(this.resourceFiles.map(record => [String(record.id), record]));
     let deletions = await this.getResourceDeletions();
@@ -10191,6 +10244,7 @@ class JpVocabApp {
       if (cloudDeletedAt && cloudDeletedAt >= localUpdatedAt) {
         const tombstone = {
           id,
+          language: this.RESOURCE_LANGUAGE,
           name: String(cloudRow.name || local?.name || ''),
           storagePath: String(cloudRow.storage_path || local?.storagePath || ''),
           deletedAt: cloudDeletedAt,
@@ -10204,6 +10258,7 @@ class JpVocabApp {
         const canKeepBlob = Boolean(local?.blob && cloudHash && cloudHash === String(local.sha256 || ''));
         const merged = {
           id,
+          language: this.RESOURCE_LANGUAGE,
           name: String(cloudRow.name || '未命名资料'),
           type: String(cloudRow.mime_type || 'application/octet-stream'),
           size: Math.max(0, Number(cloudRow.size) || 0),
@@ -10627,6 +10682,7 @@ class JpVocabApp {
         const transaction = db.transaction([this.RESOURCE_STORE_NAME, this.RESOURCE_DELETION_STORE_NAME], 'readwrite');
         transaction.objectStore(this.RESOURCE_DELETION_STORE_NAME).put({
           id: record.id,
+          language: this.RESOURCE_LANGUAGE,
           name: record.name,
           storagePath: record.storagePath || '',
           deletedAt: Date.now(),

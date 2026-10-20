@@ -235,6 +235,22 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
             fail(errors, f"{relative_path}: 搜索框下方仍会渲染旧 Tag 摘要 {forbidden_markup}")
 
     resource_contract = contract["uiContracts"]["resourceLibrary"]
+    if resource_contract.get("localIsolation") == "filter-by-current-language":
+        language_code = "kr" if relative_path == "standalone_kr_vocab.html" else "jp"
+        required_resource_language_tokens = (
+            "this.RESOURCE_DB_VERSION = 3",
+            f"this.RESOURCE_LANGUAGE = '{language_code}'",
+            "this.RESOURCE_LEGACY_LANGUAGE = 'jp'",
+            "store.createIndex('language', 'language', { unique: false })",
+            "deletionStore.createIndex('language', 'language', { unique: false })",
+            "normalizedRecords.filter(record => record.language === this.RESOURCE_LANGUAGE)",
+            "language=eq.${encodeURIComponent(this.RESOURCE_LANGUAGE)}",
+            "on_conflict=user_id,language,resource_id",
+            "${userId}/${this.RESOURCE_LANGUAGE}/${record.id}/${record.id}.${extension}",
+        )
+        for token in required_resource_language_tokens:
+            if token not in content:
+                fail(errors, f"{relative_path}: 学习资料语言隔离缺少实现标记 {token}")
     if resource_contract.get("manualOrderField") == "sortOrder":
         required_resource_order_tokens = (
             ".resource-file-drag-handle {",

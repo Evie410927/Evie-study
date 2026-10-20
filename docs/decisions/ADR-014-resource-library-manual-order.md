@@ -15,7 +15,7 @@
 4. 新增文件放在列表顶部。旧记录首次装载时按原先的新增时间倒序生成稳定顺序，写回 IndexedDB 并进入排序元数据待同步状态。
 5. 云端 `resource_files` 增加 `sort_order` 和 `order_updated_at`。排序冲突逐条采用较新的 `order_updated_at`，并与文件内容 `updated_at` 分开比较；只改变顺序时只 Upsert 元数据，不重新上传 Storage Blob。
 6. 前端探测到旧云表不支持新增列时，自动回退到旧字段读取和写入，继续完成文件内容同步，同时保留本地 `orderDirty`。数据库升级后下一次同步再补传顺序。
-7. KR/JP 使用同一 IndexedDB 和同一云端目录，DOM、样式、交互、持久化与测试完全镜像。
+7. KR/JP 使用同一物理 IndexedDB 与元数据表，但依据 ADR-015 按 `language` 分区；排序只在当前语言内部持久化与跨设备同步。DOM、样式、交互和测试继续完全镜像。
 
 ## 验证
 
