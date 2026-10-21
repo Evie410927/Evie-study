@@ -240,6 +240,13 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
         fail(errors, "质量契约：Excel 导出星级范围必须固定为 0～5 星")
     if excel_contract.get("customSaveLocationControlId") != "excelExportChooseLocation":
         fail(errors, "质量契约：Excel 导出自定义保存位置控件 ID 不一致")
+    if excel_contract.get("optionalColumns") != {
+        "reading": "发音",
+        "pronunciationNote": "发音备注",
+        "userNote": "说明",
+        "similarWords": "相近词汇",
+    }:
+        fail(errors, "质量契约：Excel 导出可选列必须固定为发音、发音备注、说明和相近词汇")
     resource_button = parser.elements_by_id.get(resource_contract["buttonId"])
     export_button = parser.elements_by_id.get(excel_contract["buttonId"])
     quick_add_button = parser.elements_by_id.get("quickAddBtn")
@@ -258,6 +265,10 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
         'value="ratings"',
         'id="excelExportRatingPanel"',
         'id="excelExportChooseLocation"',
+        'id="excelExportColumnsPanel"',
+        'name="excelExportOptionalColumn"',
+        "this.excelExportOptionalColumns = new Set()",
+        "new Set(['reading', 'pronunciationNote', 'userNote', 'similarWords'])",
         "some(tag => selected.has(",
         "this.excelExportRatings.has(this.normalizeExcelExportRating(word?.rating))",
         "const firstExample = this.getParsedExamples(word)[0]",
@@ -265,6 +276,10 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
         "window.showSaveFilePicker",
         "await fileHandle.createWritable()",
         "浏览器默认下载位置",
+        "title: '相近词汇'",
+        "this.getSimilarWords(word, Number.POSITIVE_INFINITY).map(similarWord =>",
+        ".join('：')",
+        "const lastColumnName = columnNames[columnNames.length - 1]",
         "name: 'xl/worksheets/sheet1.xml'",
         "name: 'xl/styles.xml'",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

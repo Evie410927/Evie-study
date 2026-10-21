@@ -277,25 +277,31 @@ class VocabAppTester:
             'id="excelExportTagPanel"', 'id="excelExportTagList"',
             'id="excelExportRatingPanel"', 'id="excelExportRatingList"',
             'id="excelExportChooseLocation"',
+            'id="excelExportColumnsPanel"', 'name="excelExportOptionalColumn"',
+            'value="reading"', 'value="pronunciationNote"', 'value="userNote"', 'value="similarWords"',
             'id="confirmExcelExportBtn"', 'exportSelectedWordsToExcel()',
             "new Set(['all', 'learning', 'mastered', 'tags', 'ratings'])",
             "this.excelExportTags.size === 0", "some(tag => selected.has(",
             "this.excelExportRatings.size === 0",
             "this.excelExportRatings.has(this.normalizeExcelExportRating(word?.rating))",
+            "this.excelExportOptionalColumns = new Set()",
+            "new Set(['reading', 'pronunciationNote', 'userNote', 'similarWords'])",
             "const firstExample = this.getParsedExamples(word)[0]",
             "isJapanese ? '中韩意思' : '中文意思'",
             "isJapanese ? '日中例句' : '韩中例句'",
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             "window.showSaveFilePicker", "await fileHandle.createWritable()",
             "浏览器默认下载位置",
+            "title: '相近词汇'", "this.getSimilarWords(word, Number.POSITIVE_INFINITY).map(similarWord =>",
+            ".join('：')", "const lastColumnName = columnNames[columnNames.length - 1]",
             "name: 'xl/worksheets/sheet1.xml'", "name: 'xl/styles.xml'",
             '<b/><color rgb="FFFFFFFF"/>', '<fgColor rgb="FFD946EF"/>',
             'wrapText="1"', '.xlsx`',
         ))
         self.assert_true(
             excel_export_contract,
-            f"[{lang_name}] Excel 导出-状态/Tag/星级筛选、自定义保存位置、四列首例句、表头样式与离线 XLSX 生成完整",
-            "Excel 导出弹窗、筛选协议、保存位置、第一例句限制、JP 中韩释义、Open XML ZIP 或表头样式缺失",
+            f"[{lang_name}] Excel 导出-筛选、默认四列与四个可选列、相近词精简内容、自定义保存位置及离线 XLSX 完整",
+            "Excel 导出弹窗、筛选协议、可选列、相近词内容限制、保存位置、第一例句、JP 中韩释义或 Open XML ZIP 缺失",
         )
 
         resource_modal_contract = all(token in content for token in (
@@ -2632,9 +2638,9 @@ class VocabAppTester:
                   const hadOwnPicker = Object.prototype.hasOwnProperty.call(window, 'showSaveFilePicker');
                   const originalPicker = window.showSaveFilePicker;
                   const fixtures = [
-                    {id:'excel-a', word:'导出词甲', partOfSpeech:'名词', meaning:'中文甲', krMeaning:'한국어 뜻 A', mastered:false, rating:4, tags:['重点'], examples:[{example:'第一组原句甲', trans:'第一组翻译甲'}, {example:'第二组原句甲', trans:'第二组翻译甲'}]},
-                    {id:'excel-b', word:'导出词乙', partOfSpeech:'动词', meaning:'中文乙', krMeaning:'한국어 뜻 B', mastered:true, rating:5, tags:['重点','复习'], examples:[{example:'第一组原句乙', trans:'第一组翻译乙'}]},
-                    {id:'excel-c', word:'导出词丙', partOfSpeech:'形容词', meaning:'中文丙', krMeaning:'한국어 뜻 C', mastered:false, rating:4, tags:['其他'], examples:[]},
+                    {id:'excel-a', word:'导出词甲', reading:'[发音甲]', pronunciationNote:'发音备注甲', userNote:'说明甲', partOfSpeech:'名词', meaning:'中文甲', krMeaning:'한국어 뜻 A', mastered:false, rating:4, tags:['重点'], manualSimilarWordIds:['excel-b','excel-c'], examples:[{example:'第一组原句甲', trans:'第一组翻译甲'}, {example:'第二组原句甲', trans:'第二组翻译甲'}]},
+                    {id:'excel-b', word:'导出词乙', reading:'[不应导出的关联词发音乙]', pronunciationNote:'不应导出的关联词备注乙', userNote:'不应导出的关联词说明乙', partOfSpeech:'动词', meaning:'中文乙', krMeaning:'한국어 뜻 B', mastered:true, rating:5, tags:['重点','复习'], manualSimilarWordIds:['excel-a'], examples:[{example:'第一组原句乙', trans:'第一组翻译乙'}]},
+                    {id:'excel-c', word:'导出词丙', reading:'[不应导出的关联词发音丙]', pronunciationNote:'不应导出的关联词备注丙', userNote:'不应导出的关联词说明丙', partOfSpeech:'形容词', meaning:'中文丙', krMeaning:'한국어 뜻 C', mastered:false, rating:4, tags:['其他'], manualSimilarWordIds:['excel-a'], examples:[]},
                     {id:'excel-d', word:'导出词丁', partOfSpeech:'副词', meaning:'中文丁', krMeaning:'한국어 뜻 D', mastered:true, rating:2, tags:[], examples:[]}
                   ];
                   try {
@@ -2645,6 +2651,9 @@ class VocabAppTester:
                     const tagButtonCount = document.querySelectorAll('#excelExportTagList .excel-export-tag-option').length;
                     const ratingButtonCount = document.querySelectorAll('#excelExportRatingList .excel-export-tag-option').length;
                     const chooseLocationDefault = document.getElementById('excelExportChooseLocation')?.checked === true;
+                    const optionalColumnInputs = Array.from(document.querySelectorAll('input[name="excelExportOptionalColumn"]'));
+                    const optionalColumnCount = optionalColumnInputs.length;
+                    const optionalColumnsDefaultOff = optionalColumnInputs.every(input => !input.checked) && app.excelExportOptionalColumns.size === 0;
                     app.excelExportScope = 'all';
                     const allCount = app.getExcelExportWords().length;
                     app.excelExportScope = 'learning';
@@ -2665,6 +2674,10 @@ class VocabAppTester:
                     const ratingAnyCount = app.getExcelExportWords().length;
                     const blob = app.createVocabularyXlsxBlob([fixtures[0]]);
                     const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
+                    ['reading', 'pronunciationNote', 'userNote', 'similarWords'].forEach(key => app.setExcelExportOptionalColumn(key, true));
+                    const allColumnsBlob = app.createVocabularyXlsxBlob([fixtures[0]]);
+                    const allColumnsBytes = Array.from(new Uint8Array(await allColumnsBlob.arrayBuffer()));
+                    const optionalColumnSummary = document.getElementById('excelExportSummary')?.textContent || '';
                     const toastMessages = [];
                     let defaultDownloadCount = 0;
                     let pickerSuggestedName = '';
@@ -2691,7 +2704,7 @@ class VocabAppTester:
                     Object.defineProperty(window, 'showSaveFilePicker', {configurable:true, writable:true, value:undefined});
                     await app.exportSelectedWordsToExcel();
                     const unsupportedFallback = defaultDownloadCount === 1 && toastMessages.some(message => message.includes('浏览器默认下载位置'));
-                    done({modalActive, scopeValues, tagButtonCount, ratingButtonCount, chooseLocationDefault, allCount, learningCount, masteredCount, tagEmptyBlocked, tagAnyCount, ratingEmptyBlocked, ratingAnyCount, pickerSuggestedName, pickerWriteType, pickerClosed, pickerSuccessClosedModal, cancelKeptModalOpen, cancelAvoidedDownload, unsupportedFallback, blobType:blob.type, bytes});
+                    done({modalActive, scopeValues, tagButtonCount, ratingButtonCount, chooseLocationDefault, optionalColumnCount, optionalColumnsDefaultOff, optionalColumnSummary, allCount, learningCount, masteredCount, tagEmptyBlocked, tagAnyCount, ratingEmptyBlocked, ratingAnyCount, pickerSuggestedName, pickerWriteType, pickerClosed, pickerSuccessClosedModal, cancelKeptModalOpen, cancelAvoidedDownload, unsupportedFallback, blobType:blob.type, bytes, allColumnsBytes});
                   } catch (error) {
                     done({error:String(error)});
                   } finally {
@@ -2707,6 +2720,7 @@ class VocabAppTester:
                 })();
             """)
             excel_xlsx_valid = False
+            excel_optional_columns_valid = False
             excel_xlsx_detail = ""
             try:
                 excel_bytes = bytes(excel_export_result.get('bytes') or [])
@@ -2724,8 +2738,27 @@ class VocabAppTester:
                     and header_ok and meaning_ok
                     and '第一组原句甲\n第一组翻译甲' in sheet_xml
                     and '第二组原句甲' not in sheet_xml
+                    and not any(title in sheet_xml for title in ('发音备注', '说明', '相近词汇'))
+                    and '<autoFilter ref="A1:D2"/>' in sheet_xml
                     and '<b/>' in styles_xml and 'fgColor rgb="FFD946EF"' in styles_xml
                     and 'wrapText="1"' in styles_xml
+                )
+                all_columns_bytes = bytes(excel_export_result.get('allColumnsBytes') or [])
+                with zipfile.ZipFile(io.BytesIO(all_columns_bytes), 'r') as workbook_zip:
+                    all_columns_sheet_xml = workbook_zip.read('xl/worksheets/sheet1.xml').decode('utf-8')
+                excel_optional_columns_valid = bool(
+                    all(title in all_columns_sheet_xml for title in ('发音', '发音备注', '说明', '相近词汇'))
+                    and '[发音甲]' in all_columns_sheet_xml
+                    and '发音备注甲' in all_columns_sheet_xml
+                    and '说明甲' in all_columns_sheet_xml
+                    and '导出词乙：中文乙\n导出词丙：中文丙' in all_columns_sheet_xml
+                    and '한국어 뜻 B' not in all_columns_sheet_xml
+                    and '한국어 뜻 C' not in all_columns_sheet_xml
+                    and '不应导出的关联词发音乙' not in all_columns_sheet_xml
+                    and '不应导出的关联词备注乙' not in all_columns_sheet_xml
+                    and '不应导出的关联词说明乙' not in all_columns_sheet_xml
+                    and '第一组原句乙' not in all_columns_sheet_xml
+                    and '<autoFilter ref="A1:H2"/>' in all_columns_sheet_xml
                 )
             except Exception as error:
                 excel_xlsx_detail = str(error)
@@ -2737,6 +2770,9 @@ class VocabAppTester:
                     and excel_export_result.get('tagButtonCount') == 3
                     and excel_export_result.get('ratingButtonCount') == 6
                     and excel_export_result.get('chooseLocationDefault')
+                    and excel_export_result.get('optionalColumnCount') == 4
+                    and excel_export_result.get('optionalColumnsDefaultOff')
+                    and '8 列' in str(excel_export_result.get('optionalColumnSummary', ''))
                     and excel_export_result.get('allCount') == 4
                     and excel_export_result.get('learningCount') == 2
                     and excel_export_result.get('masteredCount') == 2
@@ -2753,8 +2789,9 @@ class VocabAppTester:
                     and excel_export_result.get('unsupportedFallback')
                     and excel_export_result.get('blobType') == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
                     and excel_xlsx_valid
+                    and excel_optional_columns_valid
                 ),
-                f"[{lang_name}] 浏览器 Excel 导出-状态/Tag/星级筛选、保存位置成功/取消/回退、有效 XLSX 与首例句约束",
+                f"[{lang_name}] 浏览器 Excel 导出-筛选、默认/可选列、相近词精简逐行内容、保存位置与有效 XLSX",
                 f"Excel 导出运行结果或压缩包内容错误：{excel_export_result}; {excel_xlsx_detail}",
             )
 

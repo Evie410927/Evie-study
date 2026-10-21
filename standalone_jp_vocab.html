@@ -267,6 +267,40 @@ html, body {
   flex: 0 0 auto;
 }
 
+.excel-export-columns-panel {
+  margin: 0 0 14px;
+  padding: 11px 12px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+}
+
+.excel-export-columns-panel legend {
+  padding: 0 5px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.excel-export-columns-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px 12px;
+}
+
+.excel-export-column-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.excel-export-column-option input {
+  margin: 0;
+  accent-color: var(--accent-primary);
+}
+
 .resource-library-sheet {
   height: min(78dvh, 720px);
   max-height: 90vh;
@@ -4073,6 +4107,15 @@ body::-webkit-scrollbar,
           <div class="excel-export-tag-title">可多选；词条精确命中任一所选星级即会导出。</div>
           <div id="excelExportRatingList" class="excel-export-tag-list"></div>
         </div>
+        <fieldset id="excelExportColumnsPanel" class="excel-export-columns-panel">
+          <legend>可选导出列（默认仅导出上方说明的四列）</legend>
+          <div class="excel-export-columns-grid">
+            <label class="excel-export-column-option"><input type="checkbox" name="excelExportOptionalColumn" value="reading" onchange="if(window.app) window.app.setExcelExportOptionalColumn(this.value, this.checked)"><span>发音</span></label>
+            <label class="excel-export-column-option"><input type="checkbox" name="excelExportOptionalColumn" value="pronunciationNote" onchange="if(window.app) window.app.setExcelExportOptionalColumn(this.value, this.checked)"><span>发音备注</span></label>
+            <label class="excel-export-column-option"><input type="checkbox" name="excelExportOptionalColumn" value="userNote" onchange="if(window.app) window.app.setExcelExportOptionalColumn(this.value, this.checked)"><span>说明</span></label>
+            <label class="excel-export-column-option"><input type="checkbox" name="excelExportOptionalColumn" value="similarWords" onchange="if(window.app) window.app.setExcelExportOptionalColumn(this.value, this.checked)"><span>相近词汇</span></label>
+          </div>
+        </fieldset>
         <label class="excel-export-save-location" for="excelExportChooseLocation">
           <input id="excelExportChooseLocation" type="checkbox" checked>
           <span>导出时选择保存位置（支持的浏览器会打开系统“另存为”）</span>
@@ -9187,6 +9230,7 @@ class JpVocabApp {
     this.excelExportScope = 'all';
     this.excelExportTags = new Set();
     this.excelExportRatings = new Set();
+    this.excelExportOptionalColumns = new Set();
     this._resourceOrderCloudSupported = null;
     this._resourceFileSortState = null;
     this.init();
@@ -13756,8 +13800,12 @@ class JpVocabApp {
     this.excelExportScope = 'all';
     this.excelExportTags = new Set();
     this.excelExportRatings = new Set();
+    this.excelExportOptionalColumns = new Set();
     document.querySelectorAll('input[name="excelExportScope"]').forEach(input => {
       input.checked = input.value === 'all';
+    });
+    document.querySelectorAll('input[name="excelExportOptionalColumn"]').forEach(input => {
+      input.checked = false;
     });
     this.renderExcelExportTags();
     this.renderExcelExportRatings();
@@ -13837,6 +13885,14 @@ class JpVocabApp {
     this.updateExcelExportState();
   }
 
+  setExcelExportOptionalColumn(columnKey, enabled) {
+    const allowed = new Set(['reading', 'pronunciationNote', 'userNote', 'similarWords']);
+    if (!allowed.has(columnKey)) return;
+    if (enabled) this.excelExportOptionalColumns.add(columnKey);
+    else this.excelExportOptionalColumns.delete(columnKey);
+    this.updateExcelExportState();
+  }
+
   getExcelExportWords() {
     const words = Array.isArray(this.words) ? this.words : [];
     if (this.excelExportScope === 'learning') return words.filter(word => !word?.mastered);
@@ -13863,7 +13919,7 @@ class JpVocabApp {
     const needsTags = this.excelExportScope === 'tags' && this.excelExportTags.size === 0;
     const needsRatings = this.excelExportScope === 'ratings' && this.excelExportRatings.size === 0;
     const summary = document.getElementById('excelExportSummary');
-    if (summary) summary.textContent = needsTags ? '请至少选择一个 Tag' : (needsRatings ? '请至少选择一个星级' : `将导出 ${matches.length} 个词条`);
+    if (summary) summary.textContent = needsTags ? '请至少选择一个 Tag' : (needsRatings ? '请至少选择一个星级' : `将导出 ${matches.length} 个词条 · ${4 + this.excelExportOptionalColumns.size} 列`);
     const button = document.getElementById('confirmExcelExportBtn');
     if (button) button.disabled = needsTags || needsRatings || matches.length === 0;
   }
@@ -13952,23 +14008,60 @@ class JpVocabApp {
     return new Blob([...localChunks, ...centralChunks, endRecord], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   }
 
-  createVocabularyXlsxBlob(words) {
+  getExcelExportColumnDefinitions() {
     const isJapanese = this.RESOURCE_LANGUAGE === 'jp';
-    const headers = ['单词', '词性', isJapanese ? '中韩意思' : '中文意思', isJapanese ? '日中例句' : '韩中例句'];
+    const defaultColumns = [
+      { key: 'word', title: '单词', width: 24, value: word => String(word?.word || '').trim() },
+      { key: 'partOfSpeech', title: '词性', width: 16, value: word => this.normalizeTaxonomyText(word?.partOfSpeech) },
+      { key: 'meaning', title: isJapanese ? '中韩意思' : '中文意思', width: 42, value: word => {
+        const meanings = [String(word?.meaning || '').trim()];
+        if (isJapanese && String(word?.krMeaning || '').trim()) meanings.push(String(word.krMeaning).trim());
+        return meanings.filter(Boolean).join('\n');
+      } },
+      { key: 'example', title: isJapanese ? '日中例句' : '韩中例句', width: 58, value: word => {
+        const firstExample = this.getParsedExamples(word)[0] || { example: '', trans: '' };
+        return [String(firstExample.example || '').trim(), String(firstExample.trans || '').trim()].filter(Boolean).join('\n');
+      } }
+    ];
+    const optionalColumns = [
+      { key: 'reading', title: '发音', width: 24, value: word => String(word?.reading || '').trim() },
+      { key: 'pronunciationNote', title: '发音备注', width: 32, value: word => String(word?.pronunciationNote || '').trim() },
+      { key: 'userNote', title: '说明', width: 38, value: word => String(word?.userNote || '').trim() },
+      { key: 'similarWords', title: '相近词汇', width: 48, value: word => this.getSimilarWords(word, Number.POSITIVE_INFINITY).map(similarWord => {
+        const similarText = String(similarWord?.word || '').trim();
+        const similarMeaning = String(similarWord?.meaning || '').trim();
+        return [similarText, similarMeaning].filter(Boolean).join('：');
+      }).filter(Boolean).join('\n') }
+    ];
+    return defaultColumns.concat(optionalColumns.filter(column => this.excelExportOptionalColumns.has(column.key)));
+  }
+
+  getExcelColumnName(index) {
+    let value = Number(index) + 1;
+    let name = '';
+    while (value > 0) {
+      value -= 1;
+      name = String.fromCharCode(65 + (value % 26)) + name;
+      value = Math.floor(value / 26);
+    }
+    return name;
+  }
+
+  createVocabularyXlsxBlob(words) {
+    const columns = this.getExcelExportColumnDefinitions();
+    const headers = columns.map(column => column.title);
     const rows = words.map(word => {
-      const firstExample = this.getParsedExamples(word)[0] || { example: '', trans: '' };
-      const meanings = [String(word?.meaning || '').trim()];
-      if (isJapanese && String(word?.krMeaning || '').trim()) meanings.push(String(word.krMeaning).trim());
-      const exampleLines = [String(firstExample.example || '').trim(), String(firstExample.trans || '').trim()].filter(Boolean);
-      return [String(word?.word || '').trim(), this.normalizeTaxonomyText(word?.partOfSpeech), meanings.filter(Boolean).join('\n'), exampleLines.join('\n')];
+      return columns.map(column => column.value(word));
     });
     const allRows = [headers, ...rows];
-    const columnNames = ['A', 'B', 'C', 'D'];
+    const columnNames = columns.map((column, index) => this.getExcelColumnName(index));
     const sheetRows = allRows.map((row, rowIndex) => {
       const cells = row.map((value, columnIndex) => `<c r="${columnNames[columnIndex]}${rowIndex + 1}" s="${rowIndex === 0 ? 1 : 2}" t="inlineStr"><is><t xml:space="preserve">${this.escapeExcelXml(value)}</t></is></c>`).join('');
       return `<row r="${rowIndex + 1}"${rowIndex === 0 ? ' ht="26" customHeight="1"' : ''}>${cells}</row>`;
     }).join('');
-    const worksheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols><col min="1" max="1" width="24" customWidth="1"/><col min="2" max="2" width="16" customWidth="1"/><col min="3" max="3" width="42" customWidth="1"/><col min="4" max="4" width="58" customWidth="1"/></cols><sheetData>${sheetRows}</sheetData><autoFilter ref="A1:D${allRows.length}"/></worksheet>`;
+    const columnWidths = columns.map((column, index) => `<col min="${index + 1}" max="${index + 1}" width="${column.width}" customWidth="1"/>`).join('');
+    const lastColumnName = columnNames[columnNames.length - 1] || 'D';
+    const worksheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${columnWidths}</cols><sheetData>${sheetRows}</sheetData><autoFilter ref="A1:${lastColumnName}${allRows.length}"/></worksheet>`;
     const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFD946EF"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFD1D5DB"/></left><right style="thin"><color rgb="FFD1D5DB"/></right><top style="thin"><color rgb="FFD1D5DB"/></top><bottom style="thin"><color rgb="FFD1D5DB"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
     const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="词库" sheetId="1" r:id="rId1"/></sheets></workbook>`;
     return this.buildStoredZip([
