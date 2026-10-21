@@ -153,6 +153,100 @@ html, body {
   background: rgba(255, 255, 255, 0.15);
 }
 
+.excel-export-sheet {
+  max-height: min(86dvh, 720px);
+}
+
+.excel-export-intro {
+  margin: -4px 0 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.excel-export-scope-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-bottom: 14px;
+}
+
+.excel-export-scope-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 11px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.excel-export-scope-option.selected {
+  border-color: var(--accent-primary);
+  background: rgba(236, 72, 153, 0.13);
+  box-shadow: inset 0 0 0 1px rgba(236, 72, 153, 0.18);
+}
+
+.excel-export-scope-option input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--accent-primary);
+  flex: 0 0 auto;
+}
+
+.excel-export-tag-panel {
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.22);
+}
+
+.excel-export-tag-title {
+  margin-bottom: 9px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.excel-export-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.excel-export-tag-option {
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.excel-export-tag-option.selected {
+  border-color: var(--accent-primary);
+  background: rgba(236, 72, 153, 0.18);
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.excel-export-summary {
+  min-height: 20px;
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 .resource-library-sheet {
   height: min(78dvh, 720px);
   max-height: 90vh;
@@ -451,7 +545,9 @@ html, body {
 }
 
 @media (max-width: 390px) {
-  .header-actions { gap: 8px; }
+  .app-title { font-size: 18px; gap: 6px; }
+  .header-actions { gap: 6px; }
+  .header-actions .icon-btn { width: 36px; height: 36px; }
   .resource-file-card { grid-template-columns: minmax(0, 1fr) auto; }
   .resource-file-open { grid-template-columns: 36px minmax(0, 1fr); }
   .resource-file-icon { width: 36px; height: 36px; font-size: 20px; }
@@ -3230,6 +3326,7 @@ body::-webkit-scrollbar,
         <button id="cloudSyncBtn" class="icon-btn" title="选择云端同步方式" style="font-size:16px;" onclick="if(window.app) window.app.openCloudSyncOptionsModal()">☁️</button>
         <button id="themeToggleBtn" class="icon-btn" title="切换主题" onclick="if(window.app) window.app.toggleTheme()">🌙</button>
         <button id="resourceLibraryBtn" class="icon-btn" type="button" title="打开学习资料库" aria-label="打开学习资料库" onclick="if(window.app) window.app.openResourceLibrary()">📁</button>
+        <button id="exportExcelBtn" class="icon-btn" type="button" title="导出 Excel" aria-label="导出 Excel" onclick="if(window.app) window.app.openExcelExportModal()">📊</button>
         <button id="quickAddBtn" class="icon-btn" title="添加韩语单词" onclick="if(window.app) window.app.openWordModal()">➕</button>
       </div>
     </header>
@@ -17268,6 +17365,28 @@ body::-webkit-scrollbar,
       </div>
     </div>
 
+    <div id="excelExportModal" class="modal-overlay" onclick="if(event.target.id === 'excelExportModal' && window.app) window.app.closeExcelExportModal()">
+      <div class="modal-sheet excel-export-sheet" role="dialog" aria-modal="true" aria-labelledby="excelExportTitle">
+        <div class="modal-header">
+          <h3 id="excelExportTitle" class="modal-title">📊 导出 Excel</h3>
+          <button id="closeExcelExportBtn" type="button" class="icon-btn" aria-label="关闭 Excel 导出" onclick="if(window.app) window.app.closeExcelExportModal()">×</button>
+        </div>
+        <p class="excel-export-intro">选择需要导出的词条范围。表格只包含单词、词性、释义和第一组例句。</p>
+        <div id="excelExportScopeGrid" class="excel-export-scope-grid" role="radiogroup" aria-label="导出范围">
+          <label class="excel-export-scope-option selected"><input type="radio" name="excelExportScope" value="all" checked onchange="if(window.app) window.app.setExcelExportScope(this.value)"><span>全部</span></label>
+          <label class="excel-export-scope-option"><input type="radio" name="excelExportScope" value="learning" onchange="if(window.app) window.app.setExcelExportScope(this.value)"><span>🔄 学习中</span></label>
+          <label class="excel-export-scope-option"><input type="radio" name="excelExportScope" value="mastered" onchange="if(window.app) window.app.setExcelExportScope(this.value)"><span>✅ 已掌握</span></label>
+          <label class="excel-export-scope-option"><input type="radio" name="excelExportScope" value="tags" onchange="if(window.app) window.app.setExcelExportScope(this.value)"><span>🏷️ 按 Tag</span></label>
+        </div>
+        <div id="excelExportTagPanel" class="excel-export-tag-panel" hidden>
+          <div class="excel-export-tag-title">可多选；词条命中任一所选 Tag 即会导出。</div>
+          <div id="excelExportTagList" class="excel-export-tag-list"></div>
+        </div>
+        <div id="excelExportSummary" class="excel-export-summary" role="status" aria-live="polite"></div>
+        <button id="confirmExcelExportBtn" type="button" class="btn-primary" onclick="if(window.app) window.app.exportSelectedWordsToExcel()">生成并下载 .xlsx</button>
+      </div>
+    </div>
+
     <div id="resourceLibraryModal" class="modal-overlay" onclick="if(event.target.id === 'resourceLibraryModal' && window.app) window.app.closeResourceLibrary()">
       <div class="modal-sheet resource-library-sheet" role="dialog" aria-modal="true" aria-labelledby="resourceLibraryTitle">
         <div class="modal-header">
@@ -21577,6 +21696,8 @@ class KrVocabApp {
     this.RESOURCE_STORAGE_BUCKET = 'vocab-resources';
     this.RESOURCE_MAX_FILE_SIZE = 50 * 1024 * 1024;
     this.resourceFiles = [];
+    this.excelExportScope = 'all';
+    this.excelExportTags = new Set();
     this._resourceOrderCloudSupported = null;
     this._resourceFileSortState = null;
     this.init();
@@ -23421,6 +23542,9 @@ class KrVocabApp {
 
       document.getElementById('exportHtmlBtn')?.addEventListener('click', () => this.exportHTML());
       document.getElementById('exportDataBtn')?.addEventListener('click', () => this.exportJSON());
+      document.getElementById('excelExportModal')?.addEventListener('keydown', event => {
+        if (event.key === 'Escape') this.closeExcelExportModal();
+      });
       document.getElementById('importDataTriggerBtn')?.addEventListener('click', () => {
         document.getElementById('importFileInput')?.click();
       });
@@ -26033,6 +26157,237 @@ class KrVocabApp {
     utterance.lang = 'ko-KR';
     utterance.rate = 0.88;
     window.speechSynthesis.speak(utterance);
+  }
+
+  openExcelExportModal() {
+    if (!Array.isArray(this.words) || this.words.length === 0) {
+      this.showToast('词库为空，暂无可导出的词条');
+      return;
+    }
+    const modal = document.getElementById('excelExportModal');
+    if (!modal) return;
+    this.excelExportScope = 'all';
+    this.excelExportTags = new Set();
+    document.querySelectorAll('input[name="excelExportScope"]').forEach(input => {
+      input.checked = input.value === 'all';
+    });
+    this.renderExcelExportTags();
+    this.updateExcelExportState();
+    modal.classList.add('active');
+    this.resetModalScrollToTop(modal, '.excel-export-sheet');
+    setTimeout(() => document.getElementById('confirmExcelExportBtn')?.focus(), 0);
+  }
+
+  closeExcelExportModal() {
+    const modal = document.getElementById('excelExportModal');
+    if (modal) modal.classList.remove('active');
+  }
+
+  setExcelExportScope(scope) {
+    const allowed = new Set(['all', 'learning', 'mastered', 'tags']);
+    this.excelExportScope = allowed.has(scope) ? scope : 'all';
+    this.updateExcelExportState();
+  }
+
+  getExcelExportAvailableTags() {
+    const tags = new Set();
+    (Array.isArray(this.words) ? this.words : []).forEach(word => {
+      const partOfSpeech = this.normalizeTaxonomyText(word?.partOfSpeech).toLowerCase();
+      (Array.isArray(word?.tags) ? word.tags : []).forEach(tag => {
+        const cleanTag = String(tag || '').replace(/^#/, '').trim();
+        if (cleanTag && cleanTag.toLowerCase() !== partOfSpeech) tags.add(cleanTag);
+      });
+    });
+    return [...tags].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+  }
+
+  renderExcelExportTags() {
+    const container = document.getElementById('excelExportTagList');
+    if (!container) return;
+    const tags = this.getExcelExportAvailableTags();
+    if (!tags.length) {
+      container.innerHTML = '<div style="color:var(--text-secondary);font-size:12px;">当前词库暂无自定义 Tag</div>';
+      return;
+    }
+    container.innerHTML = tags.map(tag => {
+      const selected = this.excelExportTags.has(tag);
+      return `<button type="button" class="excel-export-tag-option${selected ? ' selected' : ''}" data-export-tag="${this.escapeHtml(tag)}" aria-pressed="${selected ? 'true' : 'false'}" onclick="if(window.app) window.app.toggleExcelExportTag(this.dataset.exportTag)">${selected ? '✓ ' : ''}#${this.escapeHtml(tag)}</button>`;
+    }).join('');
+  }
+
+  toggleExcelExportTag(tag) {
+    const cleanTag = String(tag || '').replace(/^#/, '').trim();
+    if (!cleanTag) return;
+    if (this.excelExportTags.has(cleanTag)) this.excelExportTags.delete(cleanTag);
+    else this.excelExportTags.add(cleanTag);
+    this.renderExcelExportTags();
+    this.updateExcelExportState();
+  }
+
+  getExcelExportWords() {
+    const words = Array.isArray(this.words) ? this.words : [];
+    if (this.excelExportScope === 'learning') return words.filter(word => !word?.mastered);
+    if (this.excelExportScope === 'mastered') return words.filter(word => Boolean(word?.mastered));
+    if (this.excelExportScope !== 'tags') return [...words];
+    const selected = new Set([...this.excelExportTags].map(tag => String(tag).replace(/^#/, '').trim().toLowerCase()).filter(Boolean));
+    if (!selected.size) return [];
+    return words.filter(word => (Array.isArray(word?.tags) ? word.tags : []).some(tag => selected.has(String(tag).replace(/^#/, '').trim().toLowerCase())));
+  }
+
+  updateExcelExportState() {
+    document.querySelectorAll('.excel-export-scope-option').forEach(label => {
+      label.classList.toggle('selected', Boolean(label.querySelector('input')?.checked));
+    });
+    const tagPanel = document.getElementById('excelExportTagPanel');
+    if (tagPanel) tagPanel.hidden = this.excelExportScope !== 'tags';
+    const matches = this.getExcelExportWords();
+    const needsTags = this.excelExportScope === 'tags' && this.excelExportTags.size === 0;
+    const summary = document.getElementById('excelExportSummary');
+    if (summary) summary.textContent = needsTags ? '请至少选择一个 Tag' : `将导出 ${matches.length} 个词条`;
+    const button = document.getElementById('confirmExcelExportBtn');
+    if (button) button.disabled = needsTags || matches.length === 0;
+  }
+
+  escapeExcelXml(value) {
+    return String(value ?? '')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+
+  buildStoredZip(entries) {
+    const encoder = new TextEncoder();
+    const writeUint16 = (view, offset, value) => view.setUint16(offset, value & 0xffff, true);
+    const writeUint32 = (view, offset, value) => view.setUint32(offset, value >>> 0, true);
+    const crc32 = bytes => {
+      let crc = 0xffffffff;
+      for (const byte of bytes) {
+        crc ^= byte;
+        for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+      }
+      return (crc ^ 0xffffffff) >>> 0;
+    };
+    const now = new Date();
+    const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+    const dosDate = ((Math.max(1980, now.getFullYear()) - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+    const localChunks = [];
+    const centralChunks = [];
+    let localOffset = 0;
+    let centralSize = 0;
+    entries.forEach(entry => {
+      const nameBytes = encoder.encode(entry.name);
+      const dataBytes = typeof entry.data === 'string' ? encoder.encode(entry.data) : entry.data;
+      const checksum = crc32(dataBytes);
+      const localHeader = new Uint8Array(30);
+      const localView = new DataView(localHeader.buffer);
+      writeUint32(localView, 0, 0x04034b50);
+      writeUint16(localView, 4, 20);
+      writeUint16(localView, 6, 0x0800);
+      writeUint16(localView, 8, 0);
+      writeUint16(localView, 10, dosTime);
+      writeUint16(localView, 12, dosDate);
+      writeUint32(localView, 14, checksum);
+      writeUint32(localView, 18, dataBytes.length);
+      writeUint32(localView, 22, dataBytes.length);
+      writeUint16(localView, 26, nameBytes.length);
+      writeUint16(localView, 28, 0);
+      localChunks.push(localHeader, nameBytes, dataBytes);
+
+      const centralHeader = new Uint8Array(46);
+      const centralView = new DataView(centralHeader.buffer);
+      writeUint32(centralView, 0, 0x02014b50);
+      writeUint16(centralView, 4, 20);
+      writeUint16(centralView, 6, 20);
+      writeUint16(centralView, 8, 0x0800);
+      writeUint16(centralView, 10, 0);
+      writeUint16(centralView, 12, dosTime);
+      writeUint16(centralView, 14, dosDate);
+      writeUint32(centralView, 16, checksum);
+      writeUint32(centralView, 20, dataBytes.length);
+      writeUint32(centralView, 24, dataBytes.length);
+      writeUint16(centralView, 28, nameBytes.length);
+      writeUint16(centralView, 30, 0);
+      writeUint16(centralView, 32, 0);
+      writeUint16(centralView, 34, 0);
+      writeUint16(centralView, 36, 0);
+      writeUint32(centralView, 38, 0);
+      writeUint32(centralView, 42, localOffset);
+      centralChunks.push(centralHeader, nameBytes);
+      centralSize += centralHeader.length + nameBytes.length;
+      localOffset += localHeader.length + nameBytes.length + dataBytes.length;
+    });
+    const endRecord = new Uint8Array(22);
+    const endView = new DataView(endRecord.buffer);
+    writeUint32(endView, 0, 0x06054b50);
+    writeUint16(endView, 4, 0);
+    writeUint16(endView, 6, 0);
+    writeUint16(endView, 8, entries.length);
+    writeUint16(endView, 10, entries.length);
+    writeUint32(endView, 12, centralSize);
+    writeUint32(endView, 16, localOffset);
+    writeUint16(endView, 20, 0);
+    return new Blob([...localChunks, ...centralChunks, endRecord], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  }
+
+  createVocabularyXlsxBlob(words) {
+    const isJapanese = this.RESOURCE_LANGUAGE === 'jp';
+    const headers = ['单词', '词性', isJapanese ? '中韩意思' : '中文意思', isJapanese ? '日中例句' : '韩中例句'];
+    const rows = words.map(word => {
+      const firstExample = this.getParsedExamples(word)[0] || { example: '', trans: '' };
+      const meanings = [String(word?.meaning || '').trim()];
+      if (isJapanese && String(word?.krMeaning || '').trim()) meanings.push(String(word.krMeaning).trim());
+      const exampleLines = [String(firstExample.example || '').trim(), String(firstExample.trans || '').trim()].filter(Boolean);
+      return [String(word?.word || '').trim(), this.normalizeTaxonomyText(word?.partOfSpeech), meanings.filter(Boolean).join('\n'), exampleLines.join('\n')];
+    });
+    const allRows = [headers, ...rows];
+    const columnNames = ['A', 'B', 'C', 'D'];
+    const sheetRows = allRows.map((row, rowIndex) => {
+      const cells = row.map((value, columnIndex) => `<c r="${columnNames[columnIndex]}${rowIndex + 1}" s="${rowIndex === 0 ? 1 : 2}" t="inlineStr"><is><t xml:space="preserve">${this.escapeExcelXml(value)}</t></is></c>`).join('');
+      return `<row r="${rowIndex + 1}"${rowIndex === 0 ? ' ht="26" customHeight="1"' : ''}>${cells}</row>`;
+    }).join('');
+    const worksheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols><col min="1" max="1" width="24" customWidth="1"/><col min="2" max="2" width="16" customWidth="1"/><col min="3" max="3" width="42" customWidth="1"/><col min="4" max="4" width="58" customWidth="1"/></cols><sheetData>${sheetRows}</sheetData><autoFilter ref="A1:D${allRows.length}"/></worksheet>`;
+    const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFD946EF"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFD1D5DB"/></left><right style="thin"><color rgb="FFD1D5DB"/></right><top style="thin"><color rgb="FFD1D5DB"/></top><bottom style="thin"><color rgb="FFD1D5DB"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+    const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="词库" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+    return this.buildStoredZip([
+      { name: '[Content_Types].xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>' },
+      { name: '_rels/.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
+      { name: 'xl/workbook.xml', data: workbook },
+      { name: 'xl/_rels/workbook.xml.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>' },
+      { name: 'xl/worksheets/sheet1.xml', data: worksheet },
+      { name: 'xl/styles.xml', data: styles }
+    ]);
+  }
+
+  exportSelectedWordsToExcel() {
+    const words = this.getExcelExportWords();
+    if (this.excelExportScope === 'tags' && this.excelExportTags.size === 0) {
+      this.showToast('请至少选择一个 Tag');
+      return;
+    }
+    if (!words.length) {
+      this.showToast('当前条件下没有可导出的词条');
+      return;
+    }
+    const blob = this.createVocabularyXlsxBlob(words);
+    const scopeNames = { all: '全部', learning: '学习中', mastered: '已掌握' };
+    const scopeLabel = this.excelExportScope === 'tags' ? [...this.excelExportTags].join('-') : (scopeNames[this.excelExportScope] || '全部');
+    const safeScope = scopeLabel.replace(/[\\/:*?"<>|]/g, '_').slice(0, 80) || '自定义';
+    const now = new Date();
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const prefix = this.RESOURCE_LANGUAGE === 'jp' ? 'Japanese_Vocab' : 'Korean_Vocab';
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${prefix}_${safeScope}_${date}.xlsx`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    this.closeExcelExportModal();
+    this.showToast(`📊 已导出 ${words.length} 个词条到 Excel`);
   }
 
   exportHTML() {

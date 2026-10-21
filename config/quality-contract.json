@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-10-20.1",
+  "contractVersion": "2026-10-21.1",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -19,7 +19,8 @@
       "docs/decisions/ADR-012-resource-library-cloud-sync.md",
       "docs/decisions/ADR-013-cloud-sync-undo-history.md",
       "docs/decisions/ADR-014-resource-library-manual-order.md",
-      "docs/decisions/ADR-015-resource-library-language-isolation.md"
+      "docs/decisions/ADR-015-resource-library-language-isolation.md",
+      "docs/decisions/ADR-016-vocabulary-excel-export.md"
     ]
   },
   "mirroredApps": [
@@ -204,7 +205,7 @@
     },
     "resourceLibrary": {
       "buttonId": "resourceLibraryBtn",
-      "buttonPlacement": "header-immediately-before-quickAddBtn",
+      "buttonPlacement": "header-immediately-before-exportExcelBtn",
       "modalId": "resourceLibraryModal",
       "fileInputId": "resourceFileInput",
       "listId": "resourceFileList",
@@ -261,6 +262,22 @@
       "deleteRequiresConfirmation": true,
       "emptyStateRequired": true,
       "localOnlyNoticeRequired": true
+    },
+    "vocabularyExcelExport": {
+      "buttonId": "exportExcelBtn",
+      "buttonPlacement": "header-immediately-before-quickAddBtn",
+      "modalId": "excelExportModal",
+      "format": "xlsx-openxml-zip-store",
+      "worksheetName": "词库",
+      "scopes": ["all", "learning", "mastered", "tags-any"],
+      "tagSelection": "multi-select-any-match",
+      "emptySelectionBlocked": true,
+      "headers": ["单词", "词性", "释义", "例句"],
+      "headerStyle": "bold-colored-fill",
+      "jpMeaningCell": "meaning-newline-krMeaning",
+      "examplePolicy": "first-existing-pair-only",
+      "multilineCells": true,
+      "mirroredAcrossLanguages": true
     },
     "cloudSyncUndo": {
       "undoButtonId": "cloudSyncUndoBtn",

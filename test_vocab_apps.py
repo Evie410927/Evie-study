@@ -14,8 +14,10 @@
 import os
 import re
 import sys
+import io
 import tempfile
 import time
+import zipfile
 from pathlib import Path
 
 # 强制标准输出使用 UTF-8
@@ -258,14 +260,36 @@ class VocabAppTester:
         self.assert_true(btn_quick_add, f"[{lang_name}] Header-➕加词按钮兜底点击", "quickAddBtn 缺少行内 openWordModal 兜底绑定")
 
         resource_button = bool(re.search(r'id="resourceLibraryBtn"[^>]*onclick="[^"]*openResourceLibrary', content))
-        resource_button_before_add = (
+        export_excel_button = bool(re.search(r'id="exportExcelBtn"[^>]*onclick="[^"]*openExcelExportModal', content))
+        resource_export_add_order = (
             content.find('id="resourceLibraryBtn"') >= 0
-            and content.find('id="resourceLibraryBtn"') < content.find('id="quickAddBtn"')
+            and content.find('id="resourceLibraryBtn"') < content.find('id="exportExcelBtn"') < content.find('id="quickAddBtn"')
         )
         self.assert_true(
-            resource_button and resource_button_before_add,
-            f"[{lang_name}] Header-资料库按钮位于新增词条按钮左侧且带点击兜底",
-            "resourceLibraryBtn 缺失、未调用 openResourceLibrary，或没有紧邻 quickAddBtn 左侧",
+            resource_button and export_excel_button and resource_export_add_order,
+            f"[{lang_name}] Header-资料库、Excel 导出与新增词条按钮依次相邻且带点击兜底",
+            "resourceLibraryBtn/exportExcelBtn 缺失、点击方法缺失，或没有按资料库→Excel→新增顺序排列",
+        )
+
+        excel_export_contract = all(token in content for token in (
+            'id="excelExportModal"', 'id="excelExportScopeGrid"',
+            'value="all"', 'value="learning"', 'value="mastered"', 'value="tags"',
+            'id="excelExportTagPanel"', 'id="excelExportTagList"',
+            'id="confirmExcelExportBtn"', 'exportSelectedWordsToExcel()',
+            "new Set(['all', 'learning', 'mastered', 'tags'])",
+            "this.excelExportTags.size === 0", "some(tag => selected.has(",
+            "const firstExample = this.getParsedExamples(word)[0]",
+            "isJapanese ? '中韩意思' : '中文意思'",
+            "isJapanese ? '日中例句' : '韩中例句'",
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            "name: 'xl/worksheets/sheet1.xml'", "name: 'xl/styles.xml'",
+            '<b/><color rgb="FFFFFFFF"/>', '<fgColor rgb="FFD946EF"/>',
+            'wrapText="1"', '.xlsx`',
+        ))
+        self.assert_true(
+            excel_export_contract,
+            f"[{lang_name}] Excel 导出-范围筛选、Tag 多选、四列首例句、表头样式与离线 XLSX 生成完整",
+            "Excel 导出弹窗、筛选协议、第一例句限制、JP 中韩释义、Open XML ZIP 或表头样式缺失",
         )
 
         resource_modal_contract = all(token in content for token in (
@@ -2590,6 +2614,89 @@ class VocabAppTester:
                 app_ready,
                 f"[{lang_name}] 浏览器运行期-window.app 初始化且核心交互方法可调用",
                 "window.app 未正确实例化，或 toggleTheme/openWordModal/showDetailModal/switchTab 缺失",
+            )
+
+            excel_export_result = driver.execute_async_script("""
+                const done = arguments[0];
+                (async () => {
+                  const app = window.app;
+                  const originalWords = app.words;
+                  const fixtures = [
+                    {id:'excel-a', word:'导出词甲', partOfSpeech:'名词', meaning:'中文甲', krMeaning:'한국어 뜻 A', mastered:false, tags:['重点'], examples:[{example:'第一组原句甲', trans:'第一组翻译甲'}, {example:'第二组原句甲', trans:'第二组翻译甲'}]},
+                    {id:'excel-b', word:'导出词乙', partOfSpeech:'动词', meaning:'中文乙', krMeaning:'한국어 뜻 B', mastered:true, tags:['重点','复习'], examples:[{example:'第一组原句乙', trans:'第一组翻译乙'}]},
+                    {id:'excel-c', word:'导出词丙', partOfSpeech:'形容词', meaning:'中文丙', krMeaning:'한국어 뜻 C', mastered:false, tags:['其他'], examples:[]},
+                    {id:'excel-d', word:'导出词丁', partOfSpeech:'副词', meaning:'中文丁', krMeaning:'한국어 뜻 D', mastered:true, tags:[], examples:[]}
+                  ];
+                  try {
+                    app.words = fixtures;
+                    app.openExcelExportModal();
+                    const modalActive = document.getElementById('excelExportModal')?.classList.contains('active');
+                    const scopeValues = Array.from(document.querySelectorAll('input[name="excelExportScope"]')).map(input => input.value);
+                    const tagButtonCount = document.querySelectorAll('#excelExportTagList .excel-export-tag-option').length;
+                    app.excelExportScope = 'all';
+                    const allCount = app.getExcelExportWords().length;
+                    app.excelExportScope = 'learning';
+                    const learningCount = app.getExcelExportWords().length;
+                    app.excelExportScope = 'mastered';
+                    const masteredCount = app.getExcelExportWords().length;
+                    app.excelExportScope = 'tags';
+                    app.excelExportTags = new Set();
+                    app.updateExcelExportState();
+                    const tagEmptyBlocked = document.getElementById('confirmExcelExportBtn')?.disabled === true;
+                    app.excelExportTags = new Set(['重点', '其他']);
+                    const tagAnyCount = app.getExcelExportWords().length;
+                    const blob = app.createVocabularyXlsxBlob([fixtures[0]]);
+                    const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
+                    done({modalActive, scopeValues, tagButtonCount, allCount, learningCount, masteredCount, tagEmptyBlocked, tagAnyCount, blobType:blob.type, bytes});
+                  } catch (error) {
+                    done({error:String(error)});
+                  } finally {
+                    app.words = originalWords;
+                    app.closeExcelExportModal();
+                    app.renderWordList();
+                    app.updateStats();
+                  }
+                })();
+            """)
+            excel_xlsx_valid = False
+            excel_xlsx_detail = ""
+            try:
+                excel_bytes = bytes(excel_export_result.get('bytes') or [])
+                with zipfile.ZipFile(io.BytesIO(excel_bytes), 'r') as workbook_zip:
+                    workbook_names = set(workbook_zip.namelist())
+                    sheet_xml = workbook_zip.read('xl/worksheets/sheet1.xml').decode('utf-8')
+                    styles_xml = workbook_zip.read('xl/styles.xml').decode('utf-8')
+                meaning_ok = ('中文甲\n한국어 뜻 A' in sheet_xml) if lang_code == 'jp' else ('中文甲' in sheet_xml and '한국어 뜻 A' not in sheet_xml)
+                header_ok = all(title in sheet_xml for title in (
+                    '单词', '词性', '中韩意思' if lang_code == 'jp' else '中文意思', '日中例句' if lang_code == 'jp' else '韩中例句'
+                ))
+                excel_xlsx_valid = bool(
+                    {'[Content_Types].xml', 'xl/workbook.xml', 'xl/worksheets/sheet1.xml', 'xl/styles.xml'}.issubset(workbook_names)
+                    and sheet_xml.count('<row ') == 2
+                    and header_ok and meaning_ok
+                    and '第一组原句甲\n第一组翻译甲' in sheet_xml
+                    and '第二组原句甲' not in sheet_xml
+                    and '<b/>' in styles_xml and 'fgColor rgb="FFD946EF"' in styles_xml
+                    and 'wrapText="1"' in styles_xml
+                )
+            except Exception as error:
+                excel_xlsx_detail = str(error)
+            self.assert_true(
+                bool(
+                    excel_export_result
+                    and excel_export_result.get('modalActive')
+                    and excel_export_result.get('scopeValues') == ['all', 'learning', 'mastered', 'tags']
+                    and excel_export_result.get('tagButtonCount') == 3
+                    and excel_export_result.get('allCount') == 4
+                    and excel_export_result.get('learningCount') == 2
+                    and excel_export_result.get('masteredCount') == 2
+                    and excel_export_result.get('tagEmptyBlocked')
+                    and excel_export_result.get('tagAnyCount') == 3
+                    and excel_export_result.get('blobType') == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                    and excel_xlsx_valid
+                ),
+                f"[{lang_name}] 浏览器 Excel 导出-弹窗范围、Tag OR 筛选、有效 XLSX、彩色粗体表头与首例句约束",
+                f"Excel 导出运行结果或压缩包内容错误：{excel_export_result}; {excel_xlsx_detail}",
             )
 
             driver.find_element(By.ID, 'resourceLibraryBtn').click()

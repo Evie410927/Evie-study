@@ -235,6 +235,32 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
             fail(errors, f"{relative_path}: 搜索框下方仍会渲染旧 Tag 摘要 {forbidden_markup}")
 
     resource_contract = contract["uiContracts"]["resourceLibrary"]
+    excel_contract = contract["uiContracts"]["vocabularyExcelExport"]
+    resource_button = parser.elements_by_id.get(resource_contract["buttonId"])
+    export_button = parser.elements_by_id.get(excel_contract["buttonId"])
+    quick_add_button = parser.elements_by_id.get("quickAddBtn")
+    if resource_button is None or export_button is None or quick_add_button is None:
+        fail(errors, f"{relative_path}: Header 缺少资料库、Excel 导出或新增词条按钮")
+    else:
+        if export_button["previous_sibling_id"] != resource_contract["buttonId"]:
+            fail(errors, f"{relative_path}: Excel 导出按钮必须紧随资料库按钮")
+        if quick_add_button["previous_sibling_id"] != excel_contract["buttonId"]:
+            fail(errors, f"{relative_path}: 新增词条按钮必须紧随 Excel 导出按钮")
+    required_excel_tokens = (
+        'id="excelExportModal"',
+        "this.excelExportScope = 'all'",
+        "this.excelExportTags = new Set()",
+        "some(tag => selected.has(",
+        "const firstExample = this.getParsedExamples(word)[0]",
+        "isJapanese ? '中韩意思' : '中文意思'",
+        "name: 'xl/worksheets/sheet1.xml'",
+        "name: 'xl/styles.xml'",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".xlsx`",
+    )
+    for token in required_excel_tokens:
+        if token not in content:
+            fail(errors, f"{relative_path}: Excel 导出缺少实现标记 {token}")
     if resource_contract.get("localIsolation") == "filter-by-current-language":
         language_code = "kr" if relative_path == "standalone_kr_vocab.html" else "jp"
         required_resource_language_tokens = (
