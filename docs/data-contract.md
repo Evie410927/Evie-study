@@ -51,11 +51,12 @@
 ## 学习资料库契约
 
 - 资料文件不属于单词数据，不得添加到 `this.words`、词库 localStorage 快照、JSON/HTML 词库导出或 `vocab_items` payload。
-- KR/JP 同源页面共用物理 IndexedDB `evie_vocab_resource_library_v1`，但按 `language=kr|jp` 逻辑分区；`files` store 的每条记录至少包含稳定 `id`、`language`、原始 `name`、可信白名单内的 `type`、`size`、`addedAt`、`updatedAt`、`sha256`、`storagePath`、`cloudState` 与可空原始 `blob`，`deletions` store 的墓碑也必须包含 `language`。页面只可读取当前语言；旧版无语言记录统一迁移为 `jp`。
+- KR/JP 同源页面共用物理 IndexedDB `evie_vocab_resource_library_v1`，但按 `language=kr|jp` 逻辑分区；`files` store 的每条记录至少包含稳定 `id`、`language`、当前 `name`、可信白名单内的 `type`、`size`、`addedAt`、`updatedAt`、`sha256`、`storagePath`、`cloudState`、`metadataDirty` 与可空原始 `blob`，`deletions` store 的墓碑也必须包含 `language`。页面只可读取当前语言；旧版无语言记录统一迁移为 `jp`。
 - 允许 PDF、Word、Excel、CSV、纯文本及常见位图格式；拒绝不在白名单内的可执行或网页类文件。单文件大小上限为 50 MiB，支持一次选择多个文件。
 - 只有 IndexedDB 事务完成后才能提示上传成功；失败时保留弹窗上下文并展示明确错误，不得以内存缓存冒充持久化成功。
 - 删除必须经过用户确认并等待 IndexedDB 删除事务完成；文件列表随后重新读取并更新空状态。
 - PNG、JPEG、WebP 等常见位图必须在当前单词本页面的 `#resourceImagePreviewModal` 中预览，右上角 `×` 关闭后恢复资料列表且不得新开标签页；PDF、文本继续使用浏览器原生能力，Office 文件以原始 Blob 打开，浏览器无法内联显示时允许下载后由系统应用查看。
+- 资料重命名只编辑主名称并保留原扩展名；空名、`<>:"/\\|?*`、控制字符、尾部句点或空格及当前语言分区内重名均不得保存。成功重命名只更新 `name`、单调递增的 `updatedAt` 与 `metadataDirty=true`，不得改变 `id`、`type`、`size`、`sha256`、`storagePath` 或 `blob`。只有 IndexedDB 写入成功后才可提示成功；下次资料同步只 Upsert 元数据并清除 `metadataDirty`，不得重复上传未变化的 Blob。
 - 云端二进制文件只保存在私有 Storage bucket `vocab-resources`，新对象路径固定为 `user_id/language/resource_id/resource_id.extension`；`resource_files` 表只保存元数据与墓碑，以 `(user_id, language, resource_id)` 唯一标识资料。Storage 和元数据表都必须启用 RLS，并仅允许已登录用户访问自己的目录或行；所有元数据读取还必须按当前语言过滤。旧云端无语言行统一迁移为 `jp` 并保留原对象路径。
 - 新增文件先作为 `cloudState=pending` 持久化到 IndexedDB；点击云同步并勾选“同步学习资料”后才上传。已有旧版本地文件在装载时迁移为待上传，不得静默丢弃。
 - 云端列表同步只下载元数据；远端独有文件的 `blob` 保持为空，点击打开或下载时再使用当前有效登录令牌获取 Blob，成功后写入 IndexedDB 作为离线缓存。

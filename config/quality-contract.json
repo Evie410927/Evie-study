@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-10-21.6",
+  "contractVersion": "2026-10-21.7",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -259,6 +259,14 @@
       "imagePreviewCloseButtonId": "closeResourceImagePreviewBtn",
       "imageOpenBehavior": "same-page-modal-with-close-returning-to-resource-list",
       "nonImageOpenBehavior": "browser-preview-when-supported-otherwise-original-file-open-or-download",
+      "renameButtonPlacement": "immediately-before-download-button",
+      "renameModalId": "resourceRenameModal",
+      "renameInputId": "resourceRenameInput",
+      "renameExtensionPolicy": "preserve-original-extension",
+      "renameValidation": ["non-empty", "filesystem-safe", "unique-within-current-language"],
+      "renamePersistence": "IndexedDB-transaction-before-success",
+      "renameCloudSync": "metadata-only-without-blob-reupload",
+      "renamePendingField": "metadataDirty",
       "deleteRequiresConfirmation": true,
       "emptyStateRequired": true,
       "localOnlyNoticeRequired": true

@@ -497,8 +497,53 @@ html, body {
   cursor: pointer;
 }
 
+.resource-file-action.rename {
+  color: #c4b5fd;
+}
+
 .resource-file-action.delete {
   color: #fb7185;
+}
+
+.resource-rename-sheet {
+  max-width: 480px;
+}
+
+.resource-rename-input-row {
+  display: flex;
+  align-items: stretch;
+}
+
+.resource-rename-input-row .form-input {
+  min-width: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.resource-rename-extension {
+  display: flex;
+  align-items: center;
+  padding: 0 13px;
+  border: 1px solid var(--border-color);
+  border-left: 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.resource-rename-status {
+  min-height: 20px;
+  margin-top: 7px;
+  color: #fb7185;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.resource-rename-actions {
+  display: flex;
+  gap: 10px;
 }
 
 .resource-image-preview-modal {
@@ -4123,6 +4168,27 @@ body::-webkit-scrollbar,
         <div id="resourceFileStatus" class="resource-file-status" role="status" aria-live="polite"></div>
         <div id="resourceFileList" class="resource-file-list">
           <div class="resource-file-empty"><span>🗂️</span>还没有资料<br>上传后可随时从这里打开</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="resourceRenameModal" class="modal-overlay" onclick="if(event.target.id === 'resourceRenameModal' && window.app) window.app.closeResourceRenameModal()">
+      <div class="modal-sheet resource-rename-sheet" role="dialog" aria-modal="true" aria-labelledby="resourceRenameTitle">
+        <div class="modal-header">
+          <h3 id="resourceRenameTitle" class="modal-title">✏️ 修改文件名</h3>
+          <button id="closeResourceRenameBtn" type="button" class="icon-btn" aria-label="关闭文件重命名" onclick="if(window.app) window.app.closeResourceRenameModal()">✕</button>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="resourceRenameInput">文件名（扩展名固定保留）</label>
+          <div class="resource-rename-input-row">
+            <input id="resourceRenameInput" class="form-input" type="text" maxlength="200" autocomplete="off" spellcheck="false">
+            <span id="resourceRenameExtension" class="resource-rename-extension"></span>
+          </div>
+          <div id="resourceRenameStatus" class="resource-rename-status" role="status" aria-live="polite"></div>
+        </div>
+        <div class="resource-rename-actions">
+          <button id="cancelResourceRenameBtn" type="button" class="btn-secondary" onclick="if(window.app) window.app.closeResourceRenameModal()">取消</button>
+          <button id="confirmResourceRenameBtn" type="button" class="btn-primary" onclick="if(window.app) window.app.renameResourceFile()">保存新文件名</button>
         </div>
       </div>
     </div>
@@ -9220,6 +9286,9 @@ class JpVocabApp {
     this.excelExportSelectedColumns = new Set(['word', 'partOfSpeech', 'meaning', 'example']);
     this._resourceOrderCloudSupported = null;
     this._resourceFileSortState = null;
+    this._resourceRenameId = null;
+    this._resourceRenameTrigger = null;
+    this._resourceRenameSaving = false;
     this.init();
   }
 
@@ -9885,6 +9954,7 @@ class JpVocabApp {
 
   closeResourceLibrary() {
     this.cancelResourceFileSort(true);
+    this.closeResourceRenameModal();
     this.closeResourceImagePreview();
     const modal = document.getElementById('resourceLibraryModal');
     if (modal) modal.classList.remove('active');
@@ -9982,12 +10052,13 @@ class JpVocabApp {
         orderUpdatedAt: Number(record.orderUpdatedAt || migrationTime),
         orderDirty: typeof record.orderDirty === 'boolean'
           ? record.orderDirty
-          : !(record.sortOrder !== undefined && record.sortOrder !== null && record.sortOrder !== '' && Number.isFinite(Number(record.sortOrder)) && Number(record.orderUpdatedAt || 0) > 0)
+          : !(record.sortOrder !== undefined && record.sortOrder !== null && record.sortOrder !== '' && Number.isFinite(Number(record.sortOrder)) && Number(record.orderUpdatedAt || 0) > 0),
+        metadataDirty: typeof record.metadataDirty === 'boolean' ? record.metadataDirty : record.cloudState !== 'synced'
       }));
       const needsMigration = normalizedRecords.some((record, index) => {
         const original = records[index] || {};
         return !original.updatedAt || original.sha256 === undefined || original.storagePath === undefined || original.cloudState === undefined
-          || original.sortOrder === undefined || !original.orderUpdatedAt || original.orderDirty === undefined
+          || original.sortOrder === undefined || !original.orderUpdatedAt || original.orderDirty === undefined || original.metadataDirty === undefined
           || !['kr', 'jp'].includes(String(original.language || '').toLowerCase());
       });
       if (needsMigration) await this.putResourceRecords(normalizedRecords);
@@ -10087,6 +10158,7 @@ class JpVocabApp {
           sha256: '',
           storagePath: '',
           cloudState: 'pending',
+          metadataDirty: true,
           sortOrder: 0,
           orderUpdatedAt: now,
           orderDirty: true,
@@ -10449,6 +10521,7 @@ class JpVocabApp {
           sha256: cloudHash,
           storagePath: String(cloudRow.storage_path || ''),
           cloudState: 'synced',
+          metadataDirty: false,
           sortOrder: cloudOrderIsNewer || !local ? Number(cloudRow.sort_order || 0) : Number(local.sortOrder || 0),
           orderUpdatedAt: cloudOrderIsNewer || !local ? cloudOrderUpdatedAt : localOrderUpdatedAt,
           orderDirty: cloudOrderIsNewer ? false : (local ? Boolean(local.orderDirty) : !cloudHasOrder),
@@ -10484,7 +10557,6 @@ class JpVocabApp {
       const needsUpload = record?.blob instanceof Blob && (
         record.cloudState !== 'synced'
         || !remote
-        || Number(record.updatedAt || 0) > Number(remote.updated_at || 0)
         || Boolean(remote.deleted_at)
       );
       if (needsUpload) {
@@ -10494,7 +10566,13 @@ class JpVocabApp {
         await this.uploadResourceWithRetry(accessToken, storagePath, pendingRecord);
         await this.putResourceRecords(pendingRecord);
         const orderSynced = await this.upsertResourceMetadataRows(accessToken, userId, [pendingRecord]);
-        await this.putResourceRecords({ ...pendingRecord, cloudState: 'synced', orderDirty: orderSynced === false ? Boolean(pendingRecord.orderDirty) : false });
+        await this.putResourceRecords({ ...pendingRecord, cloudState: 'synced', metadataDirty: false, orderDirty: orderSynced === false ? Boolean(pendingRecord.orderDirty) : false });
+        await this.removeResourceDeletion(record.id);
+        continue;
+      }
+      if (record.metadataDirty && (!remote || Number(record.updatedAt || 0) > Number(remote.updated_at || 0))) {
+        const orderSynced = await this.upsertResourceMetadataRows(accessToken, userId, [record]);
+        await this.putResourceRecords({ ...record, cloudState: 'synced', metadataDirty: false, orderDirty: orderSynced === false ? Boolean(record.orderDirty) : false });
         await this.removeResourceDeletion(record.id);
         continue;
       }
@@ -10581,7 +10659,7 @@ class JpVocabApp {
       const meta = document.createElement('span');
       meta.className = 'resource-file-meta';
       const date = new Date(Number(record.addedAt || 0));
-      const cloudLabel = record.cloudState === 'pending' ? '待云同步' : record.blob instanceof Blob ? '已缓存' : '云端文件';
+      const cloudLabel = record.cloudState === 'pending' || record.metadataDirty ? '待云同步' : record.blob instanceof Blob ? '已缓存' : '云端文件';
       meta.textContent = `${this.getResourceFileExtension(record.name).toUpperCase()} · ${this.formatResourceFileSize(record.size)} · ${date.toLocaleDateString('zh-CN')} · ${cloudLabel}`;
       main.append(name, meta);
       openButton.append(fileIcon, main);
@@ -10599,6 +10677,13 @@ class JpVocabApp {
         event.preventDefault();
         event.stopPropagation();
       });
+      const renameButton = document.createElement('button');
+      renameButton.type = 'button';
+      renameButton.className = 'resource-file-action rename';
+      renameButton.title = '修改文件名';
+      renameButton.setAttribute('aria-label', `修改 ${record.name} 的文件名`);
+      renameButton.textContent = '✎';
+      renameButton.addEventListener('click', () => this.openResourceRenameModal(record.id, renameButton));
       const downloadButton = document.createElement('button');
       downloadButton.type = 'button';
       downloadButton.className = 'resource-file-action';
@@ -10613,7 +10698,7 @@ class JpVocabApp {
       deleteButton.setAttribute('aria-label', `删除 ${record.name}`);
       deleteButton.textContent = '🗑';
       deleteButton.addEventListener('click', () => this.deleteResourceFile(record.id));
-      actions.append(dragHandle, downloadButton, deleteButton);
+      actions.append(dragHandle, renameButton, downloadButton, deleteButton);
       card.append(openButton, actions);
       list.appendChild(card);
     });
@@ -10855,6 +10940,108 @@ class JpVocabApp {
     }
   }
 
+  setResourceRenameStatus(message = '') {
+    const status = document.getElementById('resourceRenameStatus');
+    if (status) status.textContent = message;
+  }
+
+  openResourceRenameModal(resourceId, trigger = null) {
+    const record = this.resourceFiles.find(item => String(item.id) === String(resourceId));
+    const modal = document.getElementById('resourceRenameModal');
+    const input = document.getElementById('resourceRenameInput');
+    const extensionLabel = document.getElementById('resourceRenameExtension');
+    if (!record || !modal || !input || !extensionLabel) {
+      this.setResourceFileStatus('文件记录不存在，无法修改名称', true);
+      return false;
+    }
+    const originalName = String(record.name || '');
+    const lastDot = originalName.lastIndexOf('.');
+    const extension = lastDot > 0 ? originalName.slice(lastDot + 1) : '';
+    const stem = extension ? originalName.slice(0, -(extension.length + 1)) : originalName;
+    this._resourceRenameId = record.id;
+    this._resourceRenameTrigger = trigger;
+    input.value = stem;
+    extensionLabel.textContent = extension ? `.${extension}` : '';
+    this.setResourceRenameStatus('');
+    modal.classList.add('active');
+    window.requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+    return true;
+  }
+
+  closeResourceRenameModal() {
+    if (this._resourceRenameSaving) return;
+    const modal = document.getElementById('resourceRenameModal');
+    if (modal) modal.classList.remove('active');
+    this.setResourceRenameStatus('');
+    this._resourceRenameId = null;
+    const trigger = this._resourceRenameTrigger;
+    this._resourceRenameTrigger = null;
+    if (trigger && typeof trigger.focus === 'function') window.setTimeout(() => trigger.focus(), 0);
+  }
+
+  async renameResourceFile() {
+    if (this._resourceRenameSaving) return false;
+    const record = this.resourceFiles.find(item => String(item.id) === String(this._resourceRenameId));
+    const input = document.getElementById('resourceRenameInput');
+    const saveButton = document.getElementById('confirmResourceRenameBtn');
+    if (!record || !input) {
+      this.setResourceRenameStatus('文件记录不存在，请关闭后重试');
+      return false;
+    }
+    const stem = String(input.value || '').normalize('NFC').trim();
+    if (!stem) {
+      this.setResourceRenameStatus('请输入文件名');
+      input.focus();
+      return false;
+    }
+    if (/[<>:"/\\|?*\u0000-\u001F]/.test(stem) || /[. ]$/.test(stem)) {
+      this.setResourceRenameStatus('文件名不能包含 < > : " / \\ | ? *，也不能以句点或空格结尾');
+      input.focus();
+      return false;
+    }
+    const originalName = String(record.name || '');
+    const lastDot = originalName.lastIndexOf('.');
+    const extension = lastDot > 0 ? originalName.slice(lastDot + 1) : '';
+    const nextName = `${stem}${extension ? `.${extension}` : ''}`;
+    if (nextName.length > 255) {
+      this.setResourceRenameStatus('完整文件名不能超过 255 个字符');
+      input.focus();
+      return false;
+    }
+    const duplicate = this.resourceFiles.some(item => String(item.id) !== String(record.id)
+      && String(item.name || '').normalize('NFC').toLocaleLowerCase() === nextName.toLocaleLowerCase());
+    if (duplicate) {
+      this.setResourceRenameStatus('当前资料库中已存在同名文件');
+      input.focus();
+      return false;
+    }
+    if (nextName === originalName) {
+      this.closeResourceRenameModal();
+      this.setResourceFileStatus('文件名未发生变化');
+      return true;
+    }
+    this._resourceRenameSaving = true;
+    if (saveButton) saveButton.disabled = true;
+    try {
+      const updatedAt = Math.max(Date.now(), Number(record.updatedAt || 0) + 1);
+      await this.putResourceRecords({ ...record, name: nextName, updatedAt, metadataDirty: true });
+      await this.loadResourceFiles();
+      this._resourceRenameSaving = false;
+      if (saveButton) saveButton.disabled = false;
+      this.closeResourceRenameModal();
+      this.setResourceFileStatus(`✅ 已修改为 ${nextName}，已加入云同步待处理队列`);
+      return true;
+    } catch (error) {
+      this._resourceRenameSaving = false;
+      if (saveButton) saveButton.disabled = false;
+      this.setResourceRenameStatus(`重命名失败：${error?.message || '请稍后重试'}`);
+      return false;
+    }
+  }
+
   async deleteResourceFile(resourceId) {
     const record = this.resourceFiles.find(item => String(item.id) === String(resourceId));
     if (!record || !window.confirm(`确定删除“${record.name}”吗？下次同步时也会从账号云端删除。`)) return;
@@ -10887,6 +11074,7 @@ class JpVocabApp {
     const input = document.getElementById('resourceFileInput');
     const zone = document.getElementById('resourceUploadZone');
     const closeButton = document.getElementById('closeResourceLibraryBtn');
+    const renameInput = document.getElementById('resourceRenameInput');
     closeButton?.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();
@@ -10908,11 +11096,28 @@ class JpVocabApp {
       zone.classList.remove('drag-active');
     }));
     zone?.addEventListener('drop', event => this.handleResourceFiles(event.dataTransfer?.files));
+    renameInput?.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        this.renameResourceFile();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        this.closeResourceRenameModal();
+      }
+    });
     document.addEventListener('keydown', event => {
       if (event.key === 'Escape' && this._resourceFileSortState) {
         event.preventDefault();
         event.stopPropagation();
         this.cancelResourceFileSort(true);
+        return;
+      }
+      const renameModal = document.getElementById('resourceRenameModal');
+      if (event.key === 'Escape' && renameModal?.classList.contains('active')) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.closeResourceRenameModal();
         return;
       }
       const previewModal = document.getElementById('resourceImagePreviewModal');

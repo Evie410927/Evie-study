@@ -357,6 +357,26 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
             for token in fallback_tokens:
                 if token not in content:
                     fail(errors, f"{relative_path}: 旧资料云表排序字段降级缺少实现标记 {token}")
+    if resource_contract.get("renameButtonPlacement") == "immediately-before-download-button":
+        required_resource_rename_tokens = (
+            f'id="{resource_contract["renameModalId"]}"',
+            f'id="{resource_contract["renameInputId"]}"',
+            "renameButton.className = 'resource-file-action rename'",
+            "actions.append(dragHandle, renameButton, downloadButton, deleteButton)",
+            "openResourceRenameModal(resourceId, trigger = null)",
+            "async renameResourceFile()",
+            "metadataDirty: true",
+            "if (record.metadataDirty &&",
+            "metadataDirty: false",
+            "当前资料库中已存在同名文件",
+            "文件名不能包含",
+        )
+        for token in required_resource_rename_tokens:
+            if token not in content:
+                fail(errors, f"{relative_path}: 学习资料重命名缺少实现标记 {token}")
+        needs_upload_match = re.search(r"const needsUpload = record\?\.blob instanceof Blob && \((.*?)\);", content, re.DOTALL)
+        if not needs_upload_match or "updatedAt" in needs_upload_match.group(1):
+            fail(errors, f"{relative_path}: 资料改名不得通过 updatedAt 触发 Blob 重复上传")
 
     similar_contract = contract["dataContracts"]["similarWords"]
     if similar_contract["mode"] == "manual-only":

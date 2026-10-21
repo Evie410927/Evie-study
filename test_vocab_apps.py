@@ -367,6 +367,23 @@ class VocabAppTester:
             "资料文件操作不完整，或导出 HTML 可能固化当前本地文件名",
         )
 
+        resource_rename_contract = all(token in content for token in (
+            'id="resourceRenameModal"', 'id="resourceRenameInput"',
+            'id="resourceRenameExtension"', 'id="confirmResourceRenameBtn"',
+            "renameButton.className = 'resource-file-action rename'",
+            'actions.append(dragHandle, renameButton, downloadButton, deleteButton)',
+            'openResourceRenameModal(resourceId, trigger = null)', 'async renameResourceFile()',
+            'metadataDirty: true', 'if (record.metadataDirty &&', 'metadataDirty: false',
+            '当前资料库中已存在同名文件', '文件名不能包含',
+        ))
+        needs_upload_match = re.search(r"const needsUpload = record\?\.blob instanceof Blob && \((.*?)\);", content, re.DOTALL)
+        resource_rename_contract = resource_rename_contract and bool(needs_upload_match) and 'updatedAt' not in needs_upload_match.group(1)
+        self.assert_true(
+            resource_rename_contract,
+            f"[{lang_name}] 资料库重命名-下载左侧入口、页内校验、扩展名保护与元数据独立待同步",
+            "资料卡片缺少重命名入口/弹窗/校验，或改名仍会触发 Blob 重复上传",
+        )
+
         resource_image_preview_contract = all(token in content for token in (
             'id="resourceImagePreviewModal"', 'id="resourceImagePreview"',
             'id="closeResourceImagePreviewBtn"', 'resource-image-preview-stage',
@@ -3124,8 +3141,158 @@ class VocabAppTester:
                 f"资料云同步或按需下载流程不完整：{resource_cloud_result}",
             )
 
+            resource_rename_result = driver.execute_async_script("""
+                const done = arguments[0];
+                (async () => {
+                  const app = window.app;
+                  const target = app.resourceFiles.find(item => item.name === 'selenium-resource.txt');
+                  if (!target) throw new Error('rename target missing');
+                  const originalSnapshot = {
+                    id:target.id, type:target.type, size:target.size, sha256:target.sha256,
+                    storagePath:target.storagePath, blob:target.blob
+                  };
+                  const card = Array.from(document.querySelectorAll('#resourceFileList .resource-file-card'))
+                    .find(item => String(item.dataset.resourceId || '') === String(target.id));
+                  const renameButton = card?.querySelector('.resource-file-action.rename');
+                  const downloadButton = Array.from(card?.querySelectorAll('.resource-file-action') || [])
+                    .find(button => button.title === '下载原文件');
+                  const buttonOrderCorrect = !!renameButton && !!downloadButton
+                    && renameButton.compareDocumentPosition(downloadButton) === Node.DOCUMENT_POSITION_FOLLOWING;
+                  renameButton?.click();
+                  await new Promise(resolve => requestAnimationFrame(resolve));
+                  const modal = document.getElementById('resourceRenameModal');
+                  const input = document.getElementById('resourceRenameInput');
+                  const extension = document.getElementById('resourceRenameExtension');
+                  const status = document.getElementById('resourceRenameStatus');
+                  const modalOpened = !!modal?.classList.contains('active')
+                    && input?.value === 'selenium-resource' && extension?.textContent === '.txt';
+
+                  input.value = '   ';
+                  const blankBlocked = !(await app.renameResourceFile())
+                    && modal.classList.contains('active') && status.textContent.includes('请输入文件名');
+                  input.value = 'bad/name';
+                  const invalidBlocked = !(await app.renameResourceFile())
+                    && status.textContent.includes('文件名不能包含');
+
+                  const duplicateId = 'resource-rename-duplicate-' + app.RESOURCE_LANGUAGE;
+                  await app.putResourceRecords({
+                    ...target, id:duplicateId, name:'rename-duplicate.txt', addedAt:Date.now(), updatedAt:Date.now(),
+                    sortOrder:Number(target.sortOrder || 0) + 1, metadataDirty:true
+                  });
+                  await app.loadResourceFiles();
+                  input.value = 'rename-duplicate';
+                  const duplicateBlocked = !(await app.renameResourceFile())
+                    && status.textContent.includes('已存在同名文件');
+                  const db = await app.openResourceDatabase();
+                  await new Promise((resolve, reject) => {
+                    const transaction = db.transaction(app.RESOURCE_STORE_NAME, 'readwrite');
+                    transaction.objectStore(app.RESOURCE_STORE_NAME).delete(duplicateId);
+                    transaction.oncomplete = resolve;
+                    transaction.onerror = () => reject(transaction.error || new Error('rename duplicate cleanup failed'));
+                  });
+                  db.close();
+                  await app.loadResourceFiles();
+
+                  input.value = 'selenium-resource-renamed';
+                  const renamed = await app.renameResourceFile();
+                  const renameSuccessStatus = document.getElementById('resourceFileStatus')?.textContent || '';
+                  app.resourceFiles = [];
+                  await app.loadResourceFiles();
+                  const persisted = app.resourceFiles.find(item => item.id === target.id);
+                  const cardName = document.querySelector('#resourceFileList .resource-file-name')?.textContent || '';
+                  done({
+                    buttonOrderCorrect, modalOpened, blankBlocked, invalidBlocked, duplicateBlocked, renamed,
+                    modalClosed:!modal.classList.contains('active'),
+                    persistedName:persisted?.name || '', cardName,
+                    metadataDirty:persisted?.metadataDirty === true,
+                    invariantFields:!!persisted && persisted.id === originalSnapshot.id
+                      && persisted.type === originalSnapshot.type && persisted.size === originalSnapshot.size
+                      && persisted.sha256 === originalSnapshot.sha256 && persisted.storagePath === originalSnapshot.storagePath
+                      && persisted.blob instanceof Blob,
+                    renameSuccessStatus
+                  });
+                })().catch(error => done({error:String(error && error.message || error)}));
+            """)
+            self.assert_true(
+                bool(
+                    resource_rename_result
+                    and resource_rename_result.get('buttonOrderCorrect')
+                    and resource_rename_result.get('modalOpened')
+                    and resource_rename_result.get('blankBlocked')
+                    and resource_rename_result.get('invalidBlocked')
+                    and resource_rename_result.get('duplicateBlocked')
+                    and resource_rename_result.get('renamed')
+                    and resource_rename_result.get('modalClosed')
+                    and resource_rename_result.get('persistedName') == 'selenium-resource-renamed.txt'
+                    and resource_rename_result.get('cardName') == 'selenium-resource-renamed.txt'
+                    and resource_rename_result.get('metadataDirty')
+                    and resource_rename_result.get('invariantFields')
+                    and '已修改为 selenium-resource-renamed.txt' in resource_rename_result.get('renameSuccessStatus', '')
+                ),
+                f"[{lang_name}] 浏览器资料重命名-下载左侧图标、页内校验、扩展名保护与 IndexedDB 持久化",
+                f"资料重命名入口、校验、持久化或不可变文件字段错误：{resource_rename_result}",
+            )
+
+            resource_rename_cloud_result = driver.execute_async_script("""
+                const done = arguments[0];
+                (async () => {
+                  const app = window.app;
+                  const userId = '00000000-0000-4000-8000-000000000001';
+                  const target = app.resourceFiles.find(item => item.name === 'selenium-resource-renamed.txt');
+                  const originals = {
+                    fetch:app.fetchResourceCloudRows,
+                    upload:app.uploadResourceWithRetry,
+                    upsert:app.upsertResourceMetadataRows,
+                    order:app.upsertResourceOrderRows
+                  };
+                  let uploadCalls = 0;
+                  const metadataNames = [];
+                  try {
+                    app.fetchResourceCloudRows = async () => [{
+                      language:app.RESOURCE_LANGUAGE, resource_id:target.id, name:'selenium-resource.txt',
+                      mime_type:target.type, size:target.size, sha256:target.sha256,
+                      storage_path:target.storagePath, sort_order:target.sortOrder,
+                      order_updated_at:target.orderUpdatedAt, updated_at:target.updatedAt - 1, deleted_at:null
+                    }];
+                    app.uploadResourceWithRetry = async () => { uploadCalls += 1; return true; };
+                    app.upsertResourceMetadataRows = async (token, uid, records) => {
+                      metadataNames.push(...records.map(record => record.name));
+                      return true;
+                    };
+                    app.upsertResourceOrderRows = async () => true;
+                    const synced = await app.syncResourceLibraryWithSupabase({access_token:'resource-test-token'}, userId);
+                    const current = app.resourceFiles.find(item => item.id === target.id);
+                    done({
+                      synced, uploadCalls, metadataNames,
+                      name:current?.name || '', metadataDirty:current?.metadataDirty,
+                      blobPreserved:current?.blob instanceof Blob
+                    });
+                  } catch (error) {
+                    done({error:String(error && error.message || error), uploadCalls, metadataNames});
+                  } finally {
+                    app.fetchResourceCloudRows = originals.fetch;
+                    app.uploadResourceWithRetry = originals.upload;
+                    app.upsertResourceMetadataRows = originals.upsert;
+                    app.upsertResourceOrderRows = originals.order;
+                  }
+                })();
+            """)
+            self.assert_true(
+                bool(
+                    resource_rename_cloud_result
+                    and resource_rename_cloud_result.get('synced')
+                    and resource_rename_cloud_result.get('uploadCalls') == 0
+                    and resource_rename_cloud_result.get('metadataNames') == ['selenium-resource-renamed.txt']
+                    and resource_rename_cloud_result.get('name') == 'selenium-resource-renamed.txt'
+                    and resource_rename_cloud_result.get('metadataDirty') is False
+                    and resource_rename_cloud_result.get('blobPreserved')
+                ),
+                f"[{lang_name}] 浏览器资料重命名-云同步只更新名称元数据且不重复上传 Blob",
+                f"资料改名触发了 Blob 上传、未清理待办或没有传播新名称：{resource_rename_cloud_result}",
+            )
+
             resource_action_result = driver.execute_script("""
-                const id = window.app.resourceFiles.find(item => item.name === 'selenium-resource.txt')?.id;
+                const id = window.app.resourceFiles.find(item => item.name === 'selenium-resource-renamed.txt')?.id;
                 const originalClick = HTMLAnchorElement.prototype.click;
                 const clicks = [];
                 HTMLAnchorElement.prototype.click = function() {
@@ -3142,7 +3309,7 @@ class VocabAppTester:
                     and len(resource_action_result) == 2
                     and resource_action_result[0].get('target') == '_blank'
                     and resource_action_result[0].get('href', '').startswith('blob:')
-                    and resource_action_result[1].get('download') == 'selenium-resource.txt'
+                    and resource_action_result[1].get('download') == 'selenium-resource-renamed.txt'
                 ),
                 f"[{lang_name}] 浏览器资料库-文件卡片打开与原文件下载使用 Blob URL",
                 f"打开或下载动作没有保留原文件：{resource_action_result}",
@@ -3236,14 +3403,14 @@ class VocabAppTester:
                 });
             """, resource_image_preview_result.get('id') if resource_image_preview_result else None)
             self.assert_true(
-                resource_image_cleanup == ['selenium-resource.txt'],
+                resource_image_cleanup == ['selenium-resource-renamed.txt'],
                 f"[{lang_name}] 浏览器资料图片-预览测试文件清理后不影响原资料",
                 f"图片测试文件清理异常：{resource_image_cleanup}",
             )
 
             resource_delete_result = driver.execute_async_script("""
                 const done = arguments[0];
-                const id = window.app.resourceFiles.find(item => item.name === 'selenium-resource.txt')?.id;
+                const id = window.app.resourceFiles.find(item => item.name === 'selenium-resource-renamed.txt')?.id;
                 const originalConfirm = window.confirm;
                 window.confirm = () => true;
                 window.app.deleteResourceFile(id).then(async () => {
