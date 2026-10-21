@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-10-21.3",
+  "contractVersion": "2026-10-21.4",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -274,14 +274,18 @@
       "ratingSelection": "multi-select-any-exact-rating-match",
       "allowedRatings": [0, 1, 2, 3, 4, 5],
       "emptySelectionBlocked": true,
-      "headers": ["单词", "词性", "释义", "例句"],
-      "optionalColumns": {
+      "columns": {
+        "word": "单词",
+        "partOfSpeech": "词性",
+        "meaning": "释义",
+        "example": "例句",
         "reading": "发音",
         "pronunciationNote": "发音备注",
         "userNote": "说明",
         "similarWords": "相近词汇"
       },
-      "optionalColumnsDefault": "none",
+      "defaultSelectedColumns": ["word", "partOfSpeech", "meaning", "example"],
+      "minimumSelectedColumns": 1,
       "similarWordsCell": "manual-relations-each-line-word-colon-meaning-only",
       "headerStyle": "bold-colored-fill",
       "jpMeaningCell": "meaning-newline-krMeaning",

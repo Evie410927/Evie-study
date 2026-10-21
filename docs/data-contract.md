@@ -69,8 +69,8 @@
 
 - 导出是只读快照操作，只读取当前 `this.words`，不得更新时间戳、写入 localStorage/IndexedDB、改变筛选状态或创建云同步待办。
 - 范围固定为全部、`mastered=false` 的学习中、`mastered=true` 的已掌握、自定义 Tag 多选，以及星级多选。Tag 比较须去除可选的 `#`、清理首尾空白并忽略大小写；星级须归一化为 0～5 的整数后精确匹配。两种多选均采用 OR，命中任一所选项即导出。
-- `.xlsx` 工作表默认四列为 `word`、`partOfSpeech`、释义、第一组例句。KR 释义为 `meaning`；JP 为 `meaning` 与非空 `krMeaning` 以换行连接。用户可追加勾选 `reading`（发音）、`pronunciationNote`（发音备注）、`userNote`（说明）和相近词汇四列；可选列默认全部关闭，且不得改变四个默认列的顺序。
+- `.xlsx` 工作表提供八个可勾选列：`word`、`partOfSpeech`、释义、第一组例句、`reading`、`pronunciationNote`、`userNote` 和相近词汇。前四列默认勾选，后四列默认不勾选；用户可取消任一默认列或追加任一其他列，但至少保留一列。最终列按上述固定相对顺序输出。KR 释义为 `meaning`；JP 为 `meaning` 与非空 `krMeaning` 以换行连接。
 - 第一组例句使用统一例句归一化方法取得第一条现存记录，只输出原句与非空中文翻译并以换行连接；不得输出第二条及后续例句。所有值必须经过 XML 非法字符清理和实体转义。
 - 相近词汇列只解析当前词条按人工顺序保存且未隐藏的 `manualSimilarWordIds`。每个有效关联词只生成一行 `word：meaning`，多个关联词以换行连接；JP 不追加 `krMeaning`。不得输出关联词的 `reading`、`pronunciationNote`、`userNote`、`partOfSpeech`、Tag、例句、星级、学习状态或其他字段。
-- 空词库、未选择 Tag、未选择星级或筛选结果为空时必须阻止下载并显示原因；成功提示必须包含实际导出词条数量。
+- 空词库、未选择 Tag、未选择星级、未选择任何导出列或筛选结果为空时必须阻止下载并显示原因；成功提示必须包含实际导出词条数量。
 - `#excelExportChooseLocation` 开启时，支持 File System Access API 的浏览器必须使用 `showSaveFilePicker` 和可写文件句柄保存；用户取消时不得触发后备下载。API 不支持时使用浏览器默认下载机制，并在成功提示中明确说明无法自定义位置。

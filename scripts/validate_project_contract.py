@@ -240,13 +240,19 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
         fail(errors, "质量契约：Excel 导出星级范围必须固定为 0～5 星")
     if excel_contract.get("customSaveLocationControlId") != "excelExportChooseLocation":
         fail(errors, "质量契约：Excel 导出自定义保存位置控件 ID 不一致")
-    if excel_contract.get("optionalColumns") != {
+    if excel_contract.get("columns") != {
+        "word": "单词",
+        "partOfSpeech": "词性",
+        "meaning": "释义",
+        "example": "例句",
         "reading": "发音",
         "pronunciationNote": "发音备注",
         "userNote": "说明",
         "similarWords": "相近词汇",
     }:
-        fail(errors, "质量契约：Excel 导出可选列必须固定为发音、发音备注、说明和相近词汇")
+        fail(errors, "质量契约：Excel 导出列必须固定为八个指定字段")
+    if excel_contract.get("defaultSelectedColumns") != ["word", "partOfSpeech", "meaning", "example"] or excel_contract.get("minimumSelectedColumns") != 1:
+        fail(errors, "质量契约：Excel 导出必须默认勾选前四列且至少保留一列")
     resource_button = parser.elements_by_id.get(resource_contract["buttonId"])
     export_button = parser.elements_by_id.get(excel_contract["buttonId"])
     quick_add_button = parser.elements_by_id.get("quickAddBtn")
@@ -266,9 +272,11 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
         'id="excelExportRatingPanel"',
         'id="excelExportChooseLocation"',
         'id="excelExportColumnsPanel"',
-        'name="excelExportOptionalColumn"',
-        "this.excelExportOptionalColumns = new Set()",
-        "new Set(['reading', 'pronunciationNote', 'userNote', 'similarWords'])",
+        'name="excelExportColumn"',
+        "this.excelExportSelectedColumns = new Set(['word', 'partOfSpeech', 'meaning', 'example'])",
+        "new Set(['word', 'partOfSpeech', 'meaning', 'example', 'reading', 'pronunciationNote', 'userNote', 'similarWords'])",
+        "this.excelExportSelectedColumns.size === 0",
+        "请至少选择一个导出列",
         "some(tag => selected.has(",
         "this.excelExportRatings.has(this.normalizeExcelExportRating(word?.rating))",
         "const firstExample = this.getParsedExamples(word)[0]",

@@ -4091,7 +4091,7 @@ body::-webkit-scrollbar,
           <h3 id="excelExportTitle" class="modal-title">📊 导出 Excel</h3>
           <button id="closeExcelExportBtn" type="button" class="icon-btn" aria-label="关闭 Excel 导出" onclick="if(window.app) window.app.closeExcelExportModal()">×</button>
         </div>
-        <p class="excel-export-intro">选择需要导出的词条范围。表格只包含单词、词性、释义和第一组例句。</p>
+        <p class="excel-export-intro">先选择词条范围，再勾选需要的列；默认勾选单词、词性、释义和第一组例句。</p>
         <div id="excelExportScopeGrid" class="excel-export-scope-grid" role="radiogroup" aria-label="导出范围">
           <label class="excel-export-scope-option selected"><input type="radio" name="excelExportScope" value="all" checked onchange="if(window.app) window.app.setExcelExportScope(this.value)"><span>全部</span></label>
           <label class="excel-export-scope-option"><input type="radio" name="excelExportScope" value="learning" onchange="if(window.app) window.app.setExcelExportScope(this.value)"><span>🔄 学习中</span></label>
@@ -4108,12 +4108,16 @@ body::-webkit-scrollbar,
           <div id="excelExportRatingList" class="excel-export-tag-list"></div>
         </div>
         <fieldset id="excelExportColumnsPanel" class="excel-export-columns-panel">
-          <legend>可选导出列（默认仅导出上方说明的四列）</legend>
+          <legend>选择导出列（默认勾选前四列，可取消）</legend>
           <div class="excel-export-columns-grid">
-            <label class="excel-export-column-option"><input type="checkbox" name="excelExportOptionalColumn" value="reading" onchange="if(window.app) window.app.setExcelExportOptionalColumn(this.value, this.checked)"><span>发音</span></label>
-            <label class="excel-export-column-option"><input type="checkbox" name="excelExportOptionalColumn" value="pronunciationNote" onchange="if(window.app) window.app.setExcelExportOptionalColumn(this.value, this.checked)"><span>发音备注</span></label>
-            <label class="excel-export-column-option"><input type="checkbox" name="excelExportOptionalColumn" value="userNote" onchange="if(window.app) window.app.setExcelExportOptionalColumn(this.value, this.checked)"><span>说明</span></label>
-            <label class="excel-export-column-option"><input type="checkbox" name="excelExportOptionalColumn" value="similarWords" onchange="if(window.app) window.app.setExcelExportOptionalColumn(this.value, this.checked)"><span>相近词汇</span></label>
+            <label class="excel-export-column-option"><input type="checkbox" name="excelExportColumn" value="word" checked onchange="if(window.app) window.app.setExcelExportColumn(this.value, this.checked)"><span>单词</span></label>
+            <label class="excel-export-column-option"><input type="checkbox" name="excelExportColumn" value="partOfSpeech" checked onchange="if(window.app) window.app.setExcelExportColumn(this.value, this.checked)"><span>词性</span></label>
+            <label class="excel-export-column-option"><input type="checkbox" name="excelExportColumn" value="meaning" checked onchange="if(window.app) window.app.setExcelExportColumn(this.value, this.checked)"><span>释义</span></label>
+            <label class="excel-export-column-option"><input type="checkbox" name="excelExportColumn" value="example" checked onchange="if(window.app) window.app.setExcelExportColumn(this.value, this.checked)"><span>例句</span></label>
+            <label class="excel-export-column-option"><input type="checkbox" name="excelExportColumn" value="reading" onchange="if(window.app) window.app.setExcelExportColumn(this.value, this.checked)"><span>发音</span></label>
+            <label class="excel-export-column-option"><input type="checkbox" name="excelExportColumn" value="pronunciationNote" onchange="if(window.app) window.app.setExcelExportColumn(this.value, this.checked)"><span>发音备注</span></label>
+            <label class="excel-export-column-option"><input type="checkbox" name="excelExportColumn" value="userNote" onchange="if(window.app) window.app.setExcelExportColumn(this.value, this.checked)"><span>说明</span></label>
+            <label class="excel-export-column-option"><input type="checkbox" name="excelExportColumn" value="similarWords" onchange="if(window.app) window.app.setExcelExportColumn(this.value, this.checked)"><span>相近词汇</span></label>
           </div>
         </fieldset>
         <label class="excel-export-save-location" for="excelExportChooseLocation">
@@ -9230,7 +9234,7 @@ class JpVocabApp {
     this.excelExportScope = 'all';
     this.excelExportTags = new Set();
     this.excelExportRatings = new Set();
-    this.excelExportOptionalColumns = new Set();
+    this.excelExportSelectedColumns = new Set(['word', 'partOfSpeech', 'meaning', 'example']);
     this._resourceOrderCloudSupported = null;
     this._resourceFileSortState = null;
     this.init();
@@ -13800,12 +13804,12 @@ class JpVocabApp {
     this.excelExportScope = 'all';
     this.excelExportTags = new Set();
     this.excelExportRatings = new Set();
-    this.excelExportOptionalColumns = new Set();
+    this.excelExportSelectedColumns = new Set(['word', 'partOfSpeech', 'meaning', 'example']);
     document.querySelectorAll('input[name="excelExportScope"]').forEach(input => {
       input.checked = input.value === 'all';
     });
-    document.querySelectorAll('input[name="excelExportOptionalColumn"]').forEach(input => {
-      input.checked = false;
+    document.querySelectorAll('input[name="excelExportColumn"]').forEach(input => {
+      input.checked = this.excelExportSelectedColumns.has(input.value);
     });
     this.renderExcelExportTags();
     this.renderExcelExportRatings();
@@ -13885,11 +13889,11 @@ class JpVocabApp {
     this.updateExcelExportState();
   }
 
-  setExcelExportOptionalColumn(columnKey, enabled) {
-    const allowed = new Set(['reading', 'pronunciationNote', 'userNote', 'similarWords']);
+  setExcelExportColumn(columnKey, enabled) {
+    const allowed = new Set(['word', 'partOfSpeech', 'meaning', 'example', 'reading', 'pronunciationNote', 'userNote', 'similarWords']);
     if (!allowed.has(columnKey)) return;
-    if (enabled) this.excelExportOptionalColumns.add(columnKey);
-    else this.excelExportOptionalColumns.delete(columnKey);
+    if (enabled) this.excelExportSelectedColumns.add(columnKey);
+    else this.excelExportSelectedColumns.delete(columnKey);
     this.updateExcelExportState();
   }
 
@@ -13918,10 +13922,11 @@ class JpVocabApp {
     const matches = this.getExcelExportWords();
     const needsTags = this.excelExportScope === 'tags' && this.excelExportTags.size === 0;
     const needsRatings = this.excelExportScope === 'ratings' && this.excelExportRatings.size === 0;
+    const needsColumns = this.excelExportSelectedColumns.size === 0;
     const summary = document.getElementById('excelExportSummary');
-    if (summary) summary.textContent = needsTags ? '请至少选择一个 Tag' : (needsRatings ? '请至少选择一个星级' : `将导出 ${matches.length} 个词条 · ${4 + this.excelExportOptionalColumns.size} 列`);
+    if (summary) summary.textContent = needsTags ? '请至少选择一个 Tag' : (needsRatings ? '请至少选择一个星级' : (needsColumns ? '请至少选择一个导出列' : `将导出 ${matches.length} 个词条 · ${this.excelExportSelectedColumns.size} 列`));
     const button = document.getElementById('confirmExcelExportBtn');
-    if (button) button.disabled = needsTags || needsRatings || matches.length === 0;
+    if (button) button.disabled = needsTags || needsRatings || needsColumns || matches.length === 0;
   }
 
   escapeExcelXml(value) {
@@ -14033,7 +14038,7 @@ class JpVocabApp {
         return [similarText, similarMeaning].filter(Boolean).join('：');
       }).filter(Boolean).join('\n') }
     ];
-    return defaultColumns.concat(optionalColumns.filter(column => this.excelExportOptionalColumns.has(column.key)));
+    return defaultColumns.concat(optionalColumns).filter(column => this.excelExportSelectedColumns.has(column.key));
   }
 
   getExcelColumnName(index) {
@@ -14093,6 +14098,10 @@ class JpVocabApp {
     }
     if (this.excelExportScope === 'ratings' && this.excelExportRatings.size === 0) {
       this.showToast('请至少选择一个星级');
+      return;
+    }
+    if (this.excelExportSelectedColumns.size === 0) {
+      this.showToast('请至少选择一个导出列');
       return;
     }
     if (!words.length) {
