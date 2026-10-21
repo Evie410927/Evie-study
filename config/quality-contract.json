@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-10-21.5",
+  "contractVersion": "2026-10-21.6",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -307,7 +307,7 @@
         "local-words-pending-deletions-baseline",
         "cloud-rows-revision"
       ],
-      "maximumSnapshots": 5,
+      "maximumSnapshots": 2,
       "wordSyncRequiresSnapshotSuccess": true,
       "resourceOnlySyncExcluded": true,
       "restoreModes": [

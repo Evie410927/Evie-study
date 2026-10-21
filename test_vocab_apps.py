@@ -116,7 +116,10 @@ class VocabAppTester:
             'id="cloudSyncUndoBtn"', 'id="cloudSyncHistoryBtn"',
             "modal.id = 'cloudSyncHistoryModal'", "modal.id = 'cloudSyncUndoConfirmModal'",
             "getCloudSyncUndoHistoryKey()", "saveCloudSyncUndoSnapshot(cloudRows, options, userId)",
-            "[snapshot, ...history].slice(0, 5)",
+            "this.CLOUD_SYNC_UNDO_HISTORY_LIMIT = 2",
+            "[snapshot, ...history].slice(0, this.CLOUD_SYNC_UNDO_HISTORY_LIMIT)",
+            "if (stored.length !== history.length)",
+            "最多保留最近 2 份同步前快照",
             "async restoreCloudSyncSnapshot(restoreCloud = false)",
             "buildCloudUndoRestoreRows", "upsertRawCloudRows",
             "Math.max(currentRevision, Number(snapshot.cloud && snapshot.cloud.revision || 0)) + 1",
@@ -130,8 +133,8 @@ class VocabAppTester:
         )
         self.assert_true(
             cloud_sync_undo and snapshot_before_word_mutation,
-            f"[{lang_name}] 云同步-同步前双端快照、最近五次历史与两种恢复模式",
-            "缺少撤销/历史入口、同步前复合快照门禁、五份上限、账号隔离或单调递增恢复 revision",
+            f"[{lang_name}] 云同步-同步前双端快照、最近两次历史与两种恢复模式",
+            "缺少撤销/历史入口、同步前复合快照门禁、两份上限、旧历史裁剪、账号隔离或单调递增恢复 revision",
         )
 
         per_word_sync = all(token in content for token in (
@@ -4415,7 +4418,7 @@ class VocabAppTester:
                     && uploadSnapshot.local.words.length === 3
                     && uploadSnapshot.local.words.some(word => word.id === localUnchangedId)
                     && uploadSnapshot.cloud.rows.some(row => row.word_id === cloudOnlyId)
-                    && historyAfterUpload.length <= 5;
+                    && historyAfterUpload.length === 2;
 
                   app.words = [{id:prefix + '_after_wrong_sync', word:'误操作后的词', meaning:'应被恢复', tags:[], updatedAt:9999}];
                   app.saveDeletedRecords({});
@@ -4456,6 +4459,28 @@ class VocabAppTester:
                   const resourceOnlySkippedWordSnapshot = resourceOnlyOk
                     && historyAfterResourceOnly.map(item => item.id).join(',') === historyBeforeResourceOnly.map(item => item.id).join(',');
 
+                  const priorLatestSnapshotId = historyAfterResourceOnly[0] && historyAfterResourceOnly[0].id;
+                  await originals.saveCloudSyncUndoSnapshot.call(app, cloudRows, {uploadLocal:true, downloadCloud:false}, '00000000-0000-0000-0000-000000000000');
+                  const historyAfterThirdSnapshot = await app.getCloudSyncUndoHistory();
+                  const persistedHistoryAfterThirdSnapshot = await DurableStorage.getItem(app.getCloudSyncUndoHistoryKey());
+                  const legacyOverflowHistory = historyAfterThirdSnapshot.length === 2 ? [
+                    ...historyAfterThirdSnapshot,
+                    {...historyAfterThirdSnapshot[1], id:historyAfterThirdSnapshot[1].id + '_legacy_1', createdAt:1},
+                    {...historyAfterThirdSnapshot[1], id:historyAfterThirdSnapshot[1].id + '_legacy_2', createdAt:0}
+                  ] : [];
+                  await DurableStorage.setItem(app.getCloudSyncUndoHistoryKey(), legacyOverflowHistory);
+                  const migratedLegacyHistory = await app.getCloudSyncUndoHistory();
+                  const persistedMigratedLegacyHistory = await DurableStorage.getItem(app.getCloudSyncUndoHistoryKey());
+                  const historyLimitKeptLatestTwo = historyAfterThirdSnapshot.length === 2
+                    && Array.isArray(persistedHistoryAfterThirdSnapshot)
+                    && persistedHistoryAfterThirdSnapshot.length === 2
+                    && historyAfterThirdSnapshot[1].id === priorLatestSnapshotId
+                    && !historyAfterThirdSnapshot.some(item => item.id === downloadSnapshot.id)
+                    && migratedLegacyHistory.length === 2
+                    && Array.isArray(persistedMigratedLegacyHistory)
+                    && persistedMigratedLegacyHistory.length === 2
+                    && migratedLegacyHistory.map(item => item.id).join(',') === historyAfterThirdSnapshot.map(item => item.id).join(',');
+
                   let snapshotGateUploadCalls = 0;
                   app.saveCloudSyncUndoSnapshot = async () => false;
                   app.fetchCloudRows = async () => cloudRows;
@@ -4477,6 +4502,7 @@ class VocabAppTester:
                     localOnlyRestorePreservedCloudAndPending,
                     cloudRestoreReplaysSnapshotWithNewRevision,
                     resourceOnlySkippedWordSnapshot,
+                    historyLimitKeptLatestTwo,
                     snapshotGateStoppedSync,
                     emptySelectionRejected
                   });
@@ -4519,8 +4545,8 @@ class VocabAppTester:
             )
             self.assert_true(
                 bool(directional_sync_result and directional_sync_result.get('uploadSnapshotCapturedBothSides')),
-                f"[{lang_name}] 浏览器云同步撤销-上传覆盖前保存双端状态且历史最多五份",
-                f"上传前快照缺字段、未包含云端独有词或超过五份：{directional_sync_result}",
+                f"[{lang_name}] 浏览器云同步撤销-上传覆盖前保存双端状态且历史恰为两份",
+                f"上传前快照缺字段、未包含云端独有词或没有保留两份：{directional_sync_result}",
             )
             self.assert_true(
                 bool(directional_sync_result and directional_sync_result.get('localOnlyRestorePreservedCloudAndPending')),
@@ -4536,6 +4562,11 @@ class VocabAppTester:
                 bool(directional_sync_result and directional_sync_result.get('resourceOnlySkippedWordSnapshot')),
                 f"[{lang_name}] 浏览器云同步撤销-纯学习资料同步不污染词库历史",
                 f"只同步资料仍创建了词库撤销快照：{directional_sync_result}",
+            )
+            self.assert_true(
+                bool(directional_sync_result and directional_sync_result.get('historyLimitKeptLatestTwo')),
+                f"[{lang_name}] 浏览器云同步撤销-第三次快照及旧版超量历史均只持久化最近两份",
+                f"历史没有淘汰最旧快照，或旧版 IndexedDB 历史没有裁剪到两份：{directional_sync_result}",
             )
             self.assert_true(
                 bool(directional_sync_result and directional_sync_result.get('snapshotGateStoppedSync')),

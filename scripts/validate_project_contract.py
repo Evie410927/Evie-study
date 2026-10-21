@@ -236,6 +236,19 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
 
     resource_contract = contract["uiContracts"]["resourceLibrary"]
     excel_contract = contract["uiContracts"]["vocabularyExcelExport"]
+    cloud_sync_undo_contract = contract["uiContracts"]["cloudSyncUndo"]
+    history_limit = cloud_sync_undo_contract.get("maximumSnapshots")
+    if history_limit != 2:
+        fail(errors, "质量契约：云同步撤销历史必须只保留最近 2 份")
+    required_history_limit_tokens = (
+        f"this.CLOUD_SYNC_UNDO_HISTORY_LIMIT = {history_limit};",
+        ".slice(0, this.CLOUD_SYNC_UNDO_HISTORY_LIMIT)",
+        "if (stored.length !== history.length)",
+        f"最多保留最近 {history_limit} 份同步前快照",
+    )
+    for token in required_history_limit_tokens:
+        if token not in content:
+            fail(errors, f"{relative_path}: 云同步历史缺少最近 {history_limit} 份上限或旧历史裁剪实现 {token}")
     if excel_contract.get("allowedRatings") != [0, 1, 2, 3, 4, 5]:
         fail(errors, "质量契约：Excel 导出星级范围必须固定为 0～5 星")
     if excel_contract.get("customSaveLocationControl") != "automatic-no-visible-toggle":

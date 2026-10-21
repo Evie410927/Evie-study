@@ -20418,7 +20418,13 @@ function createSupabaseSyncMethods(language) {
       try {
         const stored = await DurableStorage.getItem(this.getCloudSyncUndoHistoryKey());
         if (!Array.isArray(stored)) return [];
-        return stored.filter(item => item && item.schema === 1 && item.id && item.local && item.cloud).slice(0, 5);
+        const history = stored
+          .filter(item => item && item.schema === 1 && item.id && item.local && item.cloud)
+          .slice(0, this.CLOUD_SYNC_UNDO_HISTORY_LIMIT);
+        if (stored.length !== history.length) {
+          await DurableStorage.setItem(this.getCloudSyncUndoHistoryKey(), history);
+        }
+        return history;
       } catch (error) {
         console.warn('Cloud sync undo history read failed:', error);
         return [];
@@ -20443,7 +20449,7 @@ function createSupabaseSyncMethods(language) {
       try {
         const storedHistory = await DurableStorage.getItem(this.getCloudSyncUndoHistoryKey());
         const history = Array.isArray(storedHistory)
-          ? storedHistory.filter(item => item && item.schema === 1 && item.id && item.local && item.cloud).slice(0, 5)
+          ? storedHistory.filter(item => item && item.schema === 1 && item.id && item.local && item.cloud).slice(0, this.CLOUD_SYNC_UNDO_HISTORY_LIMIT)
           : [];
         const createdAt = Date.now();
         const snapshot = {
@@ -20469,7 +20475,7 @@ function createSupabaseSyncMethods(language) {
             revision: this.splitCloudRows(cloudRows).revision
           }
         };
-        const saved = await DurableStorage.setItem(this.getCloudSyncUndoHistoryKey(), [snapshot, ...history].slice(0, 5));
+        const saved = await DurableStorage.setItem(this.getCloudSyncUndoHistoryKey(), [snapshot, ...history].slice(0, this.CLOUD_SYNC_UNDO_HISTORY_LIMIT));
         if (!saved) return false;
         if (this.refreshCloudSyncUndoControls) this.refreshCloudSyncUndoControls();
         return true;
@@ -20512,7 +20518,7 @@ function createSupabaseSyncMethods(language) {
         modal.style.cssText = 'position:fixed;inset:0;z-index:10020;background:rgba(5,10,24,.82);display:none;align-items:center;justify-content:center;padding:20px;';
         modal.innerHTML = `<div data-modal-scroll style="width:min(460px,100%);max-height:calc(100vh - 40px);overflow-y:auto;background:var(--bg-secondary,#1e293b);border:1px solid var(--border-color,#334155);border-radius:18px;padding:20px;color:var(--text-primary,#f8fafc);box-shadow:0 20px 55px rgba(0,0,0,.45);">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><strong style="font-size:18px;">🕘 同步历史</strong><button type="button" aria-label="关闭" onclick="if(window.app) window.app.closeCloudSyncHistoryModal()" style="border:0;background:transparent;color:inherit;font-size:22px;cursor:pointer;">×</button></div>
-          <p style="margin:0 0 14px;color:var(--text-secondary,#94a3b8);font-size:13px;line-height:1.55;">仅保存在当前浏览器，最多保留最近 5 份同步前快照。</p>
+          <p style="margin:0 0 14px;color:var(--text-secondary,#94a3b8);font-size:13px;line-height:1.55;">仅保存在当前浏览器，最多保留最近 2 份同步前快照。</p>
           <div id="cloudSyncHistoryList"></div>
         </div>`;
         document.body.appendChild(modal);
@@ -21724,6 +21730,7 @@ class KrVocabApp {
     this.CLOUD_FIELD_PENDING_MIGRATION_KEY = `${this.STORAGE_KEY}_cloud_field_pending_v3`;
     this.CLOUD_DEVICE_KEY = `${this.STORAGE_KEY}_cloud_device_v1`;
     this.CLOUD_BASE_REVISION_KEY = `${this.STORAGE_KEY}_cloud_base_revision_v1`;
+    this.CLOUD_SYNC_UNDO_HISTORY_LIMIT = 2;
     this.THEME_KEY = 'evie_kr_vocab_theme';
     this.DELETED_KEY = 'evie_kr_vocab_deleted_v1';
     this.SIMILAR_RELATION_MIGRATION_KEY = `${this.STORAGE_KEY}_similar_bidirectional_v1`;
