@@ -247,26 +247,6 @@ html, body {
   font-size: 13px;
 }
 
-.excel-export-save-location {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  margin: 0 0 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-  cursor: pointer;
-}
-
-.excel-export-save-location input {
-  margin: 2px 0 0;
-  accent-color: var(--accent-primary);
-  flex: 0 0 auto;
-}
-
 .excel-export-columns-panel {
   margin: 0 0 14px;
   padding: 11px 12px 12px;
@@ -17454,10 +17434,6 @@ body::-webkit-scrollbar,
             <label class="excel-export-column-option"><input type="checkbox" name="excelExportColumn" value="similarWords" onchange="if(window.app) window.app.setExcelExportColumn(this.value, this.checked)"><span>相近词汇</span></label>
           </div>
         </fieldset>
-        <label class="excel-export-save-location" for="excelExportChooseLocation">
-          <input id="excelExportChooseLocation" type="checkbox" checked>
-          <span>导出时选择保存位置（支持的浏览器会打开系统“另存为”）</span>
-        </label>
         <div id="excelExportSummary" class="excel-export-summary" role="status" aria-live="polite"></div>
         <button id="confirmExcelExportBtn" type="button" class="btn-primary" onclick="if(window.app) window.app.exportSelectedWordsToExcel()">生成并下载 .xlsx</button>
       </div>
@@ -26562,8 +26538,7 @@ class KrVocabApp {
     const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const prefix = this.RESOURCE_LANGUAGE === 'jp' ? 'Japanese_Vocab' : 'Korean_Vocab';
     const filename = `${prefix}_${safeScope}_${date}.xlsx`;
-    const chooseLocation = Boolean(document.getElementById('excelExportChooseLocation')?.checked);
-    if (chooseLocation && typeof window.showSaveFilePicker === 'function') {
+    if (typeof window.showSaveFilePicker === 'function') {
       try {
         const fileHandle = await window.showSaveFilePicker({
           suggestedName: filename,
@@ -26586,9 +26561,7 @@ class KrVocabApp {
     }
     this.downloadExcelBlobToDefaultLocation(blob, filename);
     this.closeExcelExportModal();
-    this.showToast(chooseLocation
-      ? `📊 当前浏览器不支持自定义位置，已导出 ${words.length} 个词条到浏览器默认下载位置`
-      : `📊 已导出 ${words.length} 个词条到浏览器默认下载位置`);
+    this.showToast(`📊 已导出 ${words.length} 个词条到浏览器默认下载位置`);
   }
 
   exportHTML() {

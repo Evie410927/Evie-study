@@ -276,7 +276,6 @@ class VocabAppTester:
             'value="all"', 'value="learning"', 'value="mastered"', 'value="tags"', 'value="ratings"',
             'id="excelExportTagPanel"', 'id="excelExportTagList"',
             'id="excelExportRatingPanel"', 'id="excelExportRatingList"',
-            'id="excelExportChooseLocation"',
             'id="excelExportColumnsPanel"', 'name="excelExportColumn"',
             'value="word"', 'value="partOfSpeech"', 'value="meaning"', 'value="example"',
             'value="reading"', 'value="pronunciationNote"', 'value="userNote"', 'value="similarWords"',
@@ -299,11 +298,11 @@ class VocabAppTester:
             "name: 'xl/worksheets/sheet1.xml'", "name: 'xl/styles.xml'",
             '<b/><color rgb="FFFFFFFF"/>', '<fgColor rgb="FFD946EF"/>',
             'wrapText="1"', '.xlsx`',
-        ))
+        )) and 'excelExportChooseLocation' not in content and 'excel-export-save-location' not in content
         self.assert_true(
             excel_export_contract,
-            f"[{lang_name}] Excel 导出-筛选、默认四列与四个可选列、相近词精简内容、自定义保存位置及离线 XLSX 完整",
-            "Excel 导出弹窗、筛选协议、可选列、相近词内容限制、保存位置、第一例句、JP 中韩释义或 Open XML ZIP 缺失",
+            f"[{lang_name}] Excel 导出-筛选、八列自选、相近词精简内容、自动保存位置且无可见开关及离线 XLSX 完整",
+            "Excel 导出弹窗、筛选协议、列选择、相近词内容限制、自动保存位置、第一例句、JP 中韩释义或 Open XML ZIP 缺失",
         )
 
         resource_modal_contract = all(token in content for token in (
@@ -2652,7 +2651,8 @@ class VocabAppTester:
                     const scopeValues = Array.from(document.querySelectorAll('input[name="excelExportScope"]')).map(input => input.value);
                     const tagButtonCount = document.querySelectorAll('#excelExportTagList .excel-export-tag-option').length;
                     const ratingButtonCount = document.querySelectorAll('#excelExportRatingList .excel-export-tag-option').length;
-                    const chooseLocationDefault = document.getElementById('excelExportChooseLocation')?.checked === true;
+                    const saveLocationControlHidden = document.getElementById('excelExportChooseLocation') === null
+                      && document.querySelector('.excel-export-save-location') === null;
                     const columnInputs = Array.from(document.querySelectorAll('input[name="excelExportColumn"]'));
                     const allColumnKeys = ['word', 'partOfSpeech', 'meaning', 'example', 'reading', 'pronunciationNote', 'userNote', 'similarWords'];
                     const columnCount = columnInputs.length;
@@ -2701,7 +2701,6 @@ class VocabAppTester:
                     app.showToast = message => toastMessages.push(String(message));
                     app.downloadExcelBlobToDefaultLocation = () => { defaultDownloadCount += 1; };
                     app.excelExportScope = 'all';
-                    document.getElementById('excelExportChooseLocation').checked = true;
                     Object.defineProperty(window, 'showSaveFilePicker', {configurable:true, writable:true, value:async options => {
                       pickerSuggestedName = options?.suggestedName || '';
                       return {createWritable:async () => ({
@@ -2718,8 +2717,10 @@ class VocabAppTester:
                     const cancelAvoidedDownload = defaultDownloadCount === 0;
                     Object.defineProperty(window, 'showSaveFilePicker', {configurable:true, writable:true, value:undefined});
                     await app.exportSelectedWordsToExcel();
-                    const unsupportedFallback = defaultDownloadCount === 1 && toastMessages.some(message => message.includes('浏览器默认下载位置'));
-                    done({modalActive, scopeValues, tagButtonCount, ratingButtonCount, chooseLocationDefault, columnCount, defaultColumnSelection, defaultColumnsCanBeUnchecked, zeroColumnsBlocked, optionalColumnSummary, allCount, learningCount, masteredCount, tagEmptyBlocked, tagAnyCount, ratingEmptyBlocked, ratingAnyCount, pickerSuggestedName, pickerWriteType, pickerClosed, pickerSuccessClosedModal, cancelKeptModalOpen, cancelAvoidedDownload, unsupportedFallback, blobType:blob.type, bytes, customColumnsBytes, allColumnsBytes});
+                    const unsupportedFallback = defaultDownloadCount === 1
+                      && toastMessages.some(message => message.includes('浏览器默认下载位置'))
+                      && toastMessages.every(message => !message.includes('不支持'));
+                    done({modalActive, scopeValues, tagButtonCount, ratingButtonCount, saveLocationControlHidden, columnCount, defaultColumnSelection, defaultColumnsCanBeUnchecked, zeroColumnsBlocked, optionalColumnSummary, allCount, learningCount, masteredCount, tagEmptyBlocked, tagAnyCount, ratingEmptyBlocked, ratingAnyCount, pickerSuggestedName, pickerWriteType, pickerClosed, pickerSuccessClosedModal, cancelKeptModalOpen, cancelAvoidedDownload, unsupportedFallback, blobType:blob.type, bytes, customColumnsBytes, allColumnsBytes});
                   } catch (error) {
                     done({error:String(error)});
                   } finally {
@@ -2796,7 +2797,7 @@ class VocabAppTester:
                     and excel_export_result.get('scopeValues') == ['all', 'learning', 'mastered', 'tags', 'ratings']
                     and excel_export_result.get('tagButtonCount') == 3
                     and excel_export_result.get('ratingButtonCount') == 6
-                    and excel_export_result.get('chooseLocationDefault')
+                    and excel_export_result.get('saveLocationControlHidden')
                     and excel_export_result.get('columnCount') == 8
                     and excel_export_result.get('defaultColumnSelection')
                     and excel_export_result.get('defaultColumnsCanBeUnchecked')

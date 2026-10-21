@@ -73,4 +73,4 @@
 - 第一组例句使用统一例句归一化方法取得第一条现存记录，只输出原句与非空中文翻译并以换行连接；不得输出第二条及后续例句。所有值必须经过 XML 非法字符清理和实体转义。
 - 相近词汇列只解析当前词条按人工顺序保存且未隐藏的 `manualSimilarWordIds`。每个有效关联词只生成一行 `word：meaning`，多个关联词以换行连接；JP 不追加 `krMeaning`。不得输出关联词的 `reading`、`pronunciationNote`、`userNote`、`partOfSpeech`、Tag、例句、星级、学习状态或其他字段。
 - 空词库、未选择 Tag、未选择星级、未选择任何导出列或筛选结果为空时必须阻止下载并显示原因；成功提示必须包含实际导出词条数量。
-- `#excelExportChooseLocation` 开启时，支持 File System Access API 的浏览器必须使用 `showSaveFilePicker` 和可写文件句柄保存；用户取消时不得触发后备下载。API 不支持时使用浏览器默认下载机制，并在成功提示中明确说明无法自定义位置。
+- 保存位置不提供可见开关。支持 File System Access API 的浏览器必须自动使用 `showSaveFilePicker` 和可写文件句柄保存；用户取消时不得触发后备下载。API 不支持时直接使用浏览器默认下载机制，不显示兼容性提示。

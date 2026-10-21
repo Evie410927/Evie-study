@@ -238,8 +238,8 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
     excel_contract = contract["uiContracts"]["vocabularyExcelExport"]
     if excel_contract.get("allowedRatings") != [0, 1, 2, 3, 4, 5]:
         fail(errors, "质量契约：Excel 导出星级范围必须固定为 0～5 星")
-    if excel_contract.get("customSaveLocationControlId") != "excelExportChooseLocation":
-        fail(errors, "质量契约：Excel 导出自定义保存位置控件 ID 不一致")
+    if excel_contract.get("customSaveLocationControl") != "automatic-no-visible-toggle":
+        fail(errors, "质量契约：Excel 导出保存位置必须自动判断且不显示开关")
     if excel_contract.get("columns") != {
         "word": "单词",
         "partOfSpeech": "词性",
@@ -270,7 +270,6 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
         "this.excelExportRatings = new Set()",
         'value="ratings"',
         'id="excelExportRatingPanel"',
-        'id="excelExportChooseLocation"',
         'id="excelExportColumnsPanel"',
         'name="excelExportColumn"',
         "this.excelExportSelectedColumns = new Set(['word', 'partOfSpeech', 'meaning', 'example'])",
@@ -296,6 +295,8 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
     for token in required_excel_tokens:
         if token not in content:
             fail(errors, f"{relative_path}: Excel 导出缺少实现标记 {token}")
+    if 'excelExportChooseLocation' in content or 'excel-export-save-location' in content:
+        fail(errors, f"{relative_path}: Excel 导出不得显示保存位置开关")
     if resource_contract.get("localIsolation") == "filter-by-current-language":
         language_code = "kr" if relative_path == "standalone_kr_vocab.html" else "jp"
         required_resource_language_tokens = (
