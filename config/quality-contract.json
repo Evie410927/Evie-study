@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-10-21.1",
+  "contractVersion": "2026-10-21.2",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -269,14 +269,19 @@
       "modalId": "excelExportModal",
       "format": "xlsx-openxml-zip-store",
       "worksheetName": "词库",
-      "scopes": ["all", "learning", "mastered", "tags-any"],
+      "scopes": ["all", "learning", "mastered", "tags-any", "ratings-any"],
       "tagSelection": "multi-select-any-match",
+      "ratingSelection": "multi-select-any-exact-rating-match",
+      "allowedRatings": [0, 1, 2, 3, 4, 5],
       "emptySelectionBlocked": true,
       "headers": ["单词", "词性", "释义", "例句"],
       "headerStyle": "bold-colored-fill",
       "jpMeaningCell": "meaning-newline-krMeaning",
       "examplePolicy": "first-existing-pair-only",
       "multilineCells": true,
+      "customSaveLocation": "File-System-Access-API-when-supported",
+      "customSaveLocationControlId": "excelExportChooseLocation",
+      "customSaveLocationFallback": "browser-managed-download-with-explicit-notice",
       "mirroredAcrossLanguages": true
     },
     "cloudSyncUndo": {

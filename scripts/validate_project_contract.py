@@ -236,6 +236,10 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
 
     resource_contract = contract["uiContracts"]["resourceLibrary"]
     excel_contract = contract["uiContracts"]["vocabularyExcelExport"]
+    if excel_contract.get("allowedRatings") != [0, 1, 2, 3, 4, 5]:
+        fail(errors, "质量契约：Excel 导出星级范围必须固定为 0～5 星")
+    if excel_contract.get("customSaveLocationControlId") != "excelExportChooseLocation":
+        fail(errors, "质量契约：Excel 导出自定义保存位置控件 ID 不一致")
     resource_button = parser.elements_by_id.get(resource_contract["buttonId"])
     export_button = parser.elements_by_id.get(excel_contract["buttonId"])
     quick_add_button = parser.elements_by_id.get("quickAddBtn")
@@ -250,9 +254,17 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
         'id="excelExportModal"',
         "this.excelExportScope = 'all'",
         "this.excelExportTags = new Set()",
+        "this.excelExportRatings = new Set()",
+        'value="ratings"',
+        'id="excelExportRatingPanel"',
+        'id="excelExportChooseLocation"',
         "some(tag => selected.has(",
+        "this.excelExportRatings.has(this.normalizeExcelExportRating(word?.rating))",
         "const firstExample = this.getParsedExamples(word)[0]",
         "isJapanese ? '中韩意思' : '中文意思'",
+        "window.showSaveFilePicker",
+        "await fileHandle.createWritable()",
+        "浏览器默认下载位置",
         "name: 'xl/worksheets/sheet1.xml'",
         "name: 'xl/styles.xml'",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
