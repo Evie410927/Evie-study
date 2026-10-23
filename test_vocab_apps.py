@@ -119,7 +119,7 @@ class VocabAppTester:
             "this.CLOUD_SYNC_UNDO_HISTORY_LIMIT = 2",
             "[snapshot, ...history].slice(0, this.CLOUD_SYNC_UNDO_HISTORY_LIMIT)",
             "if (stored.length !== history.length)",
-            "最多保留最近 2 份同步前快照",
+            "最多保留最近 2 份同步或 Excel 导入前快照",
             "async restoreCloudSyncSnapshot(restoreCloud = false)",
             "buildCloudUndoRestoreRows", "upsertRawCloudRows",
             "Math.max(currentRevision, Number(snapshot.cloud && snapshot.cloud.revision || 0)) + 1",
@@ -263,15 +263,16 @@ class VocabAppTester:
         self.assert_true(btn_quick_add, f"[{lang_name}] Header-➕加词按钮兜底点击", "quickAddBtn 缺少行内 openWordModal 兜底绑定")
 
         resource_button = bool(re.search(r'id="resourceLibraryBtn"[^>]*onclick="[^"]*openResourceLibrary', content))
+        import_excel_button = bool(re.search(r'id="importExcelBtn"[^>]*onclick="[^"]*importExcelFileInput', content))
         export_excel_button = bool(re.search(r'id="exportExcelBtn"[^>]*onclick="[^"]*openExcelExportModal', content))
-        resource_export_add_order = (
+        resource_import_export_add_order = (
             content.find('id="resourceLibraryBtn"') >= 0
-            and content.find('id="resourceLibraryBtn"') < content.find('id="exportExcelBtn"') < content.find('id="quickAddBtn"')
+            and content.find('id="resourceLibraryBtn"') < content.find('id="importExcelBtn"') < content.find('id="exportExcelBtn"') < content.find('id="quickAddBtn"')
         )
         self.assert_true(
-            resource_button and export_excel_button and resource_export_add_order,
-            f"[{lang_name}] Header-资料库、Excel 导出与新增词条按钮依次相邻且带点击兜底",
-            "resourceLibraryBtn/exportExcelBtn 缺失、点击方法缺失，或没有按资料库→Excel→新增顺序排列",
+            resource_button and import_excel_button and export_excel_button and resource_import_export_add_order,
+            f"[{lang_name}] Header-资料库、Excel 导入、Excel 导出与新增词条按钮依次相邻且带点击兜底",
+            "资料库/Excel 导入/Excel 导出/新增按钮缺失，或没有按规定顺序排列",
         )
 
         excel_export_contract = all(token in content for token in (
@@ -301,11 +302,29 @@ class VocabAppTester:
             "name: 'xl/worksheets/sheet1.xml'", "name: 'xl/styles.xml'",
             '<b/><color rgb="FFFFFFFF"/>', '<fgColor rgb="FFD946EF"/>',
             'wrapText="1"', '.xlsx`',
+            "rowIndex === 0 ? '__EVIE_WORD_ID__'", 'hidden="1"',
         )) and 'excelExportChooseLocation' not in content and 'excel-export-save-location' not in content
         self.assert_true(
             excel_export_contract,
             f"[{lang_name}] Excel 导出-筛选、八列自选、相近词精简内容、自动保存位置且无可见开关及离线 XLSX 完整",
             "Excel 导出弹窗、筛选协议、列选择、相近词内容限制、自动保存位置、第一例句、JP 中韩释义或 Open XML ZIP 缺失",
+        )
+
+        excel_import_contract = all(token in content for token in (
+            'id="importExcelFileInput"', 'accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"',
+            "importVocabularyExcelFile(event)", "readVocabularyXlsxEntries(file)",
+            "parseVocabularyWorksheetRows(sheetXml, sharedStringsXml = '')", "prepareVocabularyExcelImport(rows)",
+            "const stableIdMarker = '__EVIE_WORD_ID__'", "旧版文件没有词条标识时，第一列表头必须保持为“单词”",
+            "第一行字段名称被修改、重复或顺序不正确", "this.saveLocalVersionUndoSnapshot('Excel 导入')",
+            "this.markPendingCloudChanges(plan.changedIds, plan.changedAt, 'user', plan.changedFieldsById)",
+            "await this.confirmLastSaveDataDurableFallback()", "await this.discardCloudSyncUndoSnapshot(snapshotId)",
+            "cloud: { rows: [], revision: this.getCloudBaselineRevision(), available: false }",
+            "此版本只记录了本浏览器状态，不能恢复云端",
+        ))
+        self.assert_true(
+            excel_import_contract,
+            f"[{lang_name}] Excel 回导-严格表头、稳定 ID、差异覆盖、导入前版本与失败回滚完整",
+            "Excel 回导入口、格式校验、稳定词条匹配、导入前快照、双层持久化或仅本地恢复保护缺失",
         )
 
         resource_modal_contract = all(token in content for token in (
@@ -2805,6 +2824,7 @@ class VocabAppTester:
             excel_xlsx_valid = False
             excel_custom_columns_valid = False
             excel_optional_columns_valid = False
+            excel_deflated_parse_ok = False
             excel_xlsx_detail = ""
             try:
                 excel_bytes = bytes(excel_export_result.get('bytes') or [])
@@ -2855,6 +2875,20 @@ class VocabAppTester:
                     and '第一组原句乙' not in all_columns_sheet_xml
                     and '<autoFilter ref="A1:H2"/>' in all_columns_sheet_xml
                 )
+                deflated_buffer = io.BytesIO()
+                with zipfile.ZipFile(io.BytesIO(all_columns_bytes), 'r') as source_zip:
+                    with zipfile.ZipFile(deflated_buffer, 'w', compression=zipfile.ZIP_DEFLATED) as target_zip:
+                        for entry_name in source_zip.namelist():
+                            target_zip.writestr(entry_name, source_zip.read(entry_name))
+                deflated_rows = driver.execute_async_script("""
+                    const bytes = new Uint8Array(arguments[0]);
+                    const done = arguments[1];
+                    const file = new File([bytes], 'excel-edited-and-compressed.xlsx', {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+                    window.app.parseVocabularyXlsxFile(file)
+                      .then(rows => done({header:rows?.[0]?.[0], rowCount:rows?.length || 0}))
+                      .catch(error => done({error:String(error)}));
+                """, list(deflated_buffer.getvalue()))
+                excel_deflated_parse_ok = deflated_rows == {'header': '单词', 'rowCount': 2}
             except Exception as error:
                 excel_xlsx_detail = str(error)
             self.assert_true(
@@ -2888,9 +2922,165 @@ class VocabAppTester:
                     and excel_xlsx_valid
                     and excel_custom_columns_valid
                     and excel_optional_columns_valid
+                    and excel_deflated_parse_ok
                 ),
                 f"[{lang_name}] 浏览器 Excel 导出-八列复选、默认四列可取消、零列拦截、相近词精简内容与有效 XLSX",
                 f"Excel 导出运行结果或压缩包内容错误：{excel_export_result}; {excel_xlsx_detail}",
+            )
+
+            excel_import_result = driver.execute_async_script("""
+                const done = arguments[0];
+                (async () => {
+                  const app = window.app;
+                  const originalWords = JSON.parse(JSON.stringify(app.words || []));
+                  const originalPending = JSON.parse(JSON.stringify(app.getPendingCloudChanges()));
+                  const historyKey = app.getCloudSyncUndoHistoryKey();
+                  const originalHistory = await DurableStorage.getItem(historyKey);
+                  const originalToast = app.showToast;
+                  const originalSaveData = app.saveData;
+                  const toastMessages = [];
+                  const fixtures = [
+                    {id:'roundtrip-a', word:'回导原词甲', reading:'[旧读音甲]', pronunciationNote:'旧发音备注甲', userNote:'旧说明甲', partOfSpeech:'名词', meaning:'旧释义甲', krMeaning:'기존 뜻 갑', mastered:false, rating:4, tags:['重点'], manualSimilarWordIds:['roundtrip-b','roundtrip-c'], hiddenSimilarWordIds:[], examples:[{example:'第一例句甲', trans:'第一翻译甲'}, {example:'第二例句甲', trans:'第二翻译甲'}], example:'第一例句甲\\n第二例句甲', exampleTrans:'第一翻译甲\\n第二翻译甲', updatedAt:100, createdAt:90},
+                    {id:'roundtrip-b', word:'回导词乙', reading:'[读音乙]', pronunciationNote:'', userNote:'', partOfSpeech:'动词', meaning:'旧释义乙', krMeaning:'기존 뜻 을', mastered:true, rating:5, tags:['复习'], manualSimilarWordIds:['roundtrip-a'], hiddenSimilarWordIds:[], examples:[{example:'第一例句乙', trans:'第一翻译乙'}], example:'第一例句乙', exampleTrans:'第一翻译乙', updatedAt:100, createdAt:90},
+                    {id:'roundtrip-c', word:'回导词丙', reading:'[读音丙]', pronunciationNote:'', userNote:'', partOfSpeech:'形容词', meaning:'旧释义丙', krMeaning:'기존 뜻 병', mastered:false, rating:1, tags:['保留Tag'], manualSimilarWordIds:['roundtrip-a'], hiddenSimilarWordIds:[], examples:[{example:'第一例句丙', trans:'第一翻译丙'}], example:'第一例句丙', exampleTrans:'第一翻译丙', updatedAt:100, createdAt:90}
+                  ];
+                  const rebuildWorkbook = async (blob, mutateSheet) => {
+                    const entries = await app.readVocabularyXlsxEntries(blob);
+                    const decoder = new TextDecoder('utf-8');
+                    const rebuilt = Array.from(entries.entries()).map(([name, data]) => ({
+                      name,
+                      data: name === 'xl/worksheets/sheet1.xml' ? mutateSheet(decoder.decode(data)) : data
+                    }));
+                    return app.buildStoredZip(rebuilt);
+                  };
+                  const importBlob = async (blob, name) => {
+                    const target = {files:[new File([blob], name, {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})], value:'selected'};
+                    return await app.importVocabularyExcelFile({target});
+                  };
+                  try {
+                    app.showToast = message => toastMessages.push(String(message));
+                    app.words = JSON.parse(JSON.stringify(fixtures));
+                    app.savePendingCloudChanges({});
+                    app.refreshWordFingerprints();
+                    await DurableStorage.setItem(historyKey, []);
+                    app.excelExportSelectedColumns = new Set(['word','partOfSpeech','meaning','example','reading','pronunciationNote','userNote','similarWords']);
+                    const sourceBlob = app.createVocabularyXlsxBlob([app.words[0], app.words[1]]);
+                    const sourceEntries = await app.readVocabularyXlsxEntries(sourceBlob);
+                    const sourceSheet = new TextDecoder('utf-8').decode(sourceEntries.get('xl/worksheets/sheet1.xml'));
+                    const hiddenStableIdPresent = sourceSheet.includes('__EVIE_WORD_ID__') && sourceSheet.includes('hidden="1"') && sourceSheet.includes('roundtrip-a');
+                    const meaningTitle = app.getVocabularyExcelImportDefinitions().find(definition => definition.key === 'meaning')?.title;
+                    const subsetWithoutWordPlan = app.prepareVocabularyExcelImport([
+                      [meaningTitle, '__EVIE_WORD_ID__'],
+                      ['subset-meaning-update', 'roundtrip-a']
+                    ]);
+                    const customSubsetWithoutWordAccepted = subsetWithoutWordPlan.changedIds.includes('roundtrip-a')
+                      && subsetWithoutWordPlan.words.find(word => word.id === 'roundtrip-a')?.meaning === 'subset-meaning-update';
+                    let legacyMissingWordRejected = false;
+                    try {
+                      app.prepareVocabularyExcelImport([[meaningTitle], ['legacy-without-word']]);
+                    } catch (error) {
+                      legacyMissingWordRejected = String(error?.message || error).includes('第一列表头');
+                    }
+                    const sharedRows = app.parseVocabularyWorksheetRows(
+                      '<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c></row><row r="2"><c r="A2" t="s"><v>1</v></c></row></sheetData></worksheet>',
+                      '<?xml version="1.0"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><si><t>单词</t></si><si><r><t>共享</t></r><r><t>文本</t></r></si></sst>'
+                    );
+                    const sharedStringsParsed = sharedRows?.[0]?.[0] === '单词' && sharedRows?.[1]?.[0] === '共享文本';
+
+                    const badHeaderBlob = await rebuildWorkbook(sourceBlob, xml => xml.replace('>单词<', '>字段名<'));
+                    const beforeBadWords = JSON.stringify(app.words);
+                    const beforeBadHistory = JSON.stringify(await app.getCloudSyncUndoHistory());
+                    const badHeaderRejected = (await importBlob(badHeaderBlob, 'bad-header.xlsx')) === false
+                      && JSON.stringify(app.words) === beforeBadWords
+                      && JSON.stringify(await app.getCloudSyncUndoHistory()) === beforeBadHistory
+                      && toastMessages.some(message => message.includes('格式不对'));
+
+                    const badIdBlob = await rebuildWorkbook(sourceBlob, xml => xml.replace('>roundtrip-a<', '>unknown-language-id<'));
+                    const badIdRejected = (await importBlob(badIdBlob, 'bad-id.xlsx')) === false
+                      && JSON.stringify(app.words) === beforeBadWords
+                      && JSON.stringify(await app.getCloudSyncUndoHistory()) === beforeBadHistory;
+
+                    const validBlob = await rebuildWorkbook(sourceBlob, xml => xml
+                      .replaceAll('回导原词甲', '回导改名甲')
+                      .replaceAll('旧释义甲', '新释义甲')
+                      .replaceAll('기존 뜻 갑', '새 뜻 갑')
+                      .replaceAll('第一例句甲', '导入第一例句甲')
+                      .replaceAll('第一翻译甲', '导入第一翻译甲')
+                      .replaceAll('[旧读音甲]', '[新读音甲]')
+                      .replaceAll('旧发音备注甲', '新发音备注甲')
+                      .replaceAll('旧说明甲', '新说明甲')
+                      .replaceAll('回导词乙：旧释义乙\\n回导词丙：旧释义丙', '回导词乙：旧释义乙'));
+                    const validImported = await importBlob(validBlob, 'valid-roundtrip.xlsx');
+                    const importedA = app.words.find(word => word.id === 'roundtrip-a');
+                    const importedB = app.words.find(word => word.id === 'roundtrip-b');
+                    const importedC = app.words.find(word => word.id === 'roundtrip-c');
+                    const importedPairs = app.getParsedExamples(importedA);
+                    const pendingAfterImport = app.getPendingCloudChanges();
+                    const historyAfterImport = await app.getCloudSyncUndoHistory();
+                    const fieldUpdatesApplied = importedA?.word === '回导改名甲'
+                      && importedA?.meaning === '新释义甲'
+                      && importedA?.reading === '[新读音甲]'
+                      && importedA?.pronunciationNote === '新发音备注甲'
+                      && importedA?.userNote === '新说明甲'
+                      && (app.RESOURCE_LANGUAGE !== 'jp' || importedA?.krMeaning === '새 뜻 갑')
+                      && importedPairs.length === 2
+                      && importedPairs[0]?.example === '导入第一例句甲'
+                      && importedPairs[0]?.trans === '导入第一翻译甲'
+                      && importedPairs[1]?.example === '第二例句甲';
+                    const relationsApplied = JSON.stringify(importedA?.manualSimilarWordIds) === JSON.stringify(['roundtrip-b'])
+                      && importedB?.manualSimilarWordIds?.includes('roundtrip-a')
+                      && !importedC?.manualSimilarWordIds?.includes('roundtrip-a');
+                    const pendingFieldsTracked = pendingAfterImport['roundtrip-a']?.fields?.includes('word')
+                      && pendingAfterImport['roundtrip-a']?.fields?.includes('meaning')
+                      && pendingAfterImport['roundtrip-a']?.fields?.includes('examples')
+                      && pendingAfterImport['roundtrip-c']?.fields?.includes('manualSimilarWordIds');
+                    const importSnapshotSaved = historyAfterImport.length === 1
+                      && historyAfterImport[0]?.action === 'Excel 导入'
+                      && historyAfterImport[0]?.cloud?.available === false
+                      && historyAfterImport[0]?.local?.words?.find(word => word.id === 'roundtrip-a')?.word === '回导原词甲';
+
+                    await app.openCloudSyncUndoConfirm(historyAfterImport[0]?.id);
+                    const bothRestoreDisabled = document.getElementById('cloudUndoRestoreBothBtn')?.style.display === 'none';
+                    const localRestored = await app.restoreCloudSyncSnapshot(false);
+                    const restoredA = app.words.find(word => word.id === 'roundtrip-a');
+                    const restoredC = app.words.find(word => word.id === 'roundtrip-c');
+                    const importRollbackWorked = localRestored === true
+                      && restoredA?.word === '回导原词甲'
+                      && restoredA?.meaning === '旧释义甲'
+                      && restoredC?.manualSimilarWordIds?.includes('roundtrip-a');
+
+                    const wordsBeforeFailure = JSON.stringify(app.words);
+                    const pendingBeforeFailure = JSON.stringify(app.getPendingCloudChanges());
+                    const historyBeforeFailure = JSON.stringify(await app.getCloudSyncUndoHistory());
+                    app.saveData = () => { app._lastSaveDataDurablePromise = null; return false; };
+                    const doubleStoreFailureRejected = (await importBlob(validBlob, 'storage-failure.xlsx')) === false;
+                    app.saveData = originalSaveData;
+                    const failedImportRolledBack = doubleStoreFailureRejected
+                      && JSON.stringify(app.words) === wordsBeforeFailure
+                      && JSON.stringify(app.getPendingCloudChanges()) === pendingBeforeFailure
+                      && JSON.stringify(await app.getCloudSyncUndoHistory()) === historyBeforeFailure;
+
+                    done({hiddenStableIdPresent, customSubsetWithoutWordAccepted, legacyMissingWordRejected, sharedStringsParsed, badHeaderRejected, badIdRejected, validImported, fieldUpdatesApplied, relationsApplied, pendingFieldsTracked, importSnapshotSaved, bothRestoreDisabled, importRollbackWorked, failedImportRolledBack});
+                  } catch (error) {
+                    done({error:String(error), stack:String(error?.stack || '')});
+                  } finally {
+                    app.saveData = originalSaveData;
+                    app.showToast = originalToast;
+                    app.words = originalWords;
+                    app.savePendingCloudChanges(originalPending);
+                    app.refreshWordFingerprints();
+                    await app.persistSyncedData();
+                    await DurableStorage.setItem(historyKey, Array.isArray(originalHistory) ? originalHistory : []);
+                    app.closeCloudSyncUndoConfirm();
+                    app.renderWordList();
+                    app.updateStats();
+                  }
+                })();
+            """)
+            self.assert_true(
+                bool(excel_import_result and all(excel_import_result.values())),
+                f"[{lang_name}] 浏览器 Excel 回导-严格格式、稳定覆盖、版本历史、回滚与失败原子性",
+                f"Excel 回导全流程失败：{excel_import_result}",
             )
 
             driver.find_element(By.ID, 'resourceLibraryBtn').click()

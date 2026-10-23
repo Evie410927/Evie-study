@@ -270,6 +270,7 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
 
     resource_contract = contract["uiContracts"]["resourceLibrary"]
     excel_contract = contract["uiContracts"]["vocabularyExcelExport"]
+    excel_import_contract = contract["uiContracts"]["vocabularyExcelImport"]
     cloud_sync_undo_contract = contract["uiContracts"]["cloudSyncUndo"]
     history_limit = cloud_sync_undo_contract.get("maximumSnapshots")
     if history_limit != 2:
@@ -278,7 +279,7 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
         f"this.CLOUD_SYNC_UNDO_HISTORY_LIMIT = {history_limit};",
         ".slice(0, this.CLOUD_SYNC_UNDO_HISTORY_LIMIT)",
         "if (stored.length !== history.length)",
-        f"最多保留最近 {history_limit} 份同步前快照",
+        f"最多保留最近 {history_limit} 份同步或 Excel 导入前快照",
     )
     for token in required_history_limit_tokens:
         if token not in content:
@@ -300,14 +301,27 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
         fail(errors, "质量契约：Excel 导出列必须固定为八个指定字段")
     if excel_contract.get("defaultSelectedColumns") != ["word", "partOfSpeech", "meaning", "example"] or excel_contract.get("minimumSelectedColumns") != 1:
         fail(errors, "质量契约：Excel 导出必须默认勾选前四列且至少保留一列")
+    if (
+        excel_import_contract.get("acceptedExtension") != "xlsx"
+        or excel_import_contract.get("legacyWithoutStableIdRequiresFirstColumn") != "word"
+        or excel_import_contract.get("newExportMayOmitWordColumn") is not True
+    ):
+        fail(errors, "质量契约：Excel 回导必须只接受 xlsx；新版按稳定 ID 导入，旧版无 ID 时第一列固定为单词")
+    if excel_import_contract.get("preImportSnapshot") != "required-local-version-history-snapshot":
+        fail(errors, "质量契约：Excel 回导必须在改写词库前保存本地版本快照")
+    if cloud_sync_undo_contract.get("snapshotSources") != ["cloud-sync", "excel-import"]:
+        fail(errors, "质量契约：版本历史必须同时覆盖云同步与 Excel 导入")
     resource_button = parser.elements_by_id.get(resource_contract["buttonId"])
+    import_button = parser.elements_by_id.get(excel_import_contract["buttonId"])
     export_button = parser.elements_by_id.get(excel_contract["buttonId"])
     quick_add_button = parser.elements_by_id.get("quickAddBtn")
-    if resource_button is None or export_button is None or quick_add_button is None:
-        fail(errors, f"{relative_path}: Header 缺少资料库、Excel 导出或新增词条按钮")
+    if resource_button is None or import_button is None or export_button is None or quick_add_button is None:
+        fail(errors, f"{relative_path}: Header 缺少资料库、Excel 导入、Excel 导出或新增词条按钮")
     else:
-        if export_button["previous_sibling_id"] != resource_contract["buttonId"]:
-            fail(errors, f"{relative_path}: Excel 导出按钮必须紧随资料库按钮")
+        if import_button["previous_sibling_id"] != resource_contract["buttonId"]:
+            fail(errors, f"{relative_path}: Excel 导入按钮必须紧随资料库按钮")
+        if export_button["previous_sibling_id"] != excel_import_contract["buttonId"]:
+            fail(errors, f"{relative_path}: Excel 导出按钮必须紧随 Excel 导入按钮")
         if quick_add_button["previous_sibling_id"] != excel_contract["buttonId"]:
             fail(errors, f"{relative_path}: 新增词条按钮必须紧随 Excel 导出按钮")
     required_excel_tokens = (
@@ -344,6 +358,31 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
             fail(errors, f"{relative_path}: Excel 导出缺少实现标记 {token}")
     if 'excelExportChooseLocation' in content or 'excel-export-save-location' in content:
         fail(errors, f"{relative_path}: Excel 导出不得显示保存位置开关")
+    required_excel_import_tokens = (
+        'id="importExcelBtn"',
+        'id="importExcelFileInput"',
+        'accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"',
+        "importVocabularyExcelFile(event)",
+        "getVocabularyExcelImportDefinitions()",
+        "readVocabularyXlsxEntries(file)",
+        "parseVocabularyWorksheetRows(sheetXml, sharedStringsXml = '')",
+        "parseVocabularyXlsxFile(file)",
+        "prepareVocabularyExcelImport(rows)",
+        "'__EVIE_WORD_ID__'",
+        "旧版文件没有词条标识时，第一列表头必须保持为“单词”",
+        "第一行字段名称被修改、重复或顺序不正确",
+        "第 ${item.excelRow} 行的词条标识不存在",
+        "this.saveLocalVersionUndoSnapshot('Excel 导入')",
+        "this.markPendingCloudChanges(plan.changedIds, plan.changedAt, 'user', plan.changedFieldsById)",
+        "this.saveData({ reportFailure: false })",
+        "await this.confirmLastSaveDataDurableFallback()",
+        "await this.discardCloudSyncUndoSnapshot(snapshotId)",
+        "cloud: { rows: [], revision: this.getCloudBaselineRevision(), available: false }",
+        "此版本只记录了本浏览器状态，不能恢复云端",
+    )
+    for token in required_excel_import_tokens:
+        if token not in content:
+            fail(errors, f"{relative_path}: Excel 严格回导缺少实现标记 {token}")
     if resource_contract.get("localIsolation") == "filter-by-current-language":
         language_code = "kr" if relative_path == "standalone_kr_vocab.html" else "jp"
         required_resource_language_tokens = (

@@ -3405,8 +3405,10 @@ body::-webkit-scrollbar,
         <button id="cloudSyncBtn" class="icon-btn" title="选择云端同步方式" style="font-size:16px;" onclick="if(window.app) window.app.openCloudSyncOptionsModal()">☁️</button>
         <button id="themeToggleBtn" class="icon-btn" title="切换主题" onclick="if(window.app) window.app.toggleTheme()">🌙</button>
         <button id="resourceLibraryBtn" class="icon-btn" type="button" title="打开学习资料库" aria-label="打开学习资料库" onclick="if(window.app) window.app.openResourceLibrary()">📁</button>
+        <button id="importExcelBtn" class="icon-btn" type="button" title="导入 Excel" aria-label="导入 Excel" onclick="document.getElementById('importExcelFileInput')?.click()">📥</button>
         <button id="exportExcelBtn" class="icon-btn" type="button" title="导出 Excel" aria-label="导出 Excel" onclick="if(window.app) window.app.openExcelExportModal()">📊</button>
         <button id="quickAddBtn" class="icon-btn" title="添加韩语单词" onclick="if(window.app) window.app.openWordModal()">➕</button>
+        <input id="importExcelFileInput" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
       </div>
     </header>
 
@@ -20412,8 +20414,8 @@ function createSupabaseSyncMethods(language) {
           <div id="cloudUploadOnlyNotice" role="alert" style="display:none;margin:0 0 12px;padding:11px 12px;border:1px solid rgba(251,113,133,.65);border-radius:10px;background:rgba(190,24,93,.16);color:#fda4af;font-size:13px;line-height:1.55;">⚠️ 只上传会以本浏览器完整词库覆盖云端；云端独有、但本地不存在的词将从云端最新版本中删除。</div>
           <button id="cloudSyncExecuteBtn" type="button" disabled onclick="if(window.app) window.app.runSelectedCloudSync()" style="width:100%;padding:11px;border:0;border-radius:11px;background:linear-gradient(135deg,var(--accent-primary,#ec4899),#8b5cf6);color:white;font-weight:700;cursor:pointer;">开始执行</button>
           <div style="display:flex;gap:9px;margin-top:10px;">
-            <button id="cloudSyncUndoBtn" type="button" disabled onclick="if(window.app) window.app.openCloudSyncUndoConfirm()" style="flex:1;padding:9px 8px;border:1px solid var(--border-color,#475569);border-radius:10px;background:rgba(15,23,42,.35);color:inherit;font-weight:650;cursor:pointer;">↩ 撤销上次同步</button>
-            <button id="cloudSyncHistoryBtn" type="button" disabled onclick="if(window.app) window.app.openCloudSyncHistoryModal()" style="flex:1;padding:9px 8px;border:1px solid var(--border-color,#475569);border-radius:10px;background:rgba(15,23,42,.35);color:inherit;font-weight:650;cursor:pointer;">🕘 同步历史</button>
+            <button id="cloudSyncUndoBtn" type="button" disabled onclick="if(window.app) window.app.openCloudSyncUndoConfirm()" style="flex:1;padding:9px 8px;border:1px solid var(--border-color,#475569);border-radius:10px;background:rgba(15,23,42,.35);color:inherit;font-weight:650;cursor:pointer;">↩ 撤销上次变更</button>
+            <button id="cloudSyncHistoryBtn" type="button" disabled onclick="if(window.app) window.app.openCloudSyncHistoryModal()" style="flex:1;padding:9px 8px;border:1px solid var(--border-color,#475569);border-radius:10px;background:rgba(15,23,42,.35);color:inherit;font-weight:650;cursor:pointer;">🕘 版本历史</button>
           </div>
         </div>`;
         document.body.appendChild(modal);
@@ -20538,7 +20540,8 @@ function createSupabaseSyncMethods(language) {
           },
           cloud: {
             rows: this.cloneCloudSyncUndoValue(Array.isArray(cloudRows) ? cloudRows : []),
-            revision: this.splitCloudRows(cloudRows).revision
+            revision: this.splitCloudRows(cloudRows).revision,
+            available: true
           }
         };
         const saved = await DurableStorage.setItem(this.getCloudSyncUndoHistoryKey(), [snapshot, ...history].slice(0, this.CLOUD_SYNC_UNDO_HISTORY_LIMIT));
@@ -20547,6 +20550,54 @@ function createSupabaseSyncMethods(language) {
         return true;
       } catch (error) {
         console.warn('Cloud sync undo snapshot failed:', error);
+        return false;
+      }
+    },
+
+    async saveLocalVersionUndoSnapshot(action = '本地词库变更') {
+      try {
+        const storedHistory = await DurableStorage.getItem(this.getCloudSyncUndoHistoryKey());
+        const history = Array.isArray(storedHistory)
+          ? storedHistory.filter(item => item && item.schema === 1 && item.id && item.local && item.cloud).slice(0, this.CLOUD_SYNC_UNDO_HISTORY_LIMIT)
+          : [];
+        const createdAt = Date.now();
+        const snapshot = {
+          schema: 1,
+          id: `local_${createdAt}_${Math.random().toString(36).slice(2, 10)}`,
+          createdAt,
+          language,
+          userId: '',
+          deviceId: this.getCloudDeviceId(),
+          action: String(action || '本地词库变更'),
+          options: { uploadLocal: false, downloadCloud: false },
+          local: {
+            words: this.cloneCloudSyncUndoValue(Array.isArray(this.words) ? this.words : []),
+            pendingCloudChanges: this.cloneCloudSyncUndoValue(this.getPendingCloudChanges()),
+            deletedRecords: this.cloneCloudSyncUndoValue(this.getDeletedRecords()),
+            cloudBaselineRevision: this.getCloudBaselineRevision()
+          },
+          cloud: { rows: [], revision: this.getCloudBaselineRevision(), available: false }
+        };
+        const saved = await DurableStorage.setItem(this.getCloudSyncUndoHistoryKey(), [snapshot, ...history].slice(0, this.CLOUD_SYNC_UNDO_HISTORY_LIMIT));
+        if (!saved) return null;
+        if (this.refreshCloudSyncUndoControls) this.refreshCloudSyncUndoControls();
+        return snapshot.id;
+      } catch (error) {
+        console.warn('Local version undo snapshot failed:', error);
+        return null;
+      }
+    },
+
+    async discardCloudSyncUndoSnapshot(snapshotId) {
+      if (!snapshotId) return false;
+      try {
+        const history = await this.getCloudSyncUndoHistory();
+        const remaining = history.filter(snapshot => snapshot.id !== snapshotId);
+        const saved = await DurableStorage.setItem(this.getCloudSyncUndoHistoryKey(), remaining);
+        if (saved && this.refreshCloudSyncUndoControls) this.refreshCloudSyncUndoControls();
+        return Boolean(saved);
+      } catch (error) {
+        console.warn('Undo snapshot cleanup failed:', error);
         return false;
       }
     },
@@ -20563,7 +20614,7 @@ function createSupabaseSyncMethods(language) {
         button.style.opacity = disabled ? '.45' : '1';
         button.style.cursor = disabled ? 'not-allowed' : 'pointer';
       });
-      if (undoButton) undoButton.textContent = disabled ? '↩ 暂无可撤销同步' : '↩ 撤销上次同步';
+      if (undoButton) undoButton.textContent = disabled ? '↩ 暂无可撤销变更' : '↩ 撤销上次变更';
     },
 
     formatCloudSyncSnapshotTime(value) {
@@ -20583,8 +20634,8 @@ function createSupabaseSyncMethods(language) {
         modal.id = 'cloudSyncHistoryModal';
         modal.style.cssText = 'position:fixed;inset:0;z-index:10020;background:rgba(5,10,24,.82);display:none;align-items:center;justify-content:center;padding:20px;';
         modal.innerHTML = `<div data-modal-scroll style="width:min(460px,100%);max-height:calc(100vh - 40px);overflow-y:auto;background:var(--bg-secondary,#1e293b);border:1px solid var(--border-color,#334155);border-radius:18px;padding:20px;color:var(--text-primary,#f8fafc);box-shadow:0 20px 55px rgba(0,0,0,.45);">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><strong style="font-size:18px;">🕘 同步历史</strong><button type="button" aria-label="关闭" onclick="if(window.app) window.app.closeCloudSyncHistoryModal()" style="border:0;background:transparent;color:inherit;font-size:22px;cursor:pointer;">×</button></div>
-          <p style="margin:0 0 14px;color:var(--text-secondary,#94a3b8);font-size:13px;line-height:1.55;">仅保存在当前浏览器，最多保留最近 2 份同步前快照。</p>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><strong style="font-size:18px;">🕘 版本历史</strong><button type="button" aria-label="关闭" onclick="if(window.app) window.app.closeCloudSyncHistoryModal()" style="border:0;background:transparent;color:inherit;font-size:22px;cursor:pointer;">×</button></div>
+          <p style="margin:0 0 14px;color:var(--text-secondary,#94a3b8);font-size:13px;line-height:1.55;">仅保存在当前浏览器，最多保留最近 2 份同步或 Excel 导入前快照。</p>
           <div id="cloudSyncHistoryList"></div>
         </div>`;
         document.body.appendChild(modal);
@@ -20595,7 +20646,7 @@ function createSupabaseSyncMethods(language) {
         list.replaceChildren();
         if (history.length === 0) {
           const empty = document.createElement('div');
-          empty.textContent = '暂无可恢复的同步历史。';
+          empty.textContent = '暂无可恢复的版本历史。';
           empty.style.cssText = 'padding:18px 10px;text-align:center;color:var(--text-secondary,#94a3b8);font-size:13px;';
           list.appendChild(empty);
         } else {
@@ -20608,7 +20659,9 @@ function createSupabaseSyncMethods(language) {
             const detail = document.createElement('div');
             const localCount = Array.isArray(snapshot.local && snapshot.local.words) ? snapshot.local.words.length : 0;
             const cloudCount = this.countActiveCloudSnapshotRows(snapshot.cloud && snapshot.cloud.rows);
-            detail.textContent = `${this.formatCloudSyncSnapshotTime(snapshot.createdAt)} · 本地 ${localCount} 条 · 云端 ${cloudCount} 条`;
+            detail.textContent = snapshot.cloud && snapshot.cloud.available === false
+              ? `${this.formatCloudSyncSnapshotTime(snapshot.createdAt)} · 本地 ${localCount} 条 · 仅本浏览器`
+              : `${this.formatCloudSyncSnapshotTime(snapshot.createdAt)} · 本地 ${localCount} 条 · 云端 ${cloudCount} 条`;
             detail.style.cssText = 'color:var(--text-secondary,#94a3b8);font-size:12px;line-height:1.5;';
             const restoreButton = document.createElement('button');
             restoreButton.type = 'button';
@@ -20634,7 +20687,7 @@ function createSupabaseSyncMethods(language) {
       const history = await this.getCloudSyncUndoHistory();
       const snapshot = snapshotId ? history.find(item => item.id === snapshotId) : history[0];
       if (!snapshot) {
-        this.showToast('⚠️ 暂无可撤销的同步快照');
+        this.showToast('⚠️ 暂无可撤销的历史版本');
         if (this.refreshCloudSyncUndoControls) this.refreshCloudSyncUndoControls();
         return false;
       }
@@ -20645,7 +20698,7 @@ function createSupabaseSyncMethods(language) {
         modal.id = 'cloudSyncUndoConfirmModal';
         modal.style.cssText = 'position:fixed;inset:0;z-index:10030;background:rgba(5,10,24,.86);display:none;align-items:center;justify-content:center;padding:20px;';
         modal.innerHTML = `<div data-modal-scroll style="width:min(440px,100%);max-height:calc(100vh - 40px);overflow-y:auto;background:var(--bg-secondary,#1e293b);border:1px solid var(--border-color,#334155);border-radius:18px;padding:21px;color:var(--text-primary,#f8fafc);box-shadow:0 20px 55px rgba(0,0,0,.5);">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><strong style="font-size:18px;">↩ 恢复同步前状态</strong><button type="button" aria-label="关闭" onclick="if(window.app) window.app.closeCloudSyncUndoConfirm()" style="border:0;background:transparent;color:inherit;font-size:22px;cursor:pointer;">×</button></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><strong style="font-size:18px;">↩ 恢复历史版本</strong><button type="button" aria-label="关闭" onclick="if(window.app) window.app.closeCloudSyncUndoConfirm()" style="border:0;background:transparent;color:inherit;font-size:22px;cursor:pointer;">×</button></div>
           <div id="cloudSyncUndoSummary" style="margin:0 0 14px;color:var(--text-secondary,#94a3b8);font-size:13px;line-height:1.65;"></div>
           <button id="cloudUndoRestoreLocalBtn" type="button" onclick="if(window.app) window.app.restoreCloudSyncSnapshot(false)" style="width:100%;margin-bottom:9px;padding:11px;border:1px solid var(--border-color,#475569);border-radius:10px;background:rgba(15,23,42,.35);color:inherit;font-weight:700;cursor:pointer;">只恢复到本浏览器</button>
           <button id="cloudUndoRestoreBothBtn" type="button" onclick="if(window.app) window.app.restoreCloudSyncSnapshot(true)" style="width:100%;padding:11px;border:0;border-radius:10px;background:linear-gradient(135deg,var(--accent-primary,#ec4899),#8b5cf6);color:white;font-weight:700;cursor:pointer;">恢复本地与云端</button>
@@ -20654,10 +20707,18 @@ function createSupabaseSyncMethods(language) {
         document.body.appendChild(modal);
       }
       const summary = document.getElementById('cloudSyncUndoSummary');
+      const bothButton = document.getElementById('cloudUndoRestoreBothBtn');
+      const cloudAvailable = !(snapshot.cloud && snapshot.cloud.available === false);
+      if (bothButton) {
+        bothButton.disabled = !cloudAvailable;
+        bothButton.style.display = cloudAvailable ? 'block' : 'none';
+      }
       if (summary) {
         const localCount = Array.isArray(snapshot.local && snapshot.local.words) ? snapshot.local.words.length : 0;
         const cloudCount = this.countActiveCloudSnapshotRows(snapshot.cloud && snapshot.cloud.rows);
-        summary.textContent = `${this.formatCloudSyncSnapshotTime(snapshot.createdAt)}，${snapshot.action || '词库同步'}前的快照。本地将恢复为 ${localCount} 条；选择恢复云端时，云端将恢复为当时的 ${cloudCount} 条有效词条。`;
+        summary.textContent = cloudAvailable
+          ? `${this.formatCloudSyncSnapshotTime(snapshot.createdAt)}，${snapshot.action || '词库同步'}前的快照。本地将恢复为 ${localCount} 条；选择恢复云端时，云端将恢复为当时的 ${cloudCount} 条有效词条。`
+          : `${this.formatCloudSyncSnapshotTime(snapshot.createdAt)}，${snapshot.action || '本地变更'}前的快照。本地将恢复为 ${localCount} 条；该版本未改写云端，只能恢复当前浏览器。`;
       }
       this.closeCloudSyncHistoryModal();
       modal.style.display = 'flex';
@@ -21325,6 +21386,10 @@ function createSupabaseSyncMethods(language) {
       const snapshot = history.find(item => item.id === this.pendingCloudSyncUndoSnapshotId);
       if (!snapshot) {
         this.showToast('⚠️ 所选同步快照不存在或已失效');
+        return false;
+      }
+      if (restoreCloud && snapshot.cloud && snapshot.cloud.available === false) {
+        this.showToast('⚠️ 此版本只记录了本浏览器状态，不能恢复云端');
         return false;
       }
       this._cloudSyncRestoring = true;
@@ -23843,6 +23908,7 @@ class KrVocabApp {
       document.getElementById('excelExportModal')?.addEventListener('keydown', event => {
         if (event.key === 'Escape') this.closeExcelExportModal();
       });
+      document.getElementById('importExcelFileInput')?.addEventListener('change', event => this.importVocabularyExcelFile(event));
       document.getElementById('importDataTriggerBtn')?.addEventListener('click', () => {
         document.getElementById('importFileInput')?.click();
       });
@@ -26762,11 +26828,15 @@ class KrVocabApp {
     });
     const allRows = [headers, ...rows];
     const columnNames = columns.map((column, index) => this.getExcelColumnName(index));
+    const stableIdColumnName = this.getExcelColumnName(columns.length);
     const sheetRows = allRows.map((row, rowIndex) => {
       const cells = row.map((value, columnIndex) => `<c r="${columnNames[columnIndex]}${rowIndex + 1}" s="${rowIndex === 0 ? 1 : 2}" t="inlineStr"><is><t xml:space="preserve">${this.escapeExcelXml(value)}</t></is></c>`).join('');
-      return `<row r="${rowIndex + 1}"${rowIndex === 0 ? ' ht="26" customHeight="1"' : ''}>${cells}</row>`;
+      const stableId = rowIndex === 0 ? '__EVIE_WORD_ID__' : String(words[rowIndex - 1]?.id || '');
+      const stableIdCell = `<c r="${stableIdColumnName}${rowIndex + 1}" s="${rowIndex === 0 ? 1 : 2}" t="inlineStr"><is><t xml:space="preserve">${this.escapeExcelXml(stableId)}</t></is></c>`;
+      return `<row r="${rowIndex + 1}"${rowIndex === 0 ? ' ht="26" customHeight="1"' : ''}>${cells}${stableIdCell}</row>`;
     }).join('');
-    const columnWidths = columns.map((column, index) => `<col min="${index + 1}" max="${index + 1}" width="${column.width}" customWidth="1"/>`).join('');
+    const columnWidths = columns.map((column, index) => `<col min="${index + 1}" max="${index + 1}" width="${column.width}" customWidth="1"/>`).join('')
+      + `<col min="${columns.length + 1}" max="${columns.length + 1}" width="2" hidden="1" customWidth="1"/>`;
     const lastColumnName = columnNames[columnNames.length - 1] || 'D';
     const worksheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${columnWidths}</cols><sheetData>${sheetRows}</sheetData><autoFilter ref="A1:${lastColumnName}${allRows.length}"/></worksheet>`;
     const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFD946EF"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFD1D5DB"/></left><right style="thin"><color rgb="FFD1D5DB"/></right><top style="thin"><color rgb="FFD1D5DB"/></top><bottom style="thin"><color rgb="FFD1D5DB"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
@@ -26845,6 +26915,377 @@ class KrVocabApp {
     this.downloadExcelBlobToDefaultLocation(blob, filename);
     this.closeExcelExportModal();
     this.showToast(`📊 已导出 ${words.length} 个词条到浏览器默认下载位置`);
+  }
+
+  getVocabularyExcelImportDefinitions() {
+    const isJapanese = this.RESOURCE_LANGUAGE === 'jp';
+    return [
+      { key: 'word', title: '单词' },
+      { key: 'partOfSpeech', title: '词性' },
+      { key: 'meaning', title: isJapanese ? '中韩意思' : '中文意思' },
+      { key: 'example', title: isJapanese ? '日中例句' : '韩中例句' },
+      { key: 'reading', title: '发音' },
+      { key: 'pronunciationNote', title: '发音备注' },
+      { key: 'userNote', title: '说明' },
+      { key: 'similarWords', title: '相近词汇' }
+    ];
+  }
+
+  async readVocabularyXlsxEntries(file) {
+    const maxArchiveBytes = 20 * 1024 * 1024;
+    const maxEntryBytes = 25 * 1024 * 1024;
+    if (!file || Number(file.size || 0) <= 0) throw new Error('请选择有效的 Excel 文件');
+    if (Number(file.size || 0) > maxArchiveBytes) throw new Error('Excel 文件不能超过 20 MB');
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let endOffset = -1;
+    for (let index = bytes.length - 22; index >= Math.max(0, bytes.length - 65557); index--) {
+      if (view.getUint32(index, true) === 0x06054b50) {
+        endOffset = index;
+        break;
+      }
+    }
+    if (endOffset < 0) throw new Error('不是有效的 .xlsx 工作簿');
+    const entryCount = view.getUint16(endOffset + 10, true);
+    let centralOffset = view.getUint32(endOffset + 16, true);
+    const entries = new Map();
+    const decoder = new TextDecoder('utf-8');
+    for (let entryIndex = 0; entryIndex < entryCount; entryIndex++) {
+      if (centralOffset + 46 > bytes.length || view.getUint32(centralOffset, true) !== 0x02014b50) throw new Error('Excel 压缩目录损坏');
+      const method = view.getUint16(centralOffset + 10, true);
+      const compressedSize = view.getUint32(centralOffset + 20, true);
+      const uncompressedSize = view.getUint32(centralOffset + 24, true);
+      const nameLength = view.getUint16(centralOffset + 28, true);
+      const extraLength = view.getUint16(centralOffset + 30, true);
+      const commentLength = view.getUint16(centralOffset + 32, true);
+      const localOffset = view.getUint32(centralOffset + 42, true);
+      const nameStart = centralOffset + 46;
+      const name = decoder.decode(bytes.slice(nameStart, nameStart + nameLength)).replaceAll('\\', '/');
+      if (uncompressedSize > maxEntryBytes) throw new Error('Excel 内部数据超过安全上限');
+      if (localOffset + 30 > bytes.length || view.getUint32(localOffset, true) !== 0x04034b50) throw new Error('Excel 工作表数据损坏');
+      const localNameLength = view.getUint16(localOffset + 26, true);
+      const localExtraLength = view.getUint16(localOffset + 28, true);
+      const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+      const compressed = bytes.slice(dataStart, dataStart + compressedSize);
+      let data;
+      if (method === 0) {
+        data = compressed;
+      } else if (method === 8) {
+        if (typeof DecompressionStream !== 'function') throw new Error('当前浏览器不支持读取 Excel 压缩内容，请升级浏览器后重试');
+        try {
+          const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+          data = new Uint8Array(await new Response(stream).arrayBuffer());
+        } catch (error) {
+          throw new Error('Excel 压缩内容无法解压，请重新保存文件后再试');
+        }
+      } else {
+        throw new Error('Excel 使用了当前不支持的压缩方式');
+      }
+      if (uncompressedSize && data.length !== uncompressedSize) throw new Error('Excel 解压后的数据长度不正确');
+      entries.set(name, data);
+      centralOffset = nameStart + nameLength + extraLength + commentLength;
+    }
+    return entries;
+  }
+
+  parseVocabularyWorksheetRows(sheetXml, sharedStringsXml = '') {
+    const parser = new DOMParser();
+    const sheet = parser.parseFromString(sheetXml, 'application/xml');
+    if (sheet.getElementsByTagName('parsererror').length) throw new Error('Excel 工作表 XML 无法解析');
+    let sharedStrings = [];
+    if (sharedStringsXml) {
+      const shared = parser.parseFromString(sharedStringsXml, 'application/xml');
+      if (shared.getElementsByTagName('parsererror').length) throw new Error('Excel 共享文本无法解析');
+      sharedStrings = Array.from(shared.getElementsByTagNameNS('*', 'si')).map(item =>
+        Array.from(item.getElementsByTagNameNS('*', 't')).map(node => node.textContent || '').join('')
+      );
+    }
+    const columnIndex = reference => {
+      const match = String(reference || '').match(/^([A-Z]+)\d+$/i);
+      if (!match) return -1;
+      return match[1].toUpperCase().split('').reduce((total, char) => total * 26 + char.charCodeAt(0) - 64, 0) - 1;
+    };
+    return Array.from(sheet.getElementsByTagNameNS('*', 'row')).map(row => {
+      const values = [];
+      Array.from(row.getElementsByTagNameNS('*', 'c')).forEach(cell => {
+        const index = columnIndex(cell.getAttribute('r'));
+        if (index < 0 || index > 64) return;
+        const type = cell.getAttribute('t') || '';
+        let value = '';
+        if (type === 'inlineStr') {
+          value = Array.from(cell.getElementsByTagNameNS('*', 't')).map(node => node.textContent || '').join('');
+        } else {
+          const valueNode = cell.getElementsByTagNameNS('*', 'v')[0];
+          const raw = valueNode ? String(valueNode.textContent || '') : '';
+          value = type === 's' ? String(sharedStrings[Number(raw)] ?? '') : raw;
+        }
+        values[index] = value;
+      });
+      return values;
+    });
+  }
+
+  async parseVocabularyXlsxFile(file) {
+    const entries = await this.readVocabularyXlsxEntries(file);
+    const decoder = new TextDecoder('utf-8');
+    const sheetBytes = entries.get('xl/worksheets/sheet1.xml');
+    if (!sheetBytes) throw new Error('Excel 中缺少“词库”工作表');
+    const sharedBytes = entries.get('xl/sharedStrings.xml');
+    const rows = this.parseVocabularyWorksheetRows(decoder.decode(sheetBytes), sharedBytes ? decoder.decode(sharedBytes) : '');
+    if (!rows.length) throw new Error('Excel 工作表为空');
+    return rows;
+  }
+
+  prepareVocabularyExcelImport(rows) {
+    const definitions = this.getVocabularyExcelImportDefinitions();
+    const definitionByTitle = new Map(definitions.map((definition, index) => [definition.title, { ...definition, index }]));
+    const headerRow = Array.isArray(rows[0]) ? Array.from(rows[0], value => String(value ?? '')) : [];
+    const stableIdMarker = '__EVIE_WORD_ID__';
+    const stableIdIndex = headerRow.indexOf(stableIdMarker);
+    if (stableIdIndex >= 0 && (stableIdIndex !== headerRow.length - 1 || headerRow.lastIndexOf(stableIdMarker) !== stableIdIndex)) {
+      throw new Error('格式不对：隐藏词条标识列位置异常');
+    }
+    const visibleHeaders = stableIdIndex >= 0 ? headerRow.slice(0, stableIdIndex) : headerRow;
+    if (!visibleHeaders.length) throw new Error('格式不对：第一行必须保留至少一个标准字段');
+    if (stableIdIndex < 0 && visibleHeaders[0] !== definitions[0].title) {
+      throw new Error('格式不对：旧版文件没有词条标识时，第一列表头必须保持为“单词”');
+    }
+    let lastDefinitionIndex = -1;
+    const seenHeaders = new Set();
+    const keys = visibleHeaders.map(title => {
+      const definition = definitionByTitle.get(title);
+      if (!definition || seenHeaders.has(title) || definition.index <= lastDefinitionIndex) {
+        throw new Error('格式不对：第一行字段名称被修改、重复或顺序不正确');
+      }
+      seenHeaders.add(title);
+      lastDefinitionIndex = definition.index;
+      return definition.key;
+    });
+    const wordColumnIndex = keys.indexOf('word');
+    const importedRows = rows.slice(1).map((row, offset) => ({ row: Array.isArray(row) ? row : [], excelRow: offset + 2 }))
+      .filter(item => visibleHeaders.some((header, index) => String(item.row[index] ?? '').trim()) || (stableIdIndex >= 0 && String(item.row[stableIdIndex] ?? '').trim()));
+    if (!importedRows.length) throw new Error('Excel 中没有可导入的词条');
+
+    const currentWords = Array.isArray(this.words) ? this.words : [];
+    const stagedWords = JSON.parse(JSON.stringify(currentWords));
+    const stagedById = new Map(stagedWords.filter(word => word && word.id).map(word => [String(word.id), word]));
+    const currentByWord = new Map();
+    currentWords.forEach(word => {
+      const text = String(word?.word || '').trim();
+      if (!currentByWord.has(text)) currentByWord.set(text, []);
+      currentByWord.get(text).push(word);
+    });
+    const matchedIds = new Set();
+    const instructions = importedRows.map(item => {
+      const stableId = stableIdIndex >= 0 ? String(item.row[stableIdIndex] ?? '').trim() : '';
+      const visibleWord = String(item.row[wordColumnIndex] ?? '').trim();
+      let targetId = '';
+      if (stableId) {
+        if (!stagedById.has(stableId)) throw new Error(`第 ${item.excelRow} 行的词条标识不存在，无法安全覆盖`);
+        targetId = stableId;
+      } else {
+        const matches = currentByWord.get(visibleWord) || [];
+        if (matches.length !== 1) throw new Error(`第 ${item.excelRow} 行无法按单词唯一匹配现有词条`);
+        targetId = String(matches[0].id);
+      }
+      if (matchedIds.has(targetId)) throw new Error(`第 ${item.excelRow} 行重复指向同一个词条`);
+      matchedIds.add(targetId);
+      const values = {};
+      keys.forEach((key, index) => { values[key] = String(item.row[index] ?? '').replaceAll('\r\n', '\n').replaceAll('\r', '\n'); });
+      return { targetId, excelRow: item.excelRow, values };
+    });
+
+    const similarDirectives = new Map();
+    instructions.forEach(instruction => {
+      const target = stagedById.get(instruction.targetId);
+      Object.entries(instruction.values).forEach(([key, rawValue]) => {
+        const value = String(rawValue ?? '');
+        if (key === 'word') {
+          const word = value.trim();
+          if (!word) throw new Error(`第 ${instruction.excelRow} 行的单词不能为空`);
+          target.word = word;
+        } else if (key === 'partOfSpeech') {
+          const partOfSpeech = this.normalizeTaxonomyText(value);
+          if (!partOfSpeech) throw new Error(`第 ${instruction.excelRow} 行的词性不能为空`);
+          target.partOfSpeech = partOfSpeech;
+          target.tags = Array.isArray(target.tags) ? target.tags.filter(tag => this.normalizeTaxonomyText(tag) !== partOfSpeech) : [];
+        } else if (key === 'meaning') {
+          if (this.RESOURCE_LANGUAGE === 'jp') {
+            const meaningLines = value.split('\n');
+            const meaning = String(meaningLines.shift() || '').trim();
+            if (!meaning) throw new Error(`第 ${instruction.excelRow} 行的中文释义不能为空`);
+            target.meaning = meaning;
+            target.krMeaning = meaningLines.join('\n').trim();
+          } else {
+            const meaning = value.trim();
+            if (!meaning) throw new Error(`第 ${instruction.excelRow} 行的中文释义不能为空`);
+            target.meaning = meaning;
+          }
+        } else if (key === 'reading') {
+          target.reading = this.normalizeBracketedReading(value);
+        } else if (key === 'pronunciationNote') {
+          target.pronunciationNote = value.trim();
+          if (target.pronunciationNote) {
+            const tags = Array.isArray(target.tags) ? target.tags : [];
+            if (!tags.includes('发音')) target.tags = [...tags, '发音'];
+          }
+        } else if (key === 'userNote') {
+          target.userNote = value.trim();
+        } else if (key === 'example') {
+          const existingPairs = this.getParsedExamples(target).map(pair => ({ example: String(pair.example || ''), trans: String(pair.trans || '') }));
+          if (!value.trim()) {
+            existingPairs.shift();
+          } else {
+            const lines = value.split('\n');
+            const example = String(lines.shift() || '').trim();
+            const trans = lines.join('\n').trim();
+            if (!example || !trans) throw new Error(`第 ${instruction.excelRow} 行的例句必须同时包含原句和中文翻译`);
+            if (existingPairs.length) existingPairs[0] = { example, trans };
+            else existingPairs.push({ example, trans });
+          }
+          target.examples = existingPairs;
+          target.example = existingPairs.map(pair => pair.example).join('\n');
+          target.exampleTrans = existingPairs.map(pair => pair.trans).join('\n');
+        } else if (key === 'similarWords') {
+          similarDirectives.set(instruction.targetId, { raw: value, excelRow: instruction.excelRow });
+        }
+      });
+    });
+
+    const stagedNameMap = new Map();
+    stagedWords.forEach(word => {
+      const name = String(word?.word || '').trim();
+      if (!name) return;
+      if (!stagedNameMap.has(name)) stagedNameMap.set(name, []);
+      stagedNameMap.get(name).push(word);
+    });
+    instructions.forEach(instruction => {
+      const before = currentWords.find(word => String(word?.id) === instruction.targetId);
+      const afterName = String(stagedById.get(instruction.targetId)?.word || '').trim();
+      if (afterName !== String(before?.word || '').trim() && (stagedNameMap.get(afterName) || []).length > 1) {
+        throw new Error(`导入后会出现重复单词“${afterName}”，已取消导入`);
+      }
+    });
+
+    const desiredRelations = new Map();
+    similarDirectives.forEach((directive, targetId) => {
+      const desired = [];
+      const lines = directive.raw.split('\n').map(line => line.trim()).filter(Boolean);
+      lines.forEach(line => {
+        const separatorIndex = line.indexOf('：');
+        if (separatorIndex <= 0 || !line.slice(separatorIndex + 1).trim()) throw new Error(`第 ${directive.excelRow} 行的相近词汇必须使用“单词：中文释义”格式`);
+        const similarName = line.slice(0, separatorIndex).trim();
+        const matches = stagedNameMap.get(similarName) || [];
+        if (matches.length !== 1 || String(matches[0].id) === String(targetId)) throw new Error(`第 ${directive.excelRow} 行的相近词“${similarName}”无法唯一匹配`);
+        const similarId = String(matches[0].id);
+        if (!desired.includes(similarId)) desired.push(similarId);
+      });
+      desiredRelations.set(String(targetId), desired);
+    });
+    desiredRelations.forEach((desired, targetId) => {
+      desired.forEach(similarId => {
+        if (desiredRelations.has(similarId) && !desiredRelations.get(similarId).includes(targetId)) {
+          throw new Error('相近词汇关系两侧不一致，已取消导入');
+        }
+      });
+    });
+    const originalWordsReference = this.words;
+    this.words = stagedWords;
+    try {
+      desiredRelations.forEach((desired, targetId) => {
+        const target = stagedById.get(targetId);
+        const previous = Array.isArray(target.manualSimilarWordIds) ? target.manualSimilarWordIds.map(String) : [];
+        this.syncModalManualSimilarRelations(target, previous, desired, 0);
+      });
+    } finally {
+      this.words = originalWordsReference;
+    }
+    stagedWords.forEach((word, index) => {
+      const before = currentWords[index] || {};
+      word.updatedAt = before.updatedAt;
+      word.userEditedAt = before.userEditedAt;
+      word.fieldUpdatedAt = before.fieldUpdatedAt && typeof before.fieldUpdatedAt === 'object' ? { ...before.fieldUpdatedAt } : before.fieldUpdatedAt;
+    });
+
+    const ignoredFields = new Set(['id', 'updatedAt', 'fieldUpdatedAt', 'userEditedAt']);
+    const changedFieldsById = {};
+    stagedWords.forEach((word, index) => {
+      const before = currentWords[index] || {};
+      const fields = new Set([...Object.keys(before), ...Object.keys(word)]);
+      const changedFields = [...fields].filter(field => !ignoredFields.has(field) && JSON.stringify(before[field]) !== JSON.stringify(word[field]));
+      if (changedFields.length) changedFieldsById[String(word.id)] = changedFields;
+    });
+    const changedIds = Object.keys(changedFieldsById);
+    if (!changedIds.length) return { words: stagedWords, changedIds, changedFieldsById };
+    const changedAt = Math.max(Date.now(), ...changedIds.map(id => Number(stagedById.get(id)?.updatedAt || 0) + 1));
+    changedIds.forEach(id => {
+      const word = stagedById.get(id);
+      const fieldUpdatedAt = word.fieldUpdatedAt && typeof word.fieldUpdatedAt === 'object' ? { ...word.fieldUpdatedAt } : {};
+      changedFieldsById[id].forEach(field => { fieldUpdatedAt[field] = changedAt; });
+      word.fieldUpdatedAt = fieldUpdatedAt;
+      word.userEditedAt = changedAt;
+      word.updatedAt = changedAt;
+    });
+    return { words: stagedWords, changedIds, changedFieldsById, changedAt };
+  }
+
+  async importVocabularyExcelFile(event) {
+    if (this._excelImportInFlight) return false;
+    const input = event?.target || document.getElementById('importExcelFileInput');
+    const file = input?.files?.[0];
+    if (!file) return false;
+    const button = document.getElementById('importExcelBtn');
+    this._excelImportInFlight = true;
+    if (button) {
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+    }
+    let snapshotId = null;
+    const wordsBeforeImport = JSON.stringify(this.words || []);
+    const pendingBeforeImport = JSON.parse(JSON.stringify(this.getPendingCloudChanges ? this.getPendingCloudChanges() : {}));
+    try {
+      if (!String(file.name || '').toLowerCase().endsWith('.xlsx')) throw new Error('只支持导入 .xlsx 文件');
+      const rows = await this.parseVocabularyXlsxFile(file);
+      const plan = this.prepareVocabularyExcelImport(rows);
+      if (!plan.changedIds.length) {
+        this.showToast('Excel 格式正确，但没有发现需要覆盖的差异');
+        return true;
+      }
+      snapshotId = await this.saveLocalVersionUndoSnapshot('Excel 导入');
+      if (!snapshotId) throw new Error('无法保存导入前版本，已取消导入');
+      this.words = plan.words;
+      this.markPendingCloudChanges(plan.changedIds, plan.changedAt, 'user', plan.changedFieldsById);
+      let persisted = this.saveData({ reportFailure: false });
+      if (!persisted && this._lastSaveDataDurablePromise) persisted = await this.confirmLastSaveDataDurableFallback();
+      if (!persisted) {
+        this.words = JSON.parse(wordsBeforeImport);
+        SafeStorage.setItem(this.STORAGE_KEY, wordsBeforeImport);
+        this.savePendingCloudChanges(pendingBeforeImport);
+        if (this.refreshWordFingerprints) this.refreshWordFingerprints();
+        await this.discardCloudSyncUndoSnapshot(snapshotId);
+        snapshotId = null;
+        this.renderWordList();
+        this.updateStats();
+        throw new Error('浏览器未能持久保存导入结果，已恢复导入前数据');
+      }
+      this.currentPage = 1;
+      this.renderWordList();
+      this.updateStats();
+      if (this.refreshCloudSyncUndoControls) this.refreshCloudSyncUndoControls();
+      this.showToast(`✅ 已从 Excel 更新 ${plan.changedIds.length} 个词条，导入前版本已保留`);
+      return true;
+    } catch (error) {
+      console.warn('Excel vocabulary import failed:', error);
+      this.showToast(`⚠️ 导入失败：${error?.message || '文件格式不正确'}`);
+      return false;
+    } finally {
+      if (input) input.value = '';
+      this._excelImportInFlight = false;
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+      }
+    }
   }
 
   exportHTML() {

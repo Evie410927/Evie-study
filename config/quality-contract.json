@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-10-23.2",
+  "contractVersion": "2026-10-23.3",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -21,7 +21,8 @@
       "docs/decisions/ADR-014-resource-library-manual-order.md",
       "docs/decisions/ADR-015-resource-library-language-isolation.md",
       "docs/decisions/ADR-016-vocabulary-excel-export.md",
-      "docs/decisions/ADR-017-word-editor-first-interaction-save.md"
+      "docs/decisions/ADR-017-word-editor-first-interaction-save.md",
+      "docs/decisions/ADR-018-vocabulary-excel-roundtrip-import.md"
     ]
   },
   "mirroredApps": [
@@ -224,7 +225,7 @@
     },
     "resourceLibrary": {
       "buttonId": "resourceLibraryBtn",
-      "buttonPlacement": "header-immediately-before-exportExcelBtn",
+      "buttonPlacement": "header-immediately-before-importExcelBtn",
       "modalId": "resourceLibraryModal",
       "fileInputId": "resourceFileInput",
       "listId": "resourceFileList",
@@ -323,13 +324,33 @@
       "customSaveLocationFallback": "direct-browser-managed-download",
       "mirroredAcrossLanguages": true
     },
+    "vocabularyExcelImport": {
+      "buttonId": "importExcelBtn",
+      "fileInputId": "importExcelFileInput",
+      "buttonPlacement": "header-immediately-before-exportExcelBtn",
+      "acceptedExtension": "xlsx",
+      "visibleHeaderPolicy": "exact-known-titles-in-canonical-order",
+      "legacyWithoutStableIdRequiresFirstColumn": "word",
+      "newExportMayOmitWordColumn": true,
+      "stableIdentity": "hidden-__EVIE_WORD_ID__-column-with-word-fallback-for-legacy-exports",
+      "updateMode": "existing-rows-and-present-columns-only",
+      "unknownOrDuplicateRows": "reject-entire-import-before-mutation",
+      "examplePolicy": "replace-or-remove-first-pair-preserve-later-pairs",
+      "similarWordsPolicy": "manual-bidirectional-relations-with-conflict-validation",
+      "durability": "verified-localStorage-or-confirmed-IndexedDB-before-success",
+      "preImportSnapshot": "required-local-version-history-snapshot",
+      "snapshotFailureBehavior": "abort-without-word-mutation",
+      "persistenceFailureBehavior": "rollback-words-pending-state-and-created-snapshot",
+      "mirroredAcrossLanguages": true
+    },
     "cloudSyncUndo": {
       "undoButtonId": "cloudSyncUndoBtn",
       "historyButtonId": "cloudSyncHistoryBtn",
       "historyModalId": "cloudSyncHistoryModal",
       "confirmModalId": "cloudSyncUndoConfirmModal",
       "persistence": "IndexedDB-separate-history-key",
-      "snapshotTiming": "after-cloud-read-before-any-word-mutation",
+      "snapshotTiming": "before-cloud-sync-mutation-or-before-excel-import-mutation",
+      "snapshotSources": ["cloud-sync", "excel-import"],
       "snapshotSides": [
         "local-words-pending-deletions-baseline",
         "cloud-rows-revision"
@@ -341,6 +362,7 @@
         "local-only",
         "local-and-cloud"
       ],
+      "localVersionCloudRestore": "disabled-when-cloud-state-was-not-captured",
       "cloudRestoreRevision": "strictly-incremented",
       "failedRestoreKeepsSnapshot": true
     },
