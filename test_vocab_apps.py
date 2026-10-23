@@ -1131,6 +1131,24 @@ class VocabAppTester:
         ))
         self.assert_true(protected_word_modal_draft, f"[{lang_name}] 新增/编辑弹窗-仅右上角×或显式点击保存成功后关闭", "弹窗仍可能被遮罩点击、Enter 表单提交或其他非显式操作关闭并丢失草稿")
 
+        first_interaction_direct_save = all(token in content for token in (
+            "document.getElementById('saveWordBtn')?.addEventListener('pointerdown', (e) => {",
+            "this._wordModalPointerSaveHandled = true;",
+            "this._wordModalPointerSaveHandled = false;",
+            "if (this._wordModalPointerSaveHandled) return;",
+            "this.commitWordModalDraftAndSave();",
+            "commitWordModalDraftAndSave() {",
+            "const activeElement = document.activeElement;",
+            "form.contains(activeElement)",
+            "activeElement.blur();",
+            "this.saveWordFromForm();",
+        ))
+        self.assert_true(
+            first_interaction_direct_save,
+            f"[{lang_name}] 新增/编辑弹窗-输入字段保持焦点时第一次按下保存即提交且同次 click 去重",
+            "保存仍只依赖 focusout 后的 click，或缺少 pointerdown 提交、主动失焦、键盘 click 兜底及同次激活去重",
+        )
+
         detail_editor_returns_to_detail = all(token in content for token in (
             'id="detailEditBtn" type="button"',
             'this.openDetailWordEditor();',
@@ -5428,6 +5446,71 @@ class VocabAppTester:
                 protected_modal_ok,
                 f"[{lang_name}] 浏览器新增弹窗-遮罩/Enter/Esc/非点击提交均不关闭且×可显式关闭",
                 f"新增弹窗草稿防误关失败: backdrop={protected_modal_draft}, enter={enter_state}, submit_escape={submit_escape_state}, close={close_and_reopen_state}",
+            )
+            first_pointer_save = driver.execute_script("""
+                const app = window.app;
+                const modal = document.getElementById('wordModal');
+                const saveButton = document.getElementById('saveWordBtn');
+                const wordInput = document.getElementById('inputWord');
+                const partOfSpeechInput = document.getElementById('inputPartOfSpeech');
+                const meaningInput = document.getElementById('inputMeaning');
+                const krMeaningInput = document.getElementById('inputKrMeaning');
+                if (!app || !modal || !saveButton || !wordInput || !partOfSpeechInput || !meaningInput) return null;
+
+                const wordsSnapshot = JSON.stringify(app.words);
+                const storageSnapshot = localStorage.getItem(app.STORAGE_KEY);
+                const pendingKey = app.PENDING_CLOUD_KEY;
+                const pendingSnapshot = pendingKey ? localStorage.getItem(pendingKey) : null;
+                const testWord = `首次按下直接保存_${Date.now()}`;
+                const meaningValue = '第一次按下保存时的最新释义';
+                const krMeaningValue = '첫 누름 저장 최신 뜻';
+                wordInput.value = testWord;
+                partOfSpeechInput.value = '测试词性';
+                meaningInput.value = meaningValue;
+                const focusedInput = krMeaningInput || meaningInput;
+                if (krMeaningInput) krMeaningInput.value = krMeaningValue;
+                focusedInput.focus();
+                const focusedBeforeSave = document.activeElement === focusedInput;
+
+                const dispatchAccepted = saveButton.dispatchEvent(new PointerEvent('pointerdown', {
+                  bubbles: true,
+                  cancelable: true,
+                  pointerId: 1,
+                  pointerType: 'touch',
+                  isPrimary: true,
+                  button: 0,
+                }));
+                const matches = app.words.filter(word => word.word === testWord);
+                const savedWord = matches[0];
+                const storedWords = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]');
+                const storedWord = storedWords.find(word => word.word === testWord);
+                const liveFieldSaved = krMeaningInput
+                  ? savedWord?.krMeaning === krMeaningValue && storedWord?.krMeaning === krMeaningValue
+                  : savedWord?.meaning === meaningValue && storedWord?.meaning === meaningValue;
+                const result = {
+                  focusedBeforeSave,
+                  pointerHandled: dispatchAccepted === false,
+                  savedOnPointerDownWithoutClick: matches.length === 1,
+                  liveFieldSaved,
+                  persistedImmediately: Boolean(storedWord),
+                  modalClosed: modal.classList.contains('active') === false,
+                };
+
+                app.words = JSON.parse(wordsSnapshot);
+                if (storageSnapshot === null) localStorage.removeItem(app.STORAGE_KEY);
+                else localStorage.setItem(app.STORAGE_KEY, storageSnapshot);
+                if (pendingKey) {
+                  if (pendingSnapshot === null) localStorage.removeItem(pendingKey);
+                  else localStorage.setItem(pendingKey, pendingSnapshot);
+                }
+                app.renderWordList();
+                app.openWordModal();
+                return result;
+            """)
+            self.assert_true(
+                bool(first_pointer_save and all(first_pointer_save.values())),
+                f"[{lang_name}] 浏览器新增弹窗-最后字段未失焦且仅第一次 pointerdown 即保存最新值",
+                f"第一次保存交互仍被失焦吞掉、没有持久化最新值或发生重复保存: {first_pointer_save}",
             )
             manual_add_tag_editor = driver.execute_script("""
                 const app = window.app;

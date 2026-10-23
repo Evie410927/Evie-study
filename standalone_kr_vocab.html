@@ -23774,9 +23774,19 @@ class KrVocabApp {
       });
 
       document.getElementById('closeModalBtn')?.addEventListener('click', () => this.closeWordModal());
+      document.getElementById('saveWordBtn')?.addEventListener('pointerdown', (e) => {
+        if (e.isPrimary === false || (typeof e.button === 'number' && e.button !== 0)) return;
+        e.preventDefault();
+        this._wordModalPointerSaveHandled = true;
+        this.commitWordModalDraftAndSave();
+        setTimeout(() => {
+          this._wordModalPointerSaveHandled = false;
+        }, 0);
+      });
       document.getElementById('saveWordBtn')?.addEventListener('click', (e) => {
         e.preventDefault();
-        this.saveWordFromForm();
+        if (this._wordModalPointerSaveHandled) return;
+        this.commitWordModalDraftAndSave();
       });
       document.getElementById('modalDraftMasteredBtn')?.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -23909,6 +23919,15 @@ class KrVocabApp {
         requestAnimationFrame(resetScroll);
       });
     }
+  }
+
+  commitWordModalDraftAndSave() {
+    const form = document.getElementById('wordForm');
+    const activeElement = document.activeElement;
+    if (form && activeElement && form.contains(activeElement) && typeof activeElement.blur === 'function') {
+      activeElement.blur();
+    }
+    this.saveWordFromForm();
   }
 
   openWordModal(word = null, preserveDetailReturn = false) {

@@ -234,6 +234,26 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
         if forbidden_markup in content:
             fail(errors, f"{relative_path}: 搜索框下方仍会渲染旧 Tag 摘要 {forbidden_markup}")
 
+    word_editor_save_contract = contract["uiContracts"]["wordEditorSave"]
+    save_button = parser.elements_by_id.get(word_editor_save_contract["buttonId"])
+    if save_button is None:
+        fail(errors, f"{relative_path}: 缺少词条编辑保存按钮 #{word_editor_save_contract['buttonId']}")
+    required_direct_save_tokens = (
+        "document.getElementById('saveWordBtn')?.addEventListener('pointerdown', (e) => {",
+        "this._wordModalPointerSaveHandled = true;",
+        "this._wordModalPointerSaveHandled = false;",
+        "if (this._wordModalPointerSaveHandled) return;",
+        "this.commitWordModalDraftAndSave();",
+        "commitWordModalDraftAndSave() {",
+        "const activeElement = document.activeElement;",
+        "form.contains(activeElement)",
+        "activeElement.blur();",
+        "this.saveWordFromForm();",
+    )
+    for token in required_direct_save_tokens:
+        if token not in content:
+            fail(errors, f"{relative_path}: 词条编辑首次交互直接保存契约缺少 {token}")
+
     resource_contract = contract["uiContracts"]["resourceLibrary"]
     excel_contract = contract["uiContracts"]["vocabularyExcelExport"]
     cloud_sync_undo_contract = contract["uiContracts"]["cloudSyncUndo"]

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-10-21.7",
+  "contractVersion": "2026-10-23.1",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -20,7 +20,8 @@
       "docs/decisions/ADR-013-cloud-sync-undo-history.md",
       "docs/decisions/ADR-014-resource-library-manual-order.md",
       "docs/decisions/ADR-015-resource-library-language-isolation.md",
-      "docs/decisions/ADR-016-vocabulary-excel-export.md"
+      "docs/decisions/ADR-016-vocabulary-excel-export.md",
+      "docs/decisions/ADR-017-word-editor-first-interaction-save.md"
     ]
   },
   "mirroredApps": [
@@ -164,6 +165,18 @@
       "controlStyle": "soft-rose-dashed-border",
       "focusStyle": "solid-accent-border",
       "optionalFieldsExcluded": true
+    },
+    "wordEditorSave": {
+      "buttonId": "saveWordBtn",
+      "commitAction": "commitWordModalDraftAndSave",
+      "savePipeline": "saveWordFromForm",
+      "activations": [
+        "pointerdown",
+        "click-keyboard-fallback"
+      ],
+      "focusedFieldBehavior": "blur-and-read-current-dom-value-on-first-pointer-interaction",
+      "sameActivationDuplicateSave": false,
+      "persistenceFailureBehavior": "keep-modal-open-with-draft"
     },
     "wordEditorPartOfSpeechDropdown": {
       "newWordFullListInitialScroll": "top",
