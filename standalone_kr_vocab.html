@@ -17473,7 +17473,8 @@ body::-webkit-scrollbar,
           <div class="excel-export-columns-grid">
             <label class="excel-export-column-option"><input type="checkbox" name="excelExportColumn" value="word" checked onchange="if(window.app) window.app.setExcelExportColumn(this.value, this.checked)"><span>单词</span></label>
             <label class="excel-export-column-option"><input type="checkbox" name="excelExportColumn" value="partOfSpeech" checked onchange="if(window.app) window.app.setExcelExportColumn(this.value, this.checked)"><span>词性</span></label>
-            <label class="excel-export-column-option"><input type="checkbox" name="excelExportColumn" value="meaning" checked onchange="if(window.app) window.app.setExcelExportColumn(this.value, this.checked)"><span>释义</span></label>
+            <label class="excel-export-column-option"><input type="checkbox" name="excelExportColumn" value="meaning" checked onchange="if(window.app) window.app.setExcelExportColumn(this.value, this.checked)"><span id="excelExportMeaningLabel">释义</span></label>
+            <label id="excelExportKrMeaningOption" class="excel-export-column-option" hidden><input type="checkbox" name="excelExportColumn" value="krMeaning" onchange="if(window.app) window.app.setExcelExportColumn(this.value, this.checked)"><span>韩文释义</span></label>
             <label class="excel-export-column-option"><input type="checkbox" name="excelExportColumn" value="example" checked onchange="if(window.app) window.app.setExcelExportColumn(this.value, this.checked)"><span>例句</span></label>
             <label class="excel-export-column-option"><input type="checkbox" name="excelExportColumn" value="reading" onchange="if(window.app) window.app.setExcelExportColumn(this.value, this.checked)"><span>发音</span></label>
             <label class="excel-export-column-option"><input type="checkbox" name="excelExportColumn" value="pronunciationNote" onchange="if(window.app) window.app.setExcelExportColumn(this.value, this.checked)"><span>发音备注</span></label>
@@ -21898,7 +21899,9 @@ class KrVocabApp {
     this.excelExportScope = 'all';
     this.excelExportTags = new Set();
     this.excelExportRatings = new Set();
-    this.excelExportSelectedColumns = new Set(['word', 'partOfSpeech', 'meaning', 'example']);
+    this.excelExportSelectedColumns = new Set(this.RESOURCE_LANGUAGE === 'jp'
+      ? ['word', 'partOfSpeech', 'meaning', 'krMeaning', 'example']
+      : ['word', 'partOfSpeech', 'meaning', 'example']);
     this._resourceOrderCloudSupported = null;
     this._resourceFileSortState = null;
     this._resourceRenameId = null;
@@ -26572,7 +26575,14 @@ class KrVocabApp {
     this.excelExportScope = 'all';
     this.excelExportTags = new Set();
     this.excelExportRatings = new Set();
-    this.excelExportSelectedColumns = new Set(['word', 'partOfSpeech', 'meaning', 'example']);
+    const isJapanese = this.RESOURCE_LANGUAGE === 'jp';
+    this.excelExportSelectedColumns = new Set(isJapanese
+      ? ['word', 'partOfSpeech', 'meaning', 'krMeaning', 'example']
+      : ['word', 'partOfSpeech', 'meaning', 'example']);
+    const meaningLabel = document.getElementById('excelExportMeaningLabel');
+    if (meaningLabel) meaningLabel.textContent = isJapanese ? '中文释义' : '中文意思';
+    const krMeaningOption = document.getElementById('excelExportKrMeaningOption');
+    if (krMeaningOption) krMeaningOption.hidden = !isJapanese;
     document.querySelectorAll('input[name="excelExportScope"]').forEach(input => {
       input.checked = input.value === 'all';
     });
@@ -26658,8 +26668,9 @@ class KrVocabApp {
   }
 
   setExcelExportColumn(columnKey, enabled) {
-    const allowed = new Set(['word', 'partOfSpeech', 'meaning', 'example', 'reading', 'pronunciationNote', 'userNote', 'similarWords']);
+    const allowed = new Set(['word', 'partOfSpeech', 'meaning', 'krMeaning', 'example', 'reading', 'pronunciationNote', 'userNote', 'similarWords']);
     if (!allowed.has(columnKey)) return;
+    if (columnKey === 'krMeaning' && this.RESOURCE_LANGUAGE !== 'jp') return;
     if (enabled) this.excelExportSelectedColumns.add(columnKey);
     else this.excelExportSelectedColumns.delete(columnKey);
     this.updateExcelExportState();
@@ -26786,16 +26797,17 @@ class KrVocabApp {
     const defaultColumns = [
       { key: 'word', title: '单词', width: 24, value: word => String(word?.word || '').trim() },
       { key: 'partOfSpeech', title: '词性', width: 16, value: word => this.normalizeTaxonomyText(word?.partOfSpeech) },
-      { key: 'meaning', title: isJapanese ? '中韩意思' : '中文意思', width: 42, value: word => {
-        const meanings = [String(word?.meaning || '').trim()];
-        if (isJapanese && String(word?.krMeaning || '').trim()) meanings.push(String(word.krMeaning).trim());
-        return meanings.filter(Boolean).join('\n');
-      } },
+      { key: 'meaning', title: isJapanese ? '中文释义' : '中文意思', width: 42, value: word => String(word?.meaning || '').trim() }
+    ];
+    if (isJapanese) {
+      defaultColumns.push({ key: 'krMeaning', title: '韩文释义', width: 36, value: word => String(word?.krMeaning || '').trim() });
+    }
+    defaultColumns.push(
       { key: 'example', title: isJapanese ? '日中例句' : '韩中例句', width: 58, value: word => {
         const firstExample = this.getParsedExamples(word)[0] || { example: '', trans: '' };
         return [String(firstExample.example || '').trim(), String(firstExample.trans || '').trim()].filter(Boolean).join('\n');
       } }
-    ];
+    );
     const optionalColumns = [
       { key: 'reading', title: '发音', width: 24, value: word => String(word?.reading || '').trim() },
       { key: 'pronunciationNote', title: '发音备注', width: 32, value: word => String(word?.pronunciationNote || '').trim() },
@@ -26919,16 +26931,20 @@ class KrVocabApp {
 
   getVocabularyExcelImportDefinitions() {
     const isJapanese = this.RESOURCE_LANGUAGE === 'jp';
-    return [
+    const definitions = [
       { key: 'word', title: '单词' },
       { key: 'partOfSpeech', title: '词性' },
-      { key: 'meaning', title: isJapanese ? '中韩意思' : '中文意思' },
+      { key: 'meaning', title: isJapanese ? '中文释义' : '中文意思' }
+    ];
+    if (isJapanese) definitions.push({ key: 'krMeaning', title: '韩文释义' });
+    definitions.push(
       { key: 'example', title: isJapanese ? '日中例句' : '韩中例句' },
       { key: 'reading', title: '发音' },
       { key: 'pronunciationNote', title: '发音备注' },
       { key: 'userNote', title: '说明' },
       { key: 'similarWords', title: '相近词汇' }
-    ];
+    );
+    return definitions;
   }
 
   async readVocabularyXlsxEntries(file) {
@@ -27110,17 +27126,11 @@ class KrVocabApp {
           target.partOfSpeech = partOfSpeech;
           target.tags = Array.isArray(target.tags) ? target.tags.filter(tag => this.normalizeTaxonomyText(tag) !== partOfSpeech) : [];
         } else if (key === 'meaning') {
-          if (this.RESOURCE_LANGUAGE === 'jp') {
-            const meaningLines = value.split('\n');
-            const meaning = String(meaningLines.shift() || '').trim();
-            if (!meaning) throw new Error(`第 ${instruction.excelRow} 行的中文释义不能为空`);
-            target.meaning = meaning;
-            target.krMeaning = meaningLines.join('\n').trim();
-          } else {
-            const meaning = value.trim();
-            if (!meaning) throw new Error(`第 ${instruction.excelRow} 行的中文释义不能为空`);
-            target.meaning = meaning;
-          }
+          const meaning = value.trim();
+          if (!meaning) throw new Error(`第 ${instruction.excelRow} 行的中文释义不能为空`);
+          target.meaning = meaning;
+        } else if (key === 'krMeaning') {
+          target.krMeaning = value.trim();
         } else if (key === 'reading') {
           target.reading = this.normalizeBracketedReading(value);
         } else if (key === 'pronunciationNote') {

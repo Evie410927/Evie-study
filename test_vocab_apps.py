@@ -281,18 +281,18 @@ class VocabAppTester:
             'id="excelExportTagPanel"', 'id="excelExportTagList"',
             'id="excelExportRatingPanel"', 'id="excelExportRatingList"',
             'id="excelExportColumnsPanel"', 'name="excelExportColumn"',
-            'value="word"', 'value="partOfSpeech"', 'value="meaning"', 'value="example"',
+            'value="word"', 'value="partOfSpeech"', 'value="meaning"', 'value="krMeaning"', 'value="example"',
             'value="reading"', 'value="pronunciationNote"', 'value="userNote"', 'value="similarWords"',
             'id="confirmExcelExportBtn"', 'exportSelectedWordsToExcel()',
             "new Set(['all', 'learning', 'mastered', 'tags', 'ratings'])",
             "this.excelExportTags.size === 0", "some(tag => selected.has(",
             "this.excelExportRatings.size === 0",
             "this.excelExportRatings.has(this.normalizeExcelExportRating(word?.rating))",
-            "this.excelExportSelectedColumns = new Set(['word', 'partOfSpeech', 'meaning', 'example'])",
-            "new Set(['word', 'partOfSpeech', 'meaning', 'example', 'reading', 'pronunciationNote', 'userNote', 'similarWords'])",
+            "? ['word', 'partOfSpeech', 'meaning', 'krMeaning', 'example']",
+            "new Set(['word', 'partOfSpeech', 'meaning', 'krMeaning', 'example', 'reading', 'pronunciationNote', 'userNote', 'similarWords'])",
             "this.excelExportSelectedColumns.size === 0", "请至少选择一个导出列",
             "const firstExample = this.getParsedExamples(word)[0]",
-            "isJapanese ? '中韩意思' : '中文意思'",
+            "isJapanese ? '中文释义' : '中文意思'", "title: '韩文释义'",
             "isJapanese ? '日中例句' : '韩中例句'",
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             "window.showSaveFilePicker", "await fileHandle.createWritable()",
@@ -306,8 +306,8 @@ class VocabAppTester:
         )) and 'excelExportChooseLocation' not in content and 'excel-export-save-location' not in content
         self.assert_true(
             excel_export_contract,
-            f"[{lang_name}] Excel 导出-筛选、八列自选、相近词精简内容、自动保存位置且无可见开关及离线 XLSX 完整",
-            "Excel 导出弹窗、筛选协议、列选择、相近词内容限制、自动保存位置、第一例句、JP 中韩释义或 Open XML ZIP 缺失",
+            f"[{lang_name}] Excel 导出-筛选、语言列自选、相近词精简内容、自动保存位置且无可见开关及离线 XLSX 完整",
+            "Excel 导出弹窗、筛选协议、语言列选择、相近词内容限制、自动保存位置、第一例句、JP 中韩释义拆列或 Open XML ZIP 缺失",
         )
 
         excel_import_contract = all(token in content for token in (
@@ -315,6 +315,7 @@ class VocabAppTester:
             "importVocabularyExcelFile(event)", "readVocabularyXlsxEntries(file)",
             "parseVocabularyWorksheetRows(sheetXml, sharedStringsXml = '')", "prepareVocabularyExcelImport(rows)",
             "const stableIdMarker = '__EVIE_WORD_ID__'", "旧版文件没有词条标识时，第一列表头必须保持为“单词”",
+            "if (isJapanese) definitions.push({ key: 'krMeaning', title: '韩文释义' })", "target.krMeaning = value.trim()",
             "第一行字段名称被修改、重复或顺序不正确", "this.saveLocalVersionUndoSnapshot('Excel 导入')",
             "this.markPendingCloudChanges(plan.changedIds, plan.changedAt, 'user', plan.changedFieldsById)",
             "await this.confirmLastSaveDataDurableFallback()", "await this.discardCloudSyncUndoSnapshot(snapshotId)",
@@ -2740,10 +2741,17 @@ class VocabAppTester:
                     const saveLocationControlHidden = document.getElementById('excelExportChooseLocation') === null
                       && document.querySelector('.excel-export-save-location') === null;
                     const columnInputs = Array.from(document.querySelectorAll('input[name="excelExportColumn"]'));
-                    const allColumnKeys = ['word', 'partOfSpeech', 'meaning', 'example', 'reading', 'pronunciationNote', 'userNote', 'similarWords'];
-                    const columnCount = columnInputs.length;
-                    const defaultColumnSelection = columnInputs.filter(input => input.checked).map(input => input.value).join(',') === 'word,partOfSpeech,meaning,example'
-                      && [...app.excelExportSelectedColumns].join(',') === 'word,partOfSpeech,meaning,example';
+                    const isJapanese = app.RESOURCE_LANGUAGE === 'jp';
+                    const allColumnKeys = isJapanese
+                      ? ['word', 'partOfSpeech', 'meaning', 'krMeaning', 'example', 'reading', 'pronunciationNote', 'userNote', 'similarWords']
+                      : ['word', 'partOfSpeech', 'meaning', 'example', 'reading', 'pronunciationNote', 'userNote', 'similarWords'];
+                    const visibleColumnInputs = columnInputs.filter(input => !input.closest('label')?.hidden);
+                    const columnCount = visibleColumnInputs.length;
+                    const expectedDefaults = isJapanese ? 'word,partOfSpeech,meaning,krMeaning,example' : 'word,partOfSpeech,meaning,example';
+                    const defaultColumnSelection = visibleColumnInputs.filter(input => input.checked).map(input => input.value).join(',') === expectedDefaults
+                      && [...app.excelExportSelectedColumns].join(',') === expectedDefaults;
+                    const languageColumnVisibility = document.getElementById('excelExportKrMeaningOption')?.hidden === !isJapanese
+                      && document.getElementById('excelExportMeaningLabel')?.textContent === (isJapanese ? '中文释义' : '中文意思');
                     app.excelExportScope = 'all';
                     const allCount = app.getExcelExportWords().length;
                     app.excelExportScope = 'learning';
@@ -2769,7 +2777,7 @@ class VocabAppTester:
                       input.checked = false;
                       input.dispatchEvent(new Event('change', {bubbles:true}));
                     });
-                    const defaultColumnsCanBeUnchecked = [...app.excelExportSelectedColumns].join(',') === 'word,meaning';
+                    const defaultColumnsCanBeUnchecked = [...app.excelExportSelectedColumns].join(',') === (isJapanese ? 'word,meaning,krMeaning' : 'word,meaning');
                     const customColumnsBlob = app.createVocabularyXlsxBlob([fixtures[0]]);
                     const customColumnsBytes = Array.from(new Uint8Array(await customColumnsBlob.arrayBuffer()));
                     allColumnKeys.forEach(key => app.setExcelExportColumn(key, false));
@@ -2806,7 +2814,7 @@ class VocabAppTester:
                     const unsupportedFallback = defaultDownloadCount === 1
                       && toastMessages.some(message => message.includes('浏览器默认下载位置'))
                       && toastMessages.every(message => !message.includes('不支持'));
-                    done({modalActive, scopeValues, tagButtonCount, ratingButtonCount, saveLocationControlHidden, columnCount, defaultColumnSelection, defaultColumnsCanBeUnchecked, zeroColumnsBlocked, optionalColumnSummary, allCount, learningCount, masteredCount, tagEmptyBlocked, tagAnyCount, ratingEmptyBlocked, ratingAnyCount, pickerSuggestedName, pickerWriteType, pickerClosed, pickerSuccessClosedModal, cancelKeptModalOpen, cancelAvoidedDownload, unsupportedFallback, blobType:blob.type, bytes, customColumnsBytes, allColumnsBytes});
+                    done({modalActive, scopeValues, tagButtonCount, ratingButtonCount, saveLocationControlHidden, columnCount, defaultColumnSelection, languageColumnVisibility, defaultColumnsCanBeUnchecked, zeroColumnsBlocked, optionalColumnSummary, allCount, learningCount, masteredCount, tagEmptyBlocked, tagAnyCount, ratingEmptyBlocked, ratingAnyCount, pickerSuggestedName, pickerWriteType, pickerClosed, pickerSuccessClosedModal, cancelKeptModalOpen, cancelAvoidedDownload, unsupportedFallback, blobType:blob.type, bytes, customColumnsBytes, allColumnsBytes});
                   } catch (error) {
                     done({error:String(error)});
                   } finally {
@@ -2832,9 +2840,16 @@ class VocabAppTester:
                     workbook_names = set(workbook_zip.namelist())
                     sheet_xml = workbook_zip.read('xl/worksheets/sheet1.xml').decode('utf-8')
                     styles_xml = workbook_zip.read('xl/styles.xml').decode('utf-8')
-                meaning_ok = ('中文甲\n한국어 뜻 A' in sheet_xml) if lang_code == 'jp' else ('中文甲' in sheet_xml and '한국어 뜻 A' not in sheet_xml)
+                meaning_ok = (
+                    '中文释义' in sheet_xml
+                    and '韩文释义' in sheet_xml
+                    and '中文甲' in sheet_xml
+                    and '한국어 뜻 A' in sheet_xml
+                    and '中文甲\n한국어 뜻 A' not in sheet_xml
+                ) if lang_code == 'jp' else ('中文甲' in sheet_xml and '한국어 뜻 A' not in sheet_xml and '韩文释义' not in sheet_xml)
                 header_ok = all(title in sheet_xml for title in (
-                    '单词', '词性', '中韩意思' if lang_code == 'jp' else '中文意思', '日中例句' if lang_code == 'jp' else '韩中例句'
+                    ('单词', '词性', '中文释义', '韩文释义', '日中例句') if lang_code == 'jp'
+                    else ('单词', '词性', '中文意思', '韩中例句')
                 ))
                 excel_xlsx_valid = bool(
                     {'[Content_Types].xml', 'xl/workbook.xml', 'xl/worksheets/sheet1.xml', 'xl/styles.xml'}.issubset(workbook_names)
@@ -2843,20 +2858,21 @@ class VocabAppTester:
                     and '第一组原句甲\n第一组翻译甲' in sheet_xml
                     and '第二组原句甲' not in sheet_xml
                     and not any(title in sheet_xml for title in ('发音备注', '说明', '相近词汇'))
-                    and '<autoFilter ref="A1:D2"/>' in sheet_xml
+                    and (('<autoFilter ref="A1:E2"/>' in sheet_xml) if lang_code == 'jp' else ('<autoFilter ref="A1:D2"/>' in sheet_xml))
                     and '<b/>' in styles_xml and 'fgColor rgb="FFD946EF"' in styles_xml
                     and 'wrapText="1"' in styles_xml
                 )
                 custom_columns_bytes = bytes(excel_export_result.get('customColumnsBytes') or [])
                 with zipfile.ZipFile(io.BytesIO(custom_columns_bytes), 'r') as workbook_zip:
                     custom_columns_sheet_xml = workbook_zip.read('xl/worksheets/sheet1.xml').decode('utf-8')
-                custom_meaning_title = '中韩意思' if lang_code == 'jp' else '中文意思'
+                custom_meaning_title = '中文释义' if lang_code == 'jp' else '中文意思'
                 excel_custom_columns_valid = bool(
                     '单词' in custom_columns_sheet_xml
                     and custom_meaning_title in custom_columns_sheet_xml
+                    and (('韩文释义' in custom_columns_sheet_xml and '한국어 뜻 A' in custom_columns_sheet_xml) if lang_code == 'jp' else '韩文释义' not in custom_columns_sheet_xml)
                     and '词性' not in custom_columns_sheet_xml
                     and ('日中例句' if lang_code == 'jp' else '韩中例句') not in custom_columns_sheet_xml
-                    and '<autoFilter ref="A1:B2"/>' in custom_columns_sheet_xml
+                    and (('<autoFilter ref="A1:C2"/>' in custom_columns_sheet_xml) if lang_code == 'jp' else ('<autoFilter ref="A1:B2"/>' in custom_columns_sheet_xml))
                 )
                 all_columns_bytes = bytes(excel_export_result.get('allColumnsBytes') or [])
                 with zipfile.ZipFile(io.BytesIO(all_columns_bytes), 'r') as workbook_zip:
@@ -2873,7 +2889,7 @@ class VocabAppTester:
                     and '不应导出的关联词备注乙' not in all_columns_sheet_xml
                     and '不应导出的关联词说明乙' not in all_columns_sheet_xml
                     and '第一组原句乙' not in all_columns_sheet_xml
-                    and '<autoFilter ref="A1:H2"/>' in all_columns_sheet_xml
+                    and (('<autoFilter ref="A1:I2"/>' in all_columns_sheet_xml) if lang_code == 'jp' else ('<autoFilter ref="A1:H2"/>' in all_columns_sheet_xml))
                 )
                 deflated_buffer = io.BytesIO()
                 with zipfile.ZipFile(io.BytesIO(all_columns_bytes), 'r') as source_zip:
@@ -2899,11 +2915,12 @@ class VocabAppTester:
                     and excel_export_result.get('tagButtonCount') == 3
                     and excel_export_result.get('ratingButtonCount') == 6
                     and excel_export_result.get('saveLocationControlHidden')
-                    and excel_export_result.get('columnCount') == 8
+                    and excel_export_result.get('columnCount') == (9 if lang_code == 'jp' else 8)
                     and excel_export_result.get('defaultColumnSelection')
+                    and excel_export_result.get('languageColumnVisibility')
                     and excel_export_result.get('defaultColumnsCanBeUnchecked')
                     and excel_export_result.get('zeroColumnsBlocked')
-                    and '8 列' in str(excel_export_result.get('optionalColumnSummary', ''))
+                    and f"{9 if lang_code == 'jp' else 8} 列" in str(excel_export_result.get('optionalColumnSummary', ''))
                     and excel_export_result.get('allCount') == 4
                     and excel_export_result.get('learningCount') == 2
                     and excel_export_result.get('masteredCount') == 2
@@ -2924,7 +2941,7 @@ class VocabAppTester:
                     and excel_optional_columns_valid
                     and excel_deflated_parse_ok
                 ),
-                f"[{lang_name}] 浏览器 Excel 导出-八列复选、默认四列可取消、零列拦截、相近词精简内容与有效 XLSX",
+                f"[{lang_name}] 浏览器 Excel 导出-语言列复选、默认列可取消、零列拦截、JP 释义拆列与有效 XLSX",
                 f"Excel 导出运行结果或压缩包内容错误：{excel_export_result}; {excel_xlsx_detail}",
             )
 
@@ -2963,11 +2980,20 @@ class VocabAppTester:
                     app.savePendingCloudChanges({});
                     app.refreshWordFingerprints();
                     await DurableStorage.setItem(historyKey, []);
-                    app.excelExportSelectedColumns = new Set(['word','partOfSpeech','meaning','example','reading','pronunciationNote','userNote','similarWords']);
+                    app.excelExportSelectedColumns = new Set(app.RESOURCE_LANGUAGE === 'jp'
+                      ? ['word','partOfSpeech','meaning','krMeaning','example','reading','pronunciationNote','userNote','similarWords']
+                      : ['word','partOfSpeech','meaning','example','reading','pronunciationNote','userNote','similarWords']);
                     const sourceBlob = app.createVocabularyXlsxBlob([app.words[0], app.words[1]]);
                     const sourceEntries = await app.readVocabularyXlsxEntries(sourceBlob);
                     const sourceSheet = new TextDecoder('utf-8').decode(sourceEntries.get('xl/worksheets/sheet1.xml'));
                     const hiddenStableIdPresent = sourceSheet.includes('__EVIE_WORD_ID__') && sourceSheet.includes('hidden="1"') && sourceSheet.includes('roundtrip-a');
+                    const separateMeaningColumns = app.RESOURCE_LANGUAGE === 'jp'
+                      ? sourceSheet.includes('中文释义')
+                        && sourceSheet.includes('韩文释义')
+                        && sourceSheet.includes('旧释义甲')
+                        && sourceSheet.includes('기존 뜻 갑')
+                        && !sourceSheet.includes('中韩意思')
+                      : sourceSheet.includes('中文意思') && !sourceSheet.includes('韩文释义');
                     const meaningTitle = app.getVocabularyExcelImportDefinitions().find(definition => definition.key === 'meaning')?.title;
                     const subsetWithoutWordPlan = app.prepareVocabularyExcelImport([
                       [meaningTitle, '__EVIE_WORD_ID__'],
@@ -2975,6 +3001,14 @@ class VocabAppTester:
                     ]);
                     const customSubsetWithoutWordAccepted = subsetWithoutWordPlan.changedIds.includes('roundtrip-a')
                       && subsetWithoutWordPlan.words.find(word => word.id === 'roundtrip-a')?.meaning === 'subset-meaning-update';
+                    const independentKrMeaningImport = app.RESOURCE_LANGUAGE !== 'jp' || (() => {
+                      const plan = app.prepareVocabularyExcelImport([
+                        ['韩文释义', '__EVIE_WORD_ID__'],
+                        ['독립 수정 뜻', 'roundtrip-a']
+                      ]);
+                      const plannedWord = plan.words.find(word => word.id === 'roundtrip-a');
+                      return plannedWord?.meaning === '旧释义甲' && plannedWord?.krMeaning === '독립 수정 뜻';
+                    })();
                     let legacyMissingWordRejected = false;
                     try {
                       app.prepareVocabularyExcelImport([[meaningTitle], ['legacy-without-word']]);
@@ -3032,6 +3066,7 @@ class VocabAppTester:
                       && !importedC?.manualSimilarWordIds?.includes('roundtrip-a');
                     const pendingFieldsTracked = pendingAfterImport['roundtrip-a']?.fields?.includes('word')
                       && pendingAfterImport['roundtrip-a']?.fields?.includes('meaning')
+                      && (app.RESOURCE_LANGUAGE !== 'jp' || pendingAfterImport['roundtrip-a']?.fields?.includes('krMeaning'))
                       && pendingAfterImport['roundtrip-a']?.fields?.includes('examples')
                       && pendingAfterImport['roundtrip-c']?.fields?.includes('manualSimilarWordIds');
                     const importSnapshotSaved = historyAfterImport.length === 1
@@ -3060,7 +3095,7 @@ class VocabAppTester:
                       && JSON.stringify(app.getPendingCloudChanges()) === pendingBeforeFailure
                       && JSON.stringify(await app.getCloudSyncUndoHistory()) === historyBeforeFailure;
 
-                    done({hiddenStableIdPresent, customSubsetWithoutWordAccepted, legacyMissingWordRejected, sharedStringsParsed, badHeaderRejected, badIdRejected, validImported, fieldUpdatesApplied, relationsApplied, pendingFieldsTracked, importSnapshotSaved, bothRestoreDisabled, importRollbackWorked, failedImportRolledBack});
+                    done({hiddenStableIdPresent, separateMeaningColumns, customSubsetWithoutWordAccepted, independentKrMeaningImport, legacyMissingWordRejected, sharedStringsParsed, badHeaderRejected, badIdRejected, validImported, fieldUpdatesApplied, relationsApplied, pendingFieldsTracked, importSnapshotSaved, bothRestoreDisabled, importRollbackWorked, failedImportRolledBack});
                   } catch (error) {
                     done({error:String(error), stack:String(error?.stack || '')});
                   } finally {

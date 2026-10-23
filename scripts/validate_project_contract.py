@@ -292,15 +292,21 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
         "word": "单词",
         "partOfSpeech": "词性",
         "meaning": "释义",
+        "krMeaning": "韩文释义（仅 JP）",
         "example": "例句",
         "reading": "发音",
         "pronunciationNote": "发音备注",
         "userNote": "说明",
         "similarWords": "相近词汇",
     }:
-        fail(errors, "质量契约：Excel 导出列必须固定为八个指定字段")
-    if excel_contract.get("defaultSelectedColumns") != ["word", "partOfSpeech", "meaning", "example"] or excel_contract.get("minimumSelectedColumns") != 1:
-        fail(errors, "质量契约：Excel 导出必须默认勾选前四列且至少保留一列")
+        fail(errors, "质量契约：Excel 导出必须包含八个通用字段与 JP 专属韩文释义字段")
+    if (
+        excel_contract.get("defaultSelectedColumns") != ["word", "partOfSpeech", "meaning", "example"]
+        or excel_contract.get("jpAdditionalDefaultSelectedColumns") != ["krMeaning"]
+        or excel_contract.get("jpMeaningColumns") != "separate-meaning-and-krMeaning"
+        or excel_contract.get("minimumSelectedColumns") != 1
+    ):
+        fail(errors, "质量契约：KR 必须默认四列，JP 必须额外默认韩文释义独立列，且至少保留一列")
     if (
         excel_import_contract.get("acceptedExtension") != "xlsx"
         or excel_import_contract.get("legacyWithoutStableIdRequiresFirstColumn") != "word"
@@ -333,14 +339,16 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
         'id="excelExportRatingPanel"',
         'id="excelExportColumnsPanel"',
         'name="excelExportColumn"',
-        "this.excelExportSelectedColumns = new Set(['word', 'partOfSpeech', 'meaning', 'example'])",
-        "new Set(['word', 'partOfSpeech', 'meaning', 'example', 'reading', 'pronunciationNote', 'userNote', 'similarWords'])",
+        "? ['word', 'partOfSpeech', 'meaning', 'krMeaning', 'example']",
+        "new Set(['word', 'partOfSpeech', 'meaning', 'krMeaning', 'example', 'reading', 'pronunciationNote', 'userNote', 'similarWords'])",
         "this.excelExportSelectedColumns.size === 0",
         "请至少选择一个导出列",
         "some(tag => selected.has(",
         "this.excelExportRatings.has(this.normalizeExcelExportRating(word?.rating))",
         "const firstExample = this.getParsedExamples(word)[0]",
-        "isJapanese ? '中韩意思' : '中文意思'",
+        "isJapanese ? '中文释义' : '中文意思'",
+        "title: '韩文释义'",
+        'id="excelExportKrMeaningOption"',
         "window.showSaveFilePicker",
         "await fileHandle.createWritable()",
         "浏览器默认下载位置",
@@ -369,6 +377,8 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
         "parseVocabularyXlsxFile(file)",
         "prepareVocabularyExcelImport(rows)",
         "'__EVIE_WORD_ID__'",
+        "if (isJapanese) definitions.push({ key: 'krMeaning', title: '韩文释义' })",
+        "target.krMeaning = value.trim()",
         "旧版文件没有词条标识时，第一列表头必须保持为“单词”",
         "第一行字段名称被修改、重复或顺序不正确",
         "第 ${item.excelRow} 行的词条标识不存在",
