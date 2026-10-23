@@ -64,7 +64,7 @@ class VocabAppTester:
         self.assert_true(btn_cloud_sync, f"[{lang_name}] Header-☁️云端同步按钮兜底点击", "cloudSyncBtn 缺少行内同步方向选择窗口兜底绑定")
 
         init_body = re.search(r'\n\s*init\(\)\s*\{(.*?)\n\s*\}\n\s*\n\s*loadData\(', content, re.S)
-        save_data_body = re.search(r'\n\s*saveData\(\)\s*\{(.*?)\n\s*\}\n\s*\n\s*loadTheme\(', content, re.S)
+        save_data_body = re.search(r'\n\s*saveData\([^)]*\)\s*\{(.*?)\n\s*\}\n\s*\n\s*(?:async\s+)?confirmLastSaveDataDurableFallback\(', content, re.S)
         strict_manual_upload = (
             'title="选择云端同步方式"' in content
             and bool(init_body) and 'fetchFromCloud(' not in init_body.group(1)
@@ -1120,7 +1120,7 @@ class VocabAppTester:
             "document.getElementById('wordForm')?.addEventListener('keydown', (e) => {",
             "if (e.key !== 'Enter' || e.target?.tagName === 'TEXTAREA') return;",
             "document.getElementById('saveWordBtn')?.addEventListener('click', (e) => {",
-            'this.saveWordFromForm();',
+            'return await this.saveWordFromForm();',
             'const persisted = this.saveData();',
             'if (!persisted) return;',
             'this.showToast(saveSuccessMessage);',
@@ -1137,16 +1137,40 @@ class VocabAppTester:
             "this._wordModalPointerSaveHandled = false;",
             "if (this._wordModalPointerSaveHandled) return;",
             "this.commitWordModalDraftAndSave();",
-            "commitWordModalDraftAndSave() {",
+            "async commitWordModalDraftAndSave() {",
             "const activeElement = document.activeElement;",
             "form.contains(activeElement)",
             "activeElement.blur();",
-            "this.saveWordFromForm();",
+            "return await this.saveWordFromForm();",
         ))
         self.assert_true(
             first_interaction_direct_save,
             f"[{lang_name}] 新增/编辑弹窗-输入字段保持焦点时第一次按下保存即提交且同次 click 去重",
             "保存仍只依赖 focusout 后的 click，或缺少 pointerdown 提交、主动失焦、键盘 click 兜底及同次激活去重",
+        )
+
+        mobile_word_editor_durability = all(token in content for token in (
+            "if (this._wordModalSaveInFlight) return false;",
+            "saveButton.disabled = true;",
+            "saveButton.setAttribute('aria-busy', 'true');",
+            "saveButton.removeAttribute('aria-busy');",
+            "saveData(options = {})",
+            "const reportFailure = options.reportFailure !== false;",
+            "this._lastSaveDataDurablePromise = this.queueDurableSnapshot();",
+            "async confirmLastSaveDataDurableFallback()",
+            "async saveWordFromForm()",
+            "const wordsBeforeSave = JSON.stringify(this.words || []);",
+            "const pendingBeforeSave = JSON.parse(JSON.stringify(this.getPendingCloudChanges",
+            "this.saveData({ reportFailure: false });",
+            "await this.confirmLastSaveDataDurableFallback();",
+            "this.words = JSON.parse(wordsBeforeSave);",
+            "this.savePendingCloudChanges(pendingBeforeSave);",
+            "localStorage 与 IndexedDB 均未能持久保存",
+        ))
+        self.assert_true(
+            mobile_word_editor_durability,
+            f"[{lang_name}] 新增/编辑弹窗-手机 localStorage 失败时等待 IndexedDB 且双层失败回滚",
+            "普通词条编辑仍会在 IndexedDB 完成前误报失败，或缺少保存锁、两层耐久确认及失败回滚",
         )
 
         detail_editor_returns_to_detail = all(token in content for token in (
@@ -1315,6 +1339,8 @@ class VocabAppTester:
             "if (localOnly > 0 && durableOnly === 0) return false;",
             "const indexedDbDurable = await this.persistDurableSnapshot();",
             "if (!localDurable && !indexedDbDurable) return false;",
+            "pendingIds: Object.keys(pending)",
+            "if (durablePendingOnly > 0 && localPendingOnly === 0) return true;",
             "if (this.restoreDurableSnapshot) this.restoreDurableSnapshot();",
             "await this.replaceLocalWithCloudRows(dataRows);",
             "await this.mergeCloudRows(dataRows);",
@@ -1328,7 +1354,10 @@ class VocabAppTester:
 
         persistence_gated_feedback = (
             content.count('const persisted = this.saveData();') >= 7
-            and content.count('if (!persisted) return;') >= 7
+            and content.count('if (!persisted) return;') >= 6
+            and 'let persisted = this.saveData({ reportFailure: false });' in content
+            and 'persisted = await this.confirmLastSaveDataDurableFallback();' in content
+            and 'this.words = JSON.parse(wordsBeforeSave);' in content
             and 'this.refreshSimilarWordPanels(targetWord.id);\n    this.refreshSimilarWordPanels(similarWord.id);\n    if (!persisted) return;' in content
         )
         self.assert_true(persistence_gated_feedback, f"[{lang_name}] 持久化-编辑、相近表达、状态、删除、导入和清空仅在落盘成功后提示完成", "部分编辑入口仍可能在持久化失败后显示成功或继续完成后续动作")
@@ -2168,7 +2197,7 @@ class VocabAppTester:
         # ---------------------------------------------------------------------
         # 测试点 42A: 非空浏览器缓存也必须合并新版内置词条，并尊重用户删除记录
         # ---------------------------------------------------------------------
-        load_data_m = re.search(r'\n  loadData\(\)\s*\{(.*?)\n  saveData\(\)', content, re.DOTALL)
+        load_data_m = re.search(r'\n  loadData\(\)\s*\{(.*?)\n  saveData\([^)]*\)', content, re.DOTALL)
         load_data_body = load_data_m.group(1) if load_data_m else ''
         cached_data_upgrade = (
             'Always reconcile built-in cards' in load_data_body
@@ -5512,6 +5541,88 @@ class VocabAppTester:
                 f"[{lang_name}] 浏览器新增弹窗-最后字段未失焦且仅第一次 pointerdown 即保存最新值",
                 f"第一次保存交互仍被失焦吞掉、没有持久化最新值或发生重复保存: {first_pointer_save}",
             )
+            mobile_word_save_fallback = driver.execute_async_script("""
+                const done = arguments[arguments.length - 1];
+                (async () => {
+                  const app = window.app;
+                  const modal = document.getElementById('wordModal');
+                  const saveButton = document.getElementById('saveWordBtn');
+                  const wordInput = document.getElementById('inputWord');
+                  const partOfSpeechInput = document.getElementById('inputPartOfSpeech');
+                  const meaningInput = document.getElementById('inputMeaning');
+                  const krMeaningInput = document.getElementById('inputKrMeaning');
+                  if (!app || !modal || !saveButton || !wordInput || !partOfSpeechInput || !meaningInput) {
+                    done(null);
+                    return;
+                  }
+                  if (app._durableSnapshotQueue) await app._durableSnapshotQueue.catch(() => false);
+                  const originalWords = JSON.parse(JSON.stringify(app.words));
+                  const originalStorage = localStorage.getItem(app.STORAGE_KEY);
+                  const originalPending = app.getPendingCloudChanges();
+                  const storagePrototype = Object.getPrototypeOf(localStorage);
+                  const originalSetItem = storagePrototype.setItem;
+                  const testWord = `手机IndexedDB备用保存_${Date.now()}`;
+                  const meaningValue = '手机本地主存储受限时的最新释义';
+                  const krMeaningValue = '모바일 보조 저장 최신 뜻';
+                  let result = null;
+                  try {
+                    app.openWordModal();
+                    wordInput.value = testWord;
+                    partOfSpeechInput.value = '测试词性';
+                    meaningInput.value = meaningValue;
+                    if (krMeaningInput) krMeaningInput.value = krMeaningValue;
+                    storagePrototype.setItem = function(key, value) {
+                      if (key === app.STORAGE_KEY || key === app.PENDING_CLOUD_KEY) {
+                        throw new DOMException('模拟手机 localStorage 容量受限', 'QuotaExceededError');
+                      }
+                      return originalSetItem.call(this, key, value);
+                    };
+                    const firstSave = app.commitWordModalDraftAndSave();
+                    const buttonLockedDuringFallback = saveButton.disabled === true
+                      && saveButton.getAttribute('aria-busy') === 'true'
+                      && app._wordModalSaveInFlight === true;
+                    const secondSaveIgnored = await app.commitWordModalDraftAndSave() === false;
+                    const saveSucceeded = await firstSave === true;
+                    const matchingWords = app.words.filter(word => word.word === testWord);
+                    const durableSnapshot = await DurableStorage.getItem(app.STORAGE_KEY);
+                    const durableWord = durableSnapshot?.words?.find(word => word.word === testWord);
+                    result = {
+                      buttonLockedDuringFallback,
+                      secondSaveIgnored,
+                      saveSucceeded,
+                      savedExactlyOnce: matchingWords.length === 1,
+                      latestFieldsSaved: krMeaningInput
+                        ? matchingWords[0]?.krMeaning === krMeaningValue && durableWord?.krMeaning === krMeaningValue
+                        : matchingWords[0]?.meaning === meaningValue && durableWord?.meaning === meaningValue,
+                      indexedDbConfirmed: Boolean(durableWord),
+                      localStorageActuallyRejected: SafeStorage.hasVolatileValue(app.STORAGE_KEY),
+                      modalClosedAfterFallback: modal.classList.contains('active') === false,
+                      buttonUnlockedAfterFallback: saveButton.disabled === false && !saveButton.hasAttribute('aria-busy'),
+                      noFalseFailureToast: !document.getElementById('toast')?.textContent.includes('保存失败'),
+                    };
+                  } finally {
+                    storagePrototype.setItem = originalSetItem;
+                    app.words = originalWords;
+                    if (originalStorage === null) SafeStorage.removeItem(app.STORAGE_KEY);
+                    else SafeStorage.setItem(app.STORAGE_KEY, originalStorage);
+                    app.savePendingCloudChanges(originalPending);
+                    app.refreshWordFingerprints();
+                    await app.persistDurableSnapshot();
+                    app.renderWordList();
+                    app.openWordModal();
+                  }
+                  done(result);
+                })().catch(error => done({error: String(error && error.message || error)}));
+            """)
+            self.assert_true(
+                bool(
+                    mobile_word_save_fallback
+                    and not mobile_word_save_fallback.get('error')
+                    and all(mobile_word_save_fallback.values())
+                ),
+                f"[{lang_name}] 浏览器手机存储-主存储失败后等待 IndexedDB 保存且防重复提交",
+                f"手机 localStorage 受限时仍误报失败、未等待 IndexedDB 或重复创建词条: {mobile_word_save_fallback}",
+            )
             manual_add_tag_editor = driver.execute_script("""
                 const app = window.app;
                 const group = document.getElementById('addWordTagsGroup');
@@ -6163,7 +6274,9 @@ class VocabAppTester:
                 f"详情星级调整导致 Tag 丢失: {detail_rating_tag_preservation}",
             )
 
-            example_pair_edit_lifecycle = driver.execute_script("""
+            example_pair_edit_lifecycle = driver.execute_async_script("""
+                const done = arguments[arguments.length - 1];
+                (async () => {
                 const app = window.app;
                 const targetWord = app.words.find(word => app.getParsedExamples(word).length >= 2);
                 if (!targetWord) return null;
@@ -6221,6 +6334,7 @@ class VocabAppTester:
                 const missingTranslation = activeRows[1]?.querySelector('.example-translation-input');
                 if (missingTranslation) missingTranslation.value = '';
                 document.getElementById('saveWordBtn')?.click();
+                await new Promise(resolve => setTimeout(resolve, 0));
                 const incompleteRejected = JSON.stringify(app.words[wordIndex].examples) === beforeIncompleteSave
                   && modal?.classList.contains('active') === true
                   && detailModal?.classList.contains('active') === false;
@@ -6238,9 +6352,11 @@ class VocabAppTester:
                 });
                 const storagePrototype = Object.getPrototypeOf(localStorage);
                 const originalSetItem = storagePrototype.setItem;
+                const originalQueueDurableSnapshot = app.queueDurableSnapshot;
                 let failedSaveKeptDraft = false;
                 let failedSaveReported = false;
                 try {
+                  app.queueDurableSnapshot = () => null;
                   storagePrototype.setItem = function(key, value) {
                     if (key === app.STORAGE_KEY || key === app.PENDING_CLOUD_KEY) {
                       throw new DOMException('模拟持久存储失败', 'QuotaExceededError');
@@ -6248,13 +6364,16 @@ class VocabAppTester:
                     return originalSetItem.call(this, key, value);
                   };
                   document.getElementById('saveWordBtn')?.click();
+                  await new Promise(resolve => setTimeout(resolve, 0));
                   failedSaveKeptDraft = modal?.classList.contains('active') === true
                     && activeRows.every((row, index) => row.querySelector('.example-source-input')?.value === `编辑原句 ${index + 1}`);
                   failedSaveReported = document.getElementById('toast')?.textContent.includes('保存失败') === true;
                 } finally {
                   storagePrototype.setItem = originalSetItem;
+                  app.queueDurableSnapshot = originalQueueDurableSnapshot;
                 }
                 document.getElementById('saveWordBtn')?.click();
+                await new Promise(resolve => setTimeout(resolve, 0));
                 const savedWord = app.words[wordIndex];
                 const parsedAfterSave = app.getParsedExamples(savedWord);
                 const structuredSaved = parsedAfterSave.length === editedPairCount && parsedAfterSave.every((pair, index) =>
@@ -6307,6 +6426,7 @@ class VocabAppTester:
                   userEditProtected, modalClosedAfterSave, persisted,
                   saveReturnedToDetail, listPreviewUpdated, detailShowsAllPairs, reviewShowsAllPairs
                 };
+                })().then(done).catch(error => done({error: String(error)}));
             """)
             self.assert_true(
                 bool(example_pair_edit_lifecycle and all(example_pair_edit_lifecycle.values())),

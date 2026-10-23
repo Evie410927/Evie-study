@@ -20961,6 +20961,7 @@ function createSupabaseSyncMethods(language) {
           ? Math.max(0, Number(snapshot.cloudBaselineRevision) || 0) : null,
         maxChangedAt: Math.max(0, ...timestamps.filter(Number.isFinite)),
         wordIds: words.map(word => String(word && word.id || '')).filter(Boolean),
+        pendingIds: Object.keys(pending),
         deletedIds: Object.keys(deleted),
         fingerprint: this.snapshotWordsFingerprint(words)
       };
@@ -20995,7 +20996,15 @@ function createSupabaseSyncMethods(language) {
     shouldRestoreDurableSnapshot(snapshot, localSummary = this._startupLocalSnapshotSummary) {
       const durableSummary = this.getDurableSnapshotSummary(snapshot);
       if (!localSummary || localSummary.wordIds.length === 0) return durableSummary.wordIds.length > 0;
-      if (durableSummary.fingerprint === localSummary.fingerprint) return false;
+      if (durableSummary.fingerprint === localSummary.fingerprint) {
+        const localPendingIds = new Set(localSummary.pendingIds || []);
+        const durablePendingIds = new Set(durableSummary.pendingIds || []);
+        const durablePendingOnly = [...durablePendingIds].filter(id => !localPendingIds.has(id)).length;
+        const localPendingOnly = [...localPendingIds].filter(id => !durablePendingIds.has(id)).length;
+        if (durablePendingOnly > 0 && localPendingOnly === 0) return true;
+        if (localPendingOnly > 0 && durablePendingOnly === 0) return false;
+        return durableSummary.maxChangedAt > Number(localSummary.maxChangedAt || 0);
+      }
       if (localSummary.savedAt > 0) return durableSummary.savedAt > localSummary.savedAt;
       const localIds = new Set(localSummary.wordIds);
       const durableIds = new Set(durableSummary.wordIds);
@@ -21948,7 +21957,9 @@ class KrVocabApp {
     return changedIds.size;
   }
 
-  saveData() {
+  saveData(options = {}) {
+    const reportFailure = options.reportFailure !== false;
+    this._lastSaveDataDurablePromise = null;
     try {
       if (!Array.isArray(this.words)) this.words = [];
       this.words.forEach(word => this.normalizeWordTaxonomy(word));
@@ -21957,15 +21968,26 @@ class KrVocabApp {
       SafeStorage.flushMemoryStore();
       const durable = !SafeStorage.hasVolatileValue(this.STORAGE_KEY)
         && !SafeStorage.hasVolatileValue(this.PENDING_CLOUD_KEY);
-      if (this.queueDurableSnapshot) this.queueDurableSnapshot();
+      if (this.queueDurableSnapshot) this._lastSaveDataDurablePromise = this.queueDurableSnapshot();
       this.updateStats();
       if (!durable) {
-        this.showToast('⚠️ 保存失败：浏览器未能持久保存，请保留当前窗口并重试');
+        if (reportFailure) this.showToast('⚠️ 保存失败：浏览器未能持久保存，请保留当前窗口并重试');
         return false;
       }
       return true;
     } catch (e) {
-      this.showToast('⚠️ 保存失败：浏览器存储异常，请保留当前窗口并重试');
+      if (reportFailure) this.showToast('⚠️ 保存失败：浏览器存储异常，请保留当前窗口并重试');
+      return false;
+    }
+  }
+
+  async confirmLastSaveDataDurableFallback() {
+    const pendingSnapshot = this._lastSaveDataDurablePromise;
+    if (!pendingSnapshot || typeof pendingSnapshot.then !== 'function') return false;
+    try {
+      return await pendingSnapshot === true;
+    } catch (error) {
+      console.warn('Queued durable snapshot confirmation failed:', error);
       return false;
     }
   }
@@ -23921,13 +23943,28 @@ class KrVocabApp {
     }
   }
 
-  commitWordModalDraftAndSave() {
+  async commitWordModalDraftAndSave() {
+    if (this._wordModalSaveInFlight) return false;
     const form = document.getElementById('wordForm');
+    const saveButton = document.getElementById('saveWordBtn');
     const activeElement = document.activeElement;
+    this._wordModalSaveInFlight = true;
+    if (saveButton) {
+      saveButton.disabled = true;
+      saveButton.setAttribute('aria-busy', 'true');
+    }
     if (form && activeElement && form.contains(activeElement) && typeof activeElement.blur === 'function') {
       activeElement.blur();
     }
-    this.saveWordFromForm();
+    try {
+      return await this.saveWordFromForm();
+    } finally {
+      this._wordModalSaveInFlight = false;
+      if (saveButton) {
+        saveButton.disabled = false;
+        saveButton.removeAttribute('aria-busy');
+      }
+    }
   }
 
   openWordModal(word = null, preserveDetailReturn = false) {
@@ -25255,7 +25292,7 @@ class KrVocabApp {
     return nextIds;
   }
 
-  saveWordFromForm() {
+  async saveWordFromForm() {
     const wordIdInput = document.getElementById('wordId');
     const wordInput = document.getElementById('inputWord');
     const readingInput = document.getElementById('inputReading');
@@ -25263,7 +25300,7 @@ class KrVocabApp {
     const meaningInput = document.getElementById('inputMeaning');
     const partOfSpeechInput = document.getElementById('inputPartOfSpeech');
     const userNoteInput = document.getElementById('inputUserNote');
-    if (!wordIdInput || !wordInput || !readingInput || !pronunciationNoteInput || !meaningInput || !partOfSpeechInput || !userNoteInput) return;
+    if (!wordIdInput || !wordInput || !readingInput || !pronunciationNoteInput || !meaningInput || !partOfSpeechInput || !userNoteInput) return false;
     const id = wordIdInput.value;
     const wordText = wordInput.value.trim();
     const reading = this.normalizeBracketedReading(readingInput.value);
@@ -25277,12 +25314,12 @@ class KrVocabApp {
 
     if (!wordText || !meaning || !partOfSpeech) {
       this.showToast('请填写韩语单词、词性与释义');
-      return;
+      return false;
     }
 
     if (collectedExamplePairs.some(pair => Boolean(pair.example) !== Boolean(pair.trans))) {
       this.showToast('每条例句都需要同时填写韩语原句与中文翻译');
-      return;
+      return false;
     }
     const examplePairs = collectedExamplePairs.filter(pair => pair.example && pair.trans);
 
@@ -25295,6 +25332,8 @@ class KrVocabApp {
     const examples = examplePairs.map(pair => ({ example: pair.example, trans: pair.trans }));
     const example = examples.map(pair => pair.example).join('\n');
     const exampleTrans = examples.map(pair => pair.trans).join('\n');
+    const wordsBeforeSave = JSON.stringify(this.words || []);
+    const pendingBeforeSave = JSON.parse(JSON.stringify(this.getPendingCloudChanges ? this.getPendingCloudChanges() : {}));
 
     const userEditTime = Date.now();
     let saveSuccessMessage = '';
@@ -25302,7 +25341,7 @@ class KrVocabApp {
       const index = this.words.findIndex(w => w.id === id);
       if (index === -1) {
         this.showToast('⚠️ 未找到要编辑的词条，请关闭后重新打开');
-        return;
+        return false;
       }
       this.words[index] = {
         ...this.words[index],
@@ -25361,11 +25400,24 @@ class KrVocabApp {
       saveSuccessMessage = '🎉 新韩语单词已添加';
     }
 
-    const persisted = this.saveData();
-    if (!persisted) return;
+    let persisted = this.saveData({ reportFailure: false });
+    if (!persisted && this._lastSaveDataDurablePromise) {
+      persisted = await this.confirmLastSaveDataDurableFallback();
+    }
+    if (!persisted) {
+      this.words = JSON.parse(wordsBeforeSave);
+      SafeStorage.setItem(this.STORAGE_KEY, wordsBeforeSave);
+      if (this.savePendingCloudChanges) this.savePendingCloudChanges(pendingBeforeSave);
+      if (this.refreshWordFingerprints) this.refreshWordFingerprints();
+      this.renderWordList();
+      this.updateStats();
+      this.showToast('⚠️ 保存失败：浏览器的 localStorage 与 IndexedDB 均未能持久保存，请保留当前窗口并检查存储权限后重试');
+      return false;
+    }
     this.renderWordList();
     this.showToast(saveSuccessMessage);
     this.closeWordModal();
+    return true;
   }
 
   toggleMastered(id) {
