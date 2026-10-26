@@ -11323,7 +11323,7 @@ class JpVocabApp {
         if (e.isPrimary === false || (typeof e.button === 'number' && e.button !== 0)) return;
         e.preventDefault();
         this._wordModalPointerSaveHandled = true;
-        this.commitWordModalDraftAndSave();
+        this.commitWordModalDraftAndSave(true);
         setTimeout(() => {
           this._wordModalPointerSaveHandled = false;
         }, 0);
@@ -11462,21 +11462,55 @@ class JpVocabApp {
     }
   }
 
-  async commitWordModalDraftAndSave() {
+  captureWordFormDraft() {
+    const form = document.getElementById('wordForm');
+    if (!form) return null;
+    const valueOf = id => {
+      const control = document.getElementById(id);
+      return control && typeof control.value === 'string' ? control.value : '';
+    };
+    return {
+      id: valueOf('wordId'),
+      word: valueOf('inputWord'),
+      reading: valueOf('inputReading'),
+      pronunciationNote: valueOf('inputPronunciationNote'),
+      meaning: valueOf('inputMeaning'),
+      partOfSpeech: valueOf('inputPartOfSpeech'),
+      krMeaning: valueOf('inputKrMeaning'),
+      userNote: valueOf('inputUserNote'),
+      examplePairs: this.collectExamplePairsFromEditor()
+    };
+  }
+
+  waitForWordModalInputCommit() {
+    return new Promise(resolve => {
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => resolve());
+      } else {
+        setTimeout(resolve, 0);
+      }
+    });
+  }
+
+  async commitWordModalDraftAndSave(settleFocusedInput = false) {
     if (this._wordModalSaveInFlight) return false;
     const form = document.getElementById('wordForm');
     const saveButton = document.getElementById('saveWordBtn');
     const activeElement = document.activeElement;
+    const liveDraftBeforeBlur = this.captureWordFormDraft();
+    const focusedControlNeedsCommit = Boolean(settleFocusedInput && form && activeElement && form.contains(activeElement));
     this._wordModalSaveInFlight = true;
     if (saveButton) {
       saveButton.disabled = true;
       saveButton.setAttribute('aria-busy', 'true');
     }
-    if (form && activeElement && form.contains(activeElement) && typeof activeElement.blur === 'function') {
+    if (focusedControlNeedsCommit && typeof activeElement.blur === 'function') {
       activeElement.blur();
     }
     try {
-      return await this.saveWordFromForm();
+      if (focusedControlNeedsCommit) await this.waitForWordModalInputCommit();
+      const settledDraft = focusedControlNeedsCommit ? this.captureWordFormDraft() : liveDraftBeforeBlur;
+      return await this.saveWordFromForm(settledDraft || liveDraftBeforeBlur);
     } finally {
       this._wordModalSaveInFlight = false;
       if (saveButton) {
@@ -12813,7 +12847,7 @@ class JpVocabApp {
     return nextIds;
   }
 
-  async saveWordFromForm() {
+  async saveWordFromForm(draftOverride = null) {
     const wordIdInput = document.getElementById('wordId');
     const wordInput = document.getElementById('inputWord');
     const readingInput = document.getElementById('inputReading');
@@ -12823,17 +12857,24 @@ class JpVocabApp {
     const krMeaningInput = document.getElementById('inputKrMeaning');
     const userNoteInput = document.getElementById('inputUserNote');
     if (!wordIdInput || !wordInput || !readingInput || !pronunciationNoteInput || !meaningInput || !partOfSpeechInput || !krMeaningInput || !userNoteInput) return false;
-    const id = wordIdInput.value;
-    const wordText = wordInput.value.trim();
-    const reading = this.normalizeBracketedReading(readingInput.value);
+    const draft = draftOverride || this.captureWordFormDraft();
+    if (!draft) return false;
+    const id = String(draft.id || '');
+    const wordText = String(draft.word || '').trim();
+    const reading = this.normalizeBracketedReading(String(draft.reading || ''));
     readingInput.value = reading;
-    const pronunciationNote = pronunciationNoteInput.value.trim();
-    const meaning = meaningInput.value.trim();
-    const partOfSpeech = this.normalizeTaxonomyText(partOfSpeechInput.value);
+    const pronunciationNote = String(draft.pronunciationNote || '').trim();
+    const meaning = String(draft.meaning || '').trim();
+    const partOfSpeech = this.normalizeTaxonomyText(String(draft.partOfSpeech || ''));
     partOfSpeechInput.value = partOfSpeech;
-    const krMeaning = krMeaningInput.value.trim();
-    const userNote = userNoteInput.value.trim();
-    const collectedExamplePairs = this.collectExamplePairsFromEditor();
+    const krMeaning = String(draft.krMeaning || '').trim();
+    const userNote = String(draft.userNote || '').trim();
+    const collectedExamplePairs = Array.isArray(draft.examplePairs)
+      ? draft.examplePairs.map(pair => ({
+          example: String(pair?.example || '').trim(),
+          trans: String(pair?.trans || '').trim()
+        }))
+      : [];
 
     if (!wordText || !meaning || !partOfSpeech) {
       this.showToast('请填写日语单词、词性与释义');

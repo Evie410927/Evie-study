@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-10-23.4",
+  "contractVersion": "2026-10-26.1",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -175,7 +175,8 @@
         "pointerdown",
         "click-keyboard-fallback"
       ],
-      "focusedFieldBehavior": "blur-and-read-current-dom-value-on-first-pointer-interaction",
+      "focusedFieldBehavior": "capture-live-draft-blur-wait-for-composition-commit-recapture-and-save-on-first-pointer-interaction",
+      "capturedControls": "all-word-form-inputs-textareas-and-example-pairs",
       "sameActivationDuplicateSave": false,
       "saveInFlightGuard": "disable-button-and-ignore-repeat-activation",
       "durabilityOrder": [

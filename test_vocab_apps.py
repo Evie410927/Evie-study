@@ -934,7 +934,7 @@ class VocabAppTester:
             'normalizeWordTaxonomy(word)',
             'renderPartOfSpeechLabel(word)',
             'class="part-of-speech-label"',
-            "const partOfSpeech = this.normalizeTaxonomyText(partOfSpeechInput.value);",
+            "const partOfSpeech = this.normalizeTaxonomyText(String(draft.partOfSpeech || ''));",
             "filter(tag => tag && tag !== partOfSpeech)",
             'samples.forEach(item => this.normalizeWordTaxonomy(item));',
             'normalizeFallbackTaxonomy(fallbackWords);',
@@ -1140,7 +1140,7 @@ class VocabAppTester:
             "document.getElementById('wordForm')?.addEventListener('keydown', (e) => {",
             "if (e.key !== 'Enter' || e.target?.tagName === 'TEXTAREA') return;",
             "document.getElementById('saveWordBtn')?.addEventListener('click', (e) => {",
-            'return await this.saveWordFromForm();',
+            'return await this.saveWordFromForm(settledDraft || liveDraftBeforeBlur);',
             'const persisted = this.saveData();',
             'if (!persisted) return;',
             'this.showToast(saveSuccessMessage);',
@@ -1156,12 +1156,18 @@ class VocabAppTester:
             "this._wordModalPointerSaveHandled = true;",
             "this._wordModalPointerSaveHandled = false;",
             "if (this._wordModalPointerSaveHandled) return;",
-            "this.commitWordModalDraftAndSave();",
-            "async commitWordModalDraftAndSave() {",
+            "this.commitWordModalDraftAndSave(true);",
+            "async commitWordModalDraftAndSave(settleFocusedInput = false) {",
             "const activeElement = document.activeElement;",
+            "const liveDraftBeforeBlur = this.captureWordFormDraft();",
             "form.contains(activeElement)",
             "activeElement.blur();",
-            "return await this.saveWordFromForm();",
+            "if (focusedControlNeedsCommit) await this.waitForWordModalInputCommit();",
+            "const settledDraft = focusedControlNeedsCommit ? this.captureWordFormDraft() : liveDraftBeforeBlur;",
+            "return await this.saveWordFromForm(settledDraft || liveDraftBeforeBlur);",
+            "captureWordFormDraft() {",
+            "examplePairs: this.collectExamplePairsFromEditor()",
+            "async saveWordFromForm(draftOverride = null)",
         ))
         self.assert_true(
             first_interaction_direct_save,
@@ -1178,7 +1184,7 @@ class VocabAppTester:
             "const reportFailure = options.reportFailure !== false;",
             "this._lastSaveDataDurablePromise = this.queueDurableSnapshot();",
             "async confirmLastSaveDataDurableFallback()",
-            "async saveWordFromForm()",
+            "async saveWordFromForm(draftOverride = null)",
             "const wordsBeforeSave = JSON.stringify(this.words || []);",
             "const pendingBeforeSave = JSON.parse(JSON.stringify(this.getPendingCloudChanges",
             "this.saveData({ reportFailure: false });",
@@ -1592,7 +1598,7 @@ class VocabAppTester:
             'maxlength="500"',
             "const userNoteInput = document.getElementById('inputUserNote');",
             "userNoteInput.value = typeof word.userNote === 'string' ? word.userNote : '';",
-            'const userNote = userNoteInput.value.trim();',
+            "const userNote = String(draft.userNote || '').trim();",
             'userNote,',
         ))
         self.assert_true(user_note_modal_editor, f"[{lang_name}] 自定义说明-编辑弹窗说明字段支持回填、保存与清空", "编辑弹窗缺少说明字段，或 userNote 未接入新增/编辑保存流程")
@@ -1602,7 +1608,7 @@ class VocabAppTester:
             '<input type="text" id="inputPronunciationNote" class="form-input pronunciation-note-form-input" maxlength="500">',
             "const pronunciationNoteInput = document.getElementById('inputPronunciationNote');",
             "pronunciationNoteInput.value = typeof word.pronunciationNote === 'string' ? word.pronunciationNote : '';",
-            "const pronunciationNote = pronunciationNoteInput.value.trim();",
+            "const pronunciationNote = String(draft.pronunciationNote || '').trim();",
             'pronunciationNote,',
         ))
         pronunciation_note_modal_order = (
@@ -1998,7 +2004,7 @@ class VocabAppTester:
         self.assert_true(legacy_example_inputs_removed, f"[{lang_name}] 编辑弹窗-旧原句大文本框与独立翻译框已完全移除", "旧 inputExample/inputExampleTrans 控件或读写逻辑仍残留，可能与三行编辑器冲突")
 
         example_pair_persistence = all(token in content for token in (
-            'const collectedExamplePairs = this.collectExamplePairsFromEditor()',
+            'const collectedExamplePairs = Array.isArray(draft.examplePairs)',
             'collectedExamplePairs.some(pair => Boolean(pair.example) !== Boolean(pair.trans))',
             'const examplePairs = collectedExamplePairs.filter(pair => pair.example && pair.trans)',
             'const examples = examplePairs.map(pair => ({ example: pair.example, trans: pair.trans }))',
@@ -2389,7 +2395,7 @@ class VocabAppTester:
             "return reading ? `[${reading}]` : '';",
             'formatReadingInput(input)',
             "document.getElementById('inputReading')?.addEventListener('blur'",
-            'const reading = this.normalizeBracketedReading(readingInput.value);',
+            "const reading = this.normalizeBracketedReading(String(draft.reading || ''));",
             'readingInput.value = reading;',
             'w.reading = this.normalizeBracketedReading(w.reading);',
             'function normalizeFallbackReadings(words)',
@@ -2631,7 +2637,7 @@ class VocabAppTester:
             'id="inputKrMeaning"',
             "const krMeaningInput = document.getElementById('inputKrMeaning');",
             "krMeaningInput.value = word.krMeaning || '';",
-            'const krMeaning = krMeaningInput.value.trim();',
+            "const krMeaning = String(draft.krMeaning || '').trim();",
             'krMeaning,',
         ))
         self.assert_true(editable_kr_meaning, "[日语专属] 编辑弹窗-韩文释义字段支持回填、修改、清空与保存", "日语编辑弹窗缺少 inputKrMeaning，或 krMeaning 未接入回填/保存流程")
@@ -5701,70 +5707,106 @@ class VocabAppTester:
                 f"[{lang_name}] 浏览器新增弹窗-遮罩/Enter/Esc/非点击提交均不关闭且×可显式关闭",
                 f"新增弹窗草稿防误关失败: backdrop={protected_modal_draft}, enter={enter_state}, submit_escape={submit_escape_state}, close={close_and_reopen_state}",
             )
-            first_pointer_save = driver.execute_script("""
-                const app = window.app;
-                const modal = document.getElementById('wordModal');
-                const saveButton = document.getElementById('saveWordBtn');
-                const wordInput = document.getElementById('inputWord');
-                const partOfSpeechInput = document.getElementById('inputPartOfSpeech');
-                const meaningInput = document.getElementById('inputMeaning');
-                const krMeaningInput = document.getElementById('inputKrMeaning');
-                if (!app || !modal || !saveButton || !wordInput || !partOfSpeechInput || !meaningInput) return null;
+            first_pointer_save = driver.execute_async_script("""
+                const done = arguments[arguments.length - 1];
+                (async () => {
+                  const app = window.app;
+                  const modal = document.getElementById('wordModal');
+                  const saveButton = document.getElementById('saveWordBtn');
+                  const wordInput = document.getElementById('inputWord');
+                  const readingInput = document.getElementById('inputReading');
+                  const pronunciationNoteInput = document.getElementById('inputPronunciationNote');
+                  const partOfSpeechInput = document.getElementById('inputPartOfSpeech');
+                  const meaningInput = document.getElementById('inputMeaning');
+                  const krMeaningInput = document.getElementById('inputKrMeaning');
+                  const userNoteInput = document.getElementById('inputUserNote');
+                  if (!document.querySelector('#examplePairsEditor .example-pair-row')) app?.addExamplePairRow(null, false);
+                  const exampleSourceInput = document.querySelector('#examplePairsEditor .example-source-input');
+                  const exampleTranslationInput = document.querySelector('#examplePairsEditor .example-translation-input');
+                  if (!app || !modal || !saveButton || !wordInput || !readingInput || !pronunciationNoteInput
+                      || !partOfSpeechInput || !meaningInput || !userNoteInput || !exampleSourceInput || !exampleTranslationInput) {
+                    done(null);
+                    return;
+                  }
 
-                const wordsSnapshot = JSON.stringify(app.words);
-                const storageSnapshot = localStorage.getItem(app.STORAGE_KEY);
-                const pendingKey = app.PENDING_CLOUD_KEY;
-                const pendingSnapshot = pendingKey ? localStorage.getItem(pendingKey) : null;
-                const testWord = `首次按下直接保存_${Date.now()}`;
-                const meaningValue = '第一次按下保存时的最新释义';
-                const krMeaningValue = '첫 누름 저장 최신 뜻';
-                wordInput.value = testWord;
-                partOfSpeechInput.value = '测试词性';
-                meaningInput.value = meaningValue;
-                const focusedInput = krMeaningInput || meaningInput;
-                if (krMeaningInput) krMeaningInput.value = krMeaningValue;
-                focusedInput.focus();
-                const focusedBeforeSave = document.activeElement === focusedInput;
+                  const wordsSnapshot = JSON.stringify(app.words);
+                  const storageSnapshot = localStorage.getItem(app.STORAGE_KEY);
+                  const pendingKey = app.PENDING_CLOUD_KEY;
+                  const pendingSnapshot = pendingKey ? localStorage.getItem(pendingKey) : null;
+                  const testWord = `首次按下直接保存_${Date.now()}`;
+                  const values = {
+                    reading: '[first-save-reading]',
+                    pronunciationNote: '第一次保存发音备注',
+                    partOfSpeech: '测试词性',
+                    meaning: '第一次按下保存时的最新释义',
+                    krMeaning: '첫 누름 저장 최신 뜻',
+                    userNote: '说明输入框仍聚焦时的最新内容',
+                    example: '第一次点击就保存的例句。',
+                    trans: '第一次点击即保存的例句翻译。',
+                  };
+                  wordInput.value = testWord;
+                  readingInput.value = values.reading;
+                  pronunciationNoteInput.value = values.pronunciationNote;
+                  partOfSpeechInput.value = values.partOfSpeech;
+                  meaningInput.value = values.meaning;
+                  if (krMeaningInput) krMeaningInput.value = values.krMeaning;
+                  userNoteInput.value = values.userNote;
+                  exampleSourceInput.value = values.example;
+                  exampleTranslationInput.value = values.trans;
+                  userNoteInput.focus();
+                  const focusedBeforeSave = document.activeElement === userNoteInput;
 
-                const dispatchAccepted = saveButton.dispatchEvent(new PointerEvent('pointerdown', {
-                  bubbles: true,
-                  cancelable: true,
-                  pointerId: 1,
-                  pointerType: 'touch',
-                  isPrimary: true,
-                  button: 0,
-                }));
-                const matches = app.words.filter(word => word.word === testWord);
-                const savedWord = matches[0];
-                const storedWords = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]');
-                const storedWord = storedWords.find(word => word.word === testWord);
-                const liveFieldSaved = krMeaningInput
-                  ? savedWord?.krMeaning === krMeaningValue && storedWord?.krMeaning === krMeaningValue
-                  : savedWord?.meaning === meaningValue && storedWord?.meaning === meaningValue;
-                const result = {
-                  focusedBeforeSave,
-                  pointerHandled: dispatchAccepted === false,
-                  savedOnPointerDownWithoutClick: matches.length === 1,
-                  liveFieldSaved,
-                  persistedImmediately: Boolean(storedWord),
-                  modalClosed: modal.classList.contains('active') === false,
-                };
+                  const dispatchAccepted = saveButton.dispatchEvent(new PointerEvent('pointerdown', {
+                    bubbles: true,
+                    cancelable: true,
+                    pointerId: 1,
+                    pointerType: 'touch',
+                    isPrimary: true,
+                    button: 0,
+                  }));
+                  for (let attempt = 0; attempt < 100 && app._wordModalSaveInFlight; attempt += 1) {
+                    await new Promise(resolve => setTimeout(resolve, 20));
+                  }
+                  const matches = app.words.filter(word => word.word === testWord);
+                  const savedWord = matches[0];
+                  const storedWords = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]');
+                  const storedWord = storedWords.find(word => word.word === testWord);
+                  const allFieldsSaved = Boolean(savedWord && storedWord)
+                    && savedWord.reading === values.reading
+                    && savedWord.pronunciationNote === values.pronunciationNote
+                    && savedWord.partOfSpeech === values.partOfSpeech
+                    && savedWord.meaning === values.meaning
+                    && savedWord.userNote === values.userNote
+                    && savedWord.examples?.[0]?.example === values.example
+                    && savedWord.examples?.[0]?.trans === values.trans
+                    && storedWord.userNote === values.userNote
+                    && storedWord.examples?.[0]?.example === values.example
+                    && (!krMeaningInput || (savedWord.krMeaning === values.krMeaning && storedWord.krMeaning === values.krMeaning));
+                  const result = {
+                    focusedBeforeSave,
+                    pointerHandled: dispatchAccepted === false,
+                    savedOnPointerDownWithoutClick: matches.length === 1,
+                    allFieldsSaved,
+                    persistedAfterInputCommit: Boolean(storedWord),
+                    modalClosed: modal.classList.contains('active') === false,
+                  };
 
-                app.words = JSON.parse(wordsSnapshot);
-                if (storageSnapshot === null) localStorage.removeItem(app.STORAGE_KEY);
-                else localStorage.setItem(app.STORAGE_KEY, storageSnapshot);
-                if (pendingKey) {
-                  if (pendingSnapshot === null) localStorage.removeItem(pendingKey);
-                  else localStorage.setItem(pendingKey, pendingSnapshot);
-                }
-                app.renderWordList();
-                app.openWordModal();
-                return result;
+                  app.words = JSON.parse(wordsSnapshot);
+                  if (storageSnapshot === null) localStorage.removeItem(app.STORAGE_KEY);
+                  else localStorage.setItem(app.STORAGE_KEY, storageSnapshot);
+                  if (pendingKey) {
+                    if (pendingSnapshot === null) localStorage.removeItem(pendingKey);
+                    else localStorage.setItem(pendingKey, pendingSnapshot);
+                  }
+                  app.renderWordList();
+                  app.openWordModal();
+                  done(result);
+                })().catch(error => done({ error: String(error?.message || error) }));
             """)
             self.assert_true(
                 bool(first_pointer_save and all(first_pointer_save.values())),
-                f"[{lang_name}] 浏览器新增弹窗-最后字段未失焦且仅第一次 pointerdown 即保存最新值",
-                f"第一次保存交互仍被失焦吞掉、没有持久化最新值或发生重复保存: {first_pointer_save}",
+                f"[{lang_name}] 浏览器新增弹窗-说明保持焦点时第一次 pointerdown 保存全部输入框最新值",
+                f"第一次保存交互仍被失焦或输入法组合吞掉、没有保存完整草稿或发生重复保存: {first_pointer_save}",
             )
             mobile_word_save_fallback = driver.execute_async_script("""
                 const done = arguments[arguments.length - 1];
