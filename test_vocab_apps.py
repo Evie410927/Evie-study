@@ -592,6 +592,21 @@ class VocabAppTester:
         on_search_input_defined = 'onSearchInput(' in content and 'this.searchQuery = ' in content
         self.assert_true(on_search_input_defined, f"[{lang_name}] 搜索-onSearchInput 响应函数与状态更新", "缺少 onSearchInput 方法或未更新 searchQuery")
 
+        search_defaults_to_all = all(token in content for token in (
+            "if (this.searchQuery) this.activateAllMainFilterForSearch();",
+            "activateAllMainFilterForSearch() {",
+            "this.currentFilter = 'all';",
+            "const filterPills = document.getElementById('filterPills');",
+            "filterPills.querySelectorAll('.pill-btn').forEach(pill => pill.classList.remove('active'));",
+            "const allFilterButton = filterPills.querySelector('.pill-btn[data-filter=\"all\"]');",
+            "if (allFilterButton) allFilterButton.classList.add('active');",
+        ))
+        self.assert_true(
+            search_defaults_to_all,
+            f"[{lang_name}] 搜索-输入非空关键词自动切换主状态为全部",
+            "搜索仍受学习中/已掌握主状态限制，或全部按钮激活态没有同步",
+        )
+
         precise_search_scope = ('matchWord' in content and 'matchMeaning' in content) and not ('matchExample' in content or 'matchExampleTrans' in content or 'matchExamplesArray' in content)
         self.assert_true(precise_search_scope, f"[{lang_name}] 搜索-核心字段精确匹配(单词/读音/释义，隔离例句与标签)", "searchQuery 过滤中混入了例句或标签等非核心字段的匹配")
 
@@ -2720,6 +2735,65 @@ class VocabAppTester:
                 app_ready,
                 f"[{lang_name}] 浏览器运行期-window.app 初始化且核心交互方法可调用",
                 "window.app 未正确实例化，或 toggleTheme/openWordModal/showDetailModal/switchTab 缺失",
+            )
+
+            search_all_status_result = driver.execute_script("""
+                const app = window.app;
+                const searchInput = document.getElementById('searchInput');
+                const originalState = {
+                  words: app.words,
+                  currentFilter: app.currentFilter,
+                  subFilter: app.subFilter,
+                  searchQuery: app.searchQuery,
+                  selectedPartOfSpeech: new Set(app.selectedPartOfSpeech || []),
+                  selectedTags: new Set(app.selectedTags || []),
+                  currentPage: app.currentPage,
+                  inputValue: searchInput?.value || '',
+                };
+                try {
+                  app.words = [
+                    {id:'search_all_learning', word:'跨状态搜索词', reading:'', meaning:'学习中结果', partOfSpeech:'名词', tags:[], mastered:false, rating:0, examples:[]},
+                    {id:'search_all_mastered', word:'跨状态搜索词', reading:'', meaning:'已掌握结果', partOfSpeech:'名词', tags:[], mastered:true, rating:0, examples:[]},
+                  ];
+                  app.subFilter = 'all';
+                  app.selectedPartOfSpeech = new Set();
+                  app.selectedTags = new Set();
+                  app.searchQuery = '';
+                  app.setMainFilter('learning');
+                  if (searchInput) searchInput.value = '跨状态搜索词';
+                  app.onSearchInput('跨状态搜索词');
+                  const visibleIds = Array.from(document.querySelectorAll('#wordList .word-card')).map(card => card.dataset.id);
+                  const allButton = document.querySelector('#filterPills .pill-btn[data-filter="all"]');
+                  const otherActiveButtons = Array.from(document.querySelectorAll('#filterPills .pill-btn.active')).filter(button => button !== allButton);
+                  const switchedToAll = app.currentFilter === 'all'
+                    && allButton?.classList.contains('active') === true
+                    && otherActiveButtons.length === 0;
+                  const searchesBothStatuses = visibleIds.includes('search_all_learning')
+                    && visibleIds.includes('search_all_mastered')
+                    && visibleIds.length === 2;
+                  app.clearSearch();
+                  return {
+                    switchedToAll,
+                    searchesBothStatuses,
+                    clearKeepsAll: app.currentFilter === 'all' && app.searchQuery === '' && searchInput?.value === '',
+                  };
+                } finally {
+                  app.words = originalState.words;
+                  app.subFilter = originalState.subFilter;
+                  app.searchQuery = originalState.searchQuery;
+                  app.selectedPartOfSpeech = originalState.selectedPartOfSpeech;
+                  app.selectedTags = originalState.selectedTags;
+                  app.currentPage = originalState.currentPage;
+                  if (searchInput) searchInput.value = originalState.inputValue;
+                  app.setMainFilter(originalState.currentFilter);
+                  app.currentPage = originalState.currentPage;
+                  app.renderWordList();
+                }
+            """)
+            self.assert_true(
+                bool(search_all_status_result and all(search_all_status_result.values())),
+                f"[{lang_name}] 浏览器搜索-非空关键词自动选中全部并跨学习状态搜索",
+                f"搜索未自动切到全部、遗漏另一学习状态或清空后错误恢复旧状态：{search_all_status_result}",
             )
 
             excel_export_result = driver.execute_async_script("""

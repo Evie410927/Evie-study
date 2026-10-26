@@ -11379,12 +11379,22 @@ class JpVocabApp {
 
     onSearchInput(val) {
     this.searchQuery = val ? val.trim() : '';
+    if (this.searchQuery) this.activateAllMainFilterForSearch();
     const clearBtn = document.getElementById('searchClearBtn');
     if (clearBtn) {
       clearBtn.style.display = this.searchQuery ? 'inline-flex' : 'none';
     }
     this.currentPage = 1;
     this.renderWordList();
+  }
+
+  activateAllMainFilterForSearch() {
+    this.currentFilter = 'all';
+    const filterPills = document.getElementById('filterPills');
+    if (!filterPills) return;
+    filterPills.querySelectorAll('.pill-btn').forEach(pill => pill.classList.remove('active'));
+    const allFilterButton = filterPills.querySelector('.pill-btn[data-filter="all"]');
+    if (allFilterButton) allFilterButton.classList.add('active');
   }
 
     clearSearch() {

@@ -234,6 +234,22 @@ def validate_app(errors: list[str], relative_path: str, contract: dict[str, obje
         if forbidden_markup in content:
             fail(errors, f"{relative_path}: 搜索框下方仍会渲染旧 Tag 摘要 {forbidden_markup}")
 
+    search_contract = contract["uiContracts"]["searchMainFilter"]
+    if search_contract.get("nonEmptyQueryMainFilter") != "all" or search_contract.get("clearQueryBehavior") != "keep-all-main-filter":
+        fail(errors, "质量契约：非空搜索必须切换到全部状态且清空后继续保持全部")
+    required_search_all_tokens = (
+        "if (this.searchQuery) this.activateAllMainFilterForSearch();",
+        "activateAllMainFilterForSearch() {",
+        "this.currentFilter = 'all';",
+        "const filterPills = document.getElementById('filterPills');",
+        "filterPills.querySelectorAll('.pill-btn').forEach(pill => pill.classList.remove('active'));",
+        "const allFilterButton = filterPills.querySelector('.pill-btn[data-filter=\"all\"]');",
+        "if (allFilterButton) allFilterButton.classList.add('active');",
+    )
+    for token in required_search_all_tokens:
+        if token not in content:
+            fail(errors, f"{relative_path}: 搜索默认全部状态契约缺少 {token}")
+
     word_editor_save_contract = contract["uiContracts"]["wordEditorSave"]
     save_button = parser.elements_by_id.get(word_editor_save_contract["buttonId"])
     if save_button is None:

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-10-26.1",
+  "contractVersion": "2026-10-26.2",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -22,7 +22,8 @@
       "docs/decisions/ADR-015-resource-library-language-isolation.md",
       "docs/decisions/ADR-016-vocabulary-excel-export.md",
       "docs/decisions/ADR-017-word-editor-first-interaction-save.md",
-      "docs/decisions/ADR-018-vocabulary-excel-roundtrip-import.md"
+      "docs/decisions/ADR-018-vocabulary-excel-roundtrip-import.md",
+      "docs/decisions/ADR-019-search-defaults-to-all-statuses.md"
     ]
   },
   "mirroredApps": [
@@ -185,6 +186,15 @@
       ],
       "indexedDbFallback": "await-queued-transaction-before-success-or-failure",
       "persistenceFailureBehavior": "rollback-in-memory-mutation-and-pending-cloud-state-keep-modal-open-with-draft"
+    },
+    "searchMainFilter": {
+      "inputId": "searchInput",
+      "nonEmptyQueryMainFilter": "all",
+      "activeButtonSelector": ".pill-btn[data-filter=\"all\"]",
+      "preserveSecondaryFilters": true,
+      "clearQueryBehavior": "keep-all-main-filter",
+      "resetPage": 1,
+      "mirroredAcrossLanguages": true
     },
     "wordEditorPartOfSpeechDropdown": {
       "newWordFullListInitialScroll": "top",

@@ -23924,12 +23924,22 @@ class KrVocabApp {
 
   onSearchInput(val) {
     this.searchQuery = (val || '').trim().toLowerCase();
+    if (this.searchQuery) this.activateAllMainFilterForSearch();
     this.currentPage = 1;
     const searchClearBtn = document.getElementById('searchClearBtn');
     if (searchClearBtn) {
       searchClearBtn.style.display = val ? 'flex' : 'none';
     }
     this.renderWordList();
+  }
+
+  activateAllMainFilterForSearch() {
+    this.currentFilter = 'all';
+    const filterPills = document.getElementById('filterPills');
+    if (!filterPills) return;
+    filterPills.querySelectorAll('.pill-btn').forEach(pill => pill.classList.remove('active'));
+    const allFilterButton = filterPills.querySelector('.pill-btn[data-filter="all"]');
+    if (allFilterButton) allFilterButton.classList.add('active');
   }
 
   clearSearch() {
