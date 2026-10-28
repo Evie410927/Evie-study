@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-10-26.2",
+  "contractVersion": "2026-10-28.1",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -23,7 +23,8 @@
       "docs/decisions/ADR-016-vocabulary-excel-export.md",
       "docs/decisions/ADR-017-word-editor-first-interaction-save.md",
       "docs/decisions/ADR-018-vocabulary-excel-roundtrip-import.md",
-      "docs/decisions/ADR-019-search-defaults-to-all-statuses.md"
+      "docs/decisions/ADR-019-search-defaults-to-all-statuses.md",
+      "docs/decisions/ADR-020-word-copy-control.md"
     ]
   },
   "mirroredApps": [
@@ -71,6 +72,21 @@
       ],
       "footerContainsStatusToggle": false,
       "partOfSpeechIsCustomTag": false
+    },
+    "wordCopyControl": {
+      "contexts": [
+        "list-card-title",
+        "detail-modal-title"
+      ],
+      "placement": "immediately-after-word",
+      "copiedValue": "word-field-only",
+      "control": "compact-icon-button",
+      "eventIsolation": "must-not-open-or-close-detail-modal",
+      "preferredApi": "navigator.clipboard.writeText",
+      "fallback": "temporary-textarea-document-execCommand-copy",
+      "successFeedback": "temporary-inline-check-and-toast",
+      "failureFeedback": "toast",
+      "mirroredAcrossLanguages": true
     },
     "inlinePronunciationNote": {
       "field": "pronunciationNote",

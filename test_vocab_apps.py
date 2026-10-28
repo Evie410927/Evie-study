@@ -2598,6 +2598,35 @@ class VocabAppTester:
             "列表右上角缺少常显可切换状态 Label、未位于星级左侧，或底部状态按钮未移除",
         )
 
+        word_copy_structure = all(token in content for token in (
+            'id="detailWordCopyBtn"',
+            'class="word-copy-btn"',
+            'data-copy-word-id="${this.escapeHtml(String(w.id))}"',
+            'aria-label="复制词条"',
+            'onpointerdown="event.stopPropagation()"',
+            'copyWordText(event, this.dataset.copyWordId, this)',
+            'copyWordText(event, null, this)',
+        ))
+        word_copy_behavior = all(token in content for token in (
+            'async copyWordText(event, wordId = null, button = null)',
+            "navigator.clipboard.writeText(text)",
+            "document.createElement('textarea')",
+            "document.execCommand('copy')",
+            "button.textContent = '✓';",
+            "button.classList.add('copied');",
+            "this.showToast(`✅ 已复制：${text}`)",
+        ))
+        word_copy_css = bool(re.search(
+            r'\.word-copy-btn\s*\{[^}]*flex:\s*0\s+0\s+22px;[^}]*width:\s*22px;[^}]*height:\s*22px;',
+            content,
+            re.DOTALL,
+        )) and '.word-copy-btn.copied' in content
+        self.assert_true(
+            word_copy_structure and word_copy_behavior and word_copy_css,
+            f"[{lang_name}] 词条复制-列表与详情标题右侧紧凑按钮、兼容回退及成功反馈",
+            "列表或详情缺少镜像复制按钮、事件隔离、Clipboard/execCommand 回退、22px 紧凑样式或原位成功反馈",
+        )
+
         # ---------------------------------------------------------------------
         # 触发语言专属特有检测点
         # ---------------------------------------------------------------------
@@ -2724,7 +2753,8 @@ class VocabAppTester:
             required_methods = (
                 'toggleTheme', 'openWordModal', 'showDetailModal', 'switchTab',
                 'syncWithSupabase', 'mergeCloudRows', 'submitCloudAuth',
-                'openResourceLibrary', 'handleResourceFiles', 'deleteResourceFile'
+                'openResourceLibrary', 'handleResourceFiles', 'deleteResourceFile',
+                'copyWordText'
             )
             app_ready = driver.execute_script(
                 "return !!window.app && arguments[0].every("
@@ -2735,6 +2765,73 @@ class VocabAppTester:
                 app_ready,
                 f"[{lang_name}] 浏览器运行期-window.app 初始化且核心交互方法可调用",
                 "window.app 未正确实例化，或 toggleTheme/openWordModal/showDetailModal/switchTab 缺失",
+            )
+
+            word_copy_result = driver.execute_async_script("""
+                const done = arguments[0];
+                (async () => {
+                  const app = window.app;
+                  const originalExecCommand = document.execCommand;
+                  const originalShowToast = app.showToast;
+                  const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+                  let copiedText = '';
+                  let lastToast = '';
+                  try {
+                    Object.defineProperty(navigator, 'clipboard', {
+                      configurable: true,
+                      value: { writeText: async text => { copiedText = String(text); } },
+                    });
+                    document.execCommand = command => {
+                      const textarea = document.querySelector('textarea[aria-hidden="true"]');
+                      if (command === 'copy' && textarea) copiedText = textarea.value;
+                      return command === 'copy';
+                    };
+                    app.showToast = message => { lastToast = String(message); };
+                    app.renderWordList();
+                    const listButton = document.querySelector('#wordList .word-card .word-copy-btn');
+                    const listCard = listButton?.closest('.word-card');
+                    const listWord = app.words.find(word => String(word.id) === String(listCard?.dataset.id));
+                    const detailWasClosed = !document.getElementById('detailModal')?.classList.contains('active');
+                    listButton?.click();
+                    await new Promise(resolve => setTimeout(resolve, 25));
+                    const listResult = Boolean(listButton && listWord)
+                      && copiedText === String(listWord.word)
+                      && listButton.textContent === '✓'
+                      && listButton.classList.contains('copied')
+                      && detailWasClosed
+                      && !document.getElementById('detailModal')?.classList.contains('active');
+
+                    copiedText = '';
+                    if (listWord) app.showDetailModal(listWord.id);
+                    const detailButton = document.getElementById('detailWordCopyBtn');
+                    detailButton?.click();
+                    await new Promise(resolve => setTimeout(resolve, 25));
+                    const detailResult = Boolean(detailButton && listWord)
+                      && copiedText === String(listWord.word)
+                      && detailButton.textContent === '✓'
+                      && detailButton.classList.contains('copied')
+                      && document.getElementById('detailModal')?.classList.contains('active')
+                      && String(app.currentDetailWordId) === String(listWord.id)
+                      && lastToast === `✅ 已复制：${listWord.word}`;
+                    app.closeDetailModal();
+                    done({listResult, detailResult});
+                  } catch (error) {
+                    done({error: String(error && (error.stack || error.message) || error)});
+                  } finally {
+                    app.showToast = originalShowToast;
+                    document.execCommand = originalExecCommand;
+                    if (clipboardDescriptor) {
+                      Object.defineProperty(navigator, 'clipboard', clipboardDescriptor);
+                    } else {
+                      delete navigator.clipboard;
+                    }
+                  }
+                })();
+            """)
+            self.assert_true(
+                bool(word_copy_result and word_copy_result.get('listResult') and word_copy_result.get('detailResult')),
+                f"[{lang_name}] 浏览器词条复制-列表/详情复制原词、原位反馈且父级点击隔离",
+                f"复制按钮未复制纯词条、未显示勾号反馈，或误触发详情父级行为：{word_copy_result}",
             )
 
             search_all_status_result = driver.execute_script("""

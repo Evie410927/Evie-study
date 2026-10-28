@@ -1396,6 +1396,49 @@ body::-webkit-scrollbar,
   font-weight: 500;
 }
 
+.word-text,
+.detail-word {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.word-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font: 700 15px/1 system-ui, sans-serif;
+  cursor: pointer;
+  opacity: 0.72;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.word-copy-btn:hover,
+.word-copy-btn:focus-visible {
+  color: var(--accent-primary);
+  background: rgba(236, 72, 153, 0.1);
+  border-color: rgba(236, 72, 153, 0.3);
+  opacity: 1;
+  outline: none;
+}
+
+.word-copy-btn.copied {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.1);
+  border-color: rgba(52, 211, 153, 0.32);
+  opacity: 1;
+}
+
 .word-card-pronunciation-note-add-btn {
   display: inline-flex;
   align-items: center;
@@ -17549,6 +17592,7 @@ body::-webkit-scrollbar,
             <button id="detailBackBtn" class="icon-btn" onclick="app.goBackDetailModal()" style="display:none;" title="返回上一个表达">←</button>
             <div class="detail-title-group">
               <h3 id="detailWord" class="detail-word">单词</h3>
+              <button id="detailWordCopyBtn" type="button" class="word-copy-btn" aria-label="复制词条" title="复制词条" onpointerdown="event.stopPropagation()" onclick="(window.app||window.vocabApp).copyWordText(event, null, this)">⧉</button>
             </div>
           </div>
           <div class="detail-header-actions">
@@ -25707,6 +25751,7 @@ class KrVocabApp {
           <div class="word-header">
             <div class="word-title-group">
               <span class="word-text">${this.escapeHtml(w.word)}</span>
+              <button type="button" class="word-copy-btn" data-copy-word-id="${this.escapeHtml(String(w.id))}" aria-label="复制词条" title="复制词条" onpointerdown="event.stopPropagation()" onclick="(window.app||window.vocabApp).copyWordText(event, this.dataset.copyWordId, this)">⧉</button>
             </div>
             <div class="word-header-actions">
               <button type="button" class="similar-word-status-btn word-card-status-btn ${w.mastered ? 'status-mastered' : 'status-learning'}" data-mastered-word-id="${this.escapeHtml(String(w.id))}" aria-pressed="${w.mastered ? 'true' : 'false'}" onclick="event.stopPropagation(); (window.app||window.vocabApp).toggleMastered('${w.id}')" title="${w.mastered ? '点击切换为学习中' : '点击切换为已掌握'}">${w.mastered ? '✅ 已掌握' : '🔄 学习中'}</button>
@@ -26614,6 +26659,75 @@ class KrVocabApp {
     utterance.lang = 'ko-KR';
     utterance.rate = 0.88;
     window.speechSynthesis.speak(utterance);
+  }
+
+  async copyWordText(event, wordId = null, button = null) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    const targetId = wordId == null ? this.currentDetailWordId : wordId;
+    const word = Array.isArray(this.words)
+      ? this.words.find(item => item && String(item.id) === String(targetId))
+      : null;
+    const text = String(word?.word || '').trim();
+    if (!text) {
+      this.showToast('⚠️ 没有可复制的词条');
+      return false;
+    }
+
+    let copied = false;
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      }
+    } catch (error) {
+      copied = false;
+    }
+
+    if (!copied) {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.readOnly = true;
+      textarea.setAttribute('aria-hidden', 'true');
+      textarea.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none;';
+      const host = document.body;
+      if (host) {
+        host.appendChild(textarea);
+        textarea.select();
+        textarea.setSelectionRange(0, text.length);
+        try {
+          copied = typeof document.execCommand === 'function' && document.execCommand('copy');
+        } catch (error) {
+          copied = false;
+        }
+        textarea.remove();
+      }
+    }
+
+    if (!copied) {
+      this.showToast('⚠️ 复制失败，请长按词条手动复制');
+      return false;
+    }
+
+    if (button) {
+      if (button._copyFeedbackTimer) clearTimeout(button._copyFeedbackTimer);
+      button.textContent = '✓';
+      button.classList.add('copied');
+      button.setAttribute('aria-label', '已复制');
+      button.title = '已复制';
+      button._copyFeedbackTimer = setTimeout(() => {
+        if (!button.isConnected) return;
+        button.textContent = '⧉';
+        button.classList.remove('copied');
+        button.setAttribute('aria-label', '复制词条');
+        button.title = '复制词条';
+        delete button._copyFeedbackTimer;
+      }, 1200);
+    }
+    this.showToast(`✅ 已复制：${text}`);
+    return true;
   }
 
   openExcelExportModal() {
