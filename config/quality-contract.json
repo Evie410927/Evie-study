@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-10-28.1",
+  "contractVersion": "2026-10-28.2",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -81,6 +81,10 @@
       "placement": "immediately-after-word",
       "copiedValue": "word-field-only",
       "control": "compact-icon-button",
+      "controlSizePx": 18,
+      "iconFontSizePx": 12,
+      "listTitleGapPx": 6,
+      "detailTitleGapPx": 5,
       "eventIsolation": "must-not-open-or-close-detail-modal",
       "preferredApi": "navigator.clipboard.writeText",
       "fallback": "temporary-textarea-document-execCommand-copy",

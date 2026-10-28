@@ -2617,14 +2617,18 @@ class VocabAppTester:
             "this.showToast(`✅ 已复制：${text}`)",
         ))
         word_copy_css = bool(re.search(
-            r'\.word-copy-btn\s*\{[^}]*flex:\s*0\s+0\s+22px;[^}]*width:\s*22px;[^}]*height:\s*22px;',
+            r'\.word-copy-btn\s*\{[^}]*flex:\s*0\s+0\s+18px;[^}]*width:\s*18px;[^}]*height:\s*18px;[^}]*font:\s*700\s+12px/1',
             content,
             re.DOTALL,
-        )) and '.word-copy-btn.copied' in content
+        )) and '.word-copy-btn.copied' in content and bool(re.search(
+            r'\.word-title-group\s*\{[^}]*gap:\s*6px;', content, re.DOTALL
+        )) and bool(re.search(
+            r'\.detail-title-group\s*\{[^}]*gap:\s*5px;', content, re.DOTALL
+        ))
         self.assert_true(
             word_copy_structure and word_copy_behavior and word_copy_css,
             f"[{lang_name}] 词条复制-列表与详情标题右侧紧凑按钮、兼容回退及成功反馈",
-            "列表或详情缺少镜像复制按钮、事件隔离、Clipboard/execCommand 回退、22px 紧凑样式或原位成功反馈",
+            "列表或详情缺少镜像复制按钮、事件隔离、Clipboard/execCommand 回退、18px 小型样式、紧凑间距或原位成功反馈",
         )
 
         # ---------------------------------------------------------------------
