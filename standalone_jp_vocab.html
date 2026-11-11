@@ -4041,7 +4041,7 @@ body::-webkit-scrollbar,
             </div>
             <div class="review-filter-grid">
               <select id="reviewQuestionModeSelect" class="review-filter-select" title="题型">
-                <option value="mixed" selected>题型：混合</option><option value="recognition">题型：翻卡</option><option value="meaning-input">题型：看释义写词</option><option value="dictation">题型：听写</option><option value="example-cloze">题型：例句填空</option>
+                <option value="mixed" selected>题型：混合</option><option value="recognition">题型：翻卡</option><option value="meaning-input">题型：看释义写词</option><option value="example-cloze">题型：例句填空</option>
               </select>
               <select id="reviewScopeSelect" class="review-filter-select" title="复习范围">
                 <option value="learning" selected>范围：学习中</option><option value="all">范围：全部</option><option value="mastered">范围：已掌握</option><option value="easy-forget">范围：易忘</option><option value="last-wrong">范围：上次答错</option><option value="recent">范围：近30天新增</option>
@@ -14280,7 +14280,7 @@ class JpVocabApp {
 
   startReviewSession() {
     const modeSelect = document.getElementById('reviewQuestionModeSelect');
-    const allowedModes = ['mixed', 'recognition', 'meaning-input', 'dictation', 'example-cloze'];
+    const allowedModes = ['mixed', 'recognition', 'meaning-input', 'example-cloze'];
     this.reviewQuestionMode = allowedModes.includes(modeSelect?.value) ? modeSelect.value : 'mixed';
     if (this.reviewSessionKind === 'today') {
       this.reviewList = this.getTodayReviewWords();
@@ -14320,7 +14320,7 @@ class JpVocabApp {
   }
 
   resolveReviewQuestionMode(word) {
-    const mixedModes = ['recognition', 'meaning-input', 'dictation', 'example-cloze'];
+    const mixedModes = ['recognition', 'meaning-input', 'example-cloze'];
     let mode = this.reviewQuestionMode === 'mixed'
       ? mixedModes[this.currentReviewIndex % mixedModes.length]
       : this.reviewQuestionMode;
@@ -14386,10 +14386,6 @@ class JpVocabApp {
       setText('cardFrontWord', word.word);
       setText('cardFrontReading', word.reading || '');
       if (frontHint) frontHint.textContent = '先回忆释义，再点击翻卡 ↺';
-    } else if (this.reviewCurrentQuestionMode === 'dictation') {
-      setText('cardFrontWord', '🎧 听音写词');
-      setText('cardFrontReading', '点击扬声器，可重复播放');
-      if (frontHint) frontHint.textContent = '不要翻卡，直接输入听到的词';
     } else if (this.reviewCurrentQuestionMode === 'example-cloze' && cloze) {
       setText('cardFrontWord', cloze.prompt);
       setText('cardFrontReading', cloze.translation);

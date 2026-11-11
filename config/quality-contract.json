@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-11-11.1",
+  "contractVersion": "2026-11-11.2",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -68,7 +68,7 @@
       "sessionEntrances": ["today-due", "custom-free-review"],
       "todayOrder": "nextReviewAt-ascending",
       "legacyUnscheduledNewWordLimit": 10,
-      "questionModes": ["recognition", "meaning-input", "dictation", "example-cloze", "mixed"],
+      "questionModes": ["recognition", "meaning-input", "example-cloze", "mixed"],
       "grades": ["again", "hard", "good", "easy"],
       "customScopes": ["all", "learning", "mastered", "easy-forget", "last-wrong", "recent"],
       "customFilters": ["tag", "part-of-speech", "exact-rating", "count"],

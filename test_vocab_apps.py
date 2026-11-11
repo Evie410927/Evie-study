@@ -2120,11 +2120,14 @@ class VocabAppTester:
             '<option value="mixed" selected>题型：混合</option>',
             '<option value="recognition">题型：翻卡</option>',
             '<option value="meaning-input">题型：看释义写词</option>',
-            '<option value="dictation">题型：听写</option>',
             '<option value="example-cloze">题型：例句填空</option>',
-            "const mixedModes = ['recognition', 'meaning-input', 'dictation', 'example-cloze']",
+            "const mixedModes = ['recognition', 'meaning-input', 'example-cloze']",
+        )) and all(token not in content for token in (
+            '<option value="dictation">',
+            "this.reviewCurrentQuestionMode === 'dictation'",
+            '听音写词',
         ))
-        self.assert_true(review_question_modes, f"[{lang_name}] 主动回忆-翻卡、释义写词、听写、例句填空与混合五种题型", "五种题型选项或混合轮换逻辑不完整")
+        self.assert_true(review_question_modes, f"[{lang_name}] 主动回忆-翻卡、释义写词、例句填空与混合四种题型且无听音写词", "四种题型选项、混合轮换或听音写词移除不完整")
 
         review_srs_contract = all(token in content for token in (
             'getNormalizedSrsState(word)', 'getTodayReviewWords(now = Date.now())', 'unscheduled.push(word)',
