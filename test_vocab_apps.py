@@ -2106,6 +2106,59 @@ class VocabAppTester:
         self.assert_true(review_similarity_disabled, f"[{lang_name}] 复习出卡顺序-不再执行相似表达聚类", "startReviewSession 仍在调用相近表达聚类算法")
 
         # ---------------------------------------------------------------------
+        # 测试点 32A: 今日到期队列、主动回忆、自定义范围与错词回炉
+        # ---------------------------------------------------------------------
+        review_training_dom = all(token in content for token in (
+            'id="reviewSessionSetup"', 'id="startTodayReviewBtn"', 'id="startCustomReviewBtn"',
+            'id="reviewQuestionModeSelect"', 'id="reviewScopeSelect"', 'id="reviewTagSelect"',
+            'id="reviewPartOfSpeechSelect"', 'id="reviewRatingSelect"', 'id="reviewCountSelect"',
+            'id="reviewAnswerInput"', 'id="reviewAnswerSubmitBtn"', 'id="btnReviewHard"', 'id="btnReviewEasy"',
+        ))
+        self.assert_true(review_training_dom, f"[{lang_name}] 复习训练-今日/自由双入口、组合筛选、输入与四级反馈 DOM 完整", "复习训练设置、输入区或四级反馈按钮缺失")
+
+        review_question_modes = all(token in content for token in (
+            '<option value="mixed" selected>题型：混合</option>',
+            '<option value="recognition">题型：翻卡</option>',
+            '<option value="meaning-input">题型：看释义写词</option>',
+            '<option value="dictation">题型：听写</option>',
+            '<option value="example-cloze">题型：例句填空</option>',
+            "const mixedModes = ['recognition', 'meaning-input', 'dictation', 'example-cloze']",
+        ))
+        self.assert_true(review_question_modes, f"[{lang_name}] 主动回忆-翻卡、释义写词、听写、例句填空与混合五种题型", "五种题型选项或混合轮换逻辑不完整")
+
+        review_srs_contract = all(token in content for token in (
+            'getNormalizedSrsState(word)', 'getTodayReviewWords(now = Date.now())', 'unscheduled.push(word)',
+            '.slice(0, 10)',
+            'word.srs = { nextReviewAt, lastReviewedAt: now, intervalDays, ease, repetitions, lapseCount, correctStreak, lastResult: grade }',
+            'word.fieldUpdatedAt.srs = now', "grade === 'again' ? now + 10 * 60000",
+            'await this.confirmLastSaveDataDurableFallback()',
+        ))
+        self.assert_true(review_srs_contract, f"[{lang_name}] 今日复习-SRS 到期排序、新词上限、四级调度及双层耐久保存", "SRS 字段、到期队列、新词上限或持久化回退不完整")
+
+        review_custom_scope = all(token in content for token in (
+            '<option value="learning" selected>范围：学习中</option>', '<option value="all">范围：全部</option>',
+            '<option value="mastered">范围：已掌握</option>', '<option value="easy-forget">范围：易忘</option>',
+            '<option value="last-wrong">范围：上次答错</option>', '<option value="recent">范围：近30天新增</option>',
+            "selectedRating !== '' && this.normalizeRating(word.rating) !== Number(selectedRating)",
+            "countValue === 'all' ? result.length",
+        ))
+        self.assert_true(review_custom_scope, f"[{lang_name}] 自由复习-状态、Tag、词性、星级和数量组合筛选", "自由复习范围或组合筛选逻辑缺失")
+
+        review_cloze_safety = all(token in content for token in (
+            'getReviewCloze(word)', 'const index = source.indexOf(target);',
+            "if (mode === 'example-cloze' && !this.getReviewCloze(word)) mode = 'meaning-input';",
+            "prompt: `${source.slice(0, index)}＿＿＿${source.slice(index + target.length)}`",
+        ))
+        self.assert_true(review_cloze_safety, f"[{lang_name}] 例句填空-只遮盖现存精确词形且缺失时回退释义写词", "例句填空可能猜测活用形、修改例句或缺少安全回退")
+
+        review_retry_loop = all(token in content for token in (
+            'scheduleReviewRetry(word)', 'if (retryCount >= 2) return false;',
+            'this.currentReviewIndex + 4', "grade === 'again' || grade === 'hard'",
+            'this.reviewRetryTotal += 1;',
+        ))
+        self.assert_true(review_retry_loop, f"[{lang_name}] 错词循环-约三张后回炉且每词每轮最多两次", "错词回炉位置、低等级触发或次数上限不完整")
+
+        # ---------------------------------------------------------------------
         # 测试点 33: 分页工具条位于独立滚动列表之外并保持紧凑固定
         # ---------------------------------------------------------------------
         fixed_pagination_footer = all(token in content for token in (
@@ -2167,7 +2220,7 @@ class VocabAppTester:
             "const options = this.getExistingTagOptions(excludedTags)",
             "option.className = 'inline-existing-tag-option'",
             "this.mountExistingTagDropdown(editorDiv",
-            'grid-template-columns: 1fr 1fr;',
+            "dropdown.className = 'inline-existing-tags-dropdown'",
             "tag !== '\\u6613\\u6df7'",
         )) and all(token not in content for token in (
             'class="inline-quick-tag-chip"',
@@ -5551,6 +5604,118 @@ class VocabAppTester:
                 bool(review_order_runtime and all(review_order_runtime.values())),
                 f"[{lang_name}] 浏览器复习出卡顺序-严格四项且四种排序真实生效",
                 f"复习出卡选项或排序运行结果异常: {review_order_runtime}",
+            )
+
+            review_training_runtime = driver.execute_async_script("""
+                const done = arguments[arguments.length - 1];
+                (async () => {
+                  const app = window.app;
+                  if (!app) { done(null); return; }
+                  const original = {
+                    words:app.words, reviewList:app.reviewList, currentReviewIndex:app.currentReviewIndex,
+                    reviewSessionKind:app.reviewSessionKind, reviewQuestionMode:app.reviewQuestionMode,
+                    retryCounts:app.reviewRetryCounts, retryTotal:app.reviewRetryTotal,
+                    storage:localStorage.getItem(app.STORAGE_KEY),
+                    pending:localStorage.getItem(app.PENDING_CLOUD_KEY)
+                  };
+                  const now = Date.now();
+                  const makeWord = (id, options = {}) => ({
+                    id, word:options.word || id, reading:'', meaning:options.meaning || `释义-${id}`,
+                    partOfSpeech:options.partOfSpeech || '名词', tags:options.tags || [],
+                    mastered:options.mastered === true, rating:options.rating || 0,
+                    createdAt:options.createdAt || now, examples:options.examples || [],
+                    ...(options.srs ? {srs:options.srs} : {})
+                  });
+                  try {
+                    const dueOld = makeWord('due-old', {srs:{nextReviewAt:now-2000,lastReviewedAt:now-10000}});
+                    const dueNew = makeWord('due-new', {srs:{nextReviewAt:now-1000,lastReviewedAt:now-9000}});
+                    const future = makeWord('future', {srs:{nextReviewAt:now+86400000,lastReviewedAt:now-5000}});
+                    const newWords = Array.from({length:12}, (_, index) => makeWord(`new-${index}`, {createdAt:now-index}));
+                    const masteredNew = makeWord('mastered-new', {mastered:true});
+                    app.words = [dueNew, future, ...newWords, masteredNew, dueOld];
+                    const today = app.getTodayReviewWords(now);
+
+                    const customA = makeWord('custom-a', {tags:['重点'], partOfSpeech:'动词', rating:3});
+                    const customB = makeWord('custom-b', {tags:['重点'], partOfSpeech:'名词', rating:3});
+                    const customC = makeWord('custom-c', {tags:['其他'], partOfSpeech:'动词', rating:3});
+                    app.words = [customA, customB, customC];
+                    document.getElementById('reviewScopeSelect').value = 'all';
+                    app.refreshReviewSetupOptions();
+                    document.getElementById('reviewTagSelect').value = '重点';
+                    document.getElementById('reviewPartOfSpeechSelect').value = '动词';
+                    document.getElementById('reviewRatingSelect').value = '3';
+                    document.getElementById('reviewCountSelect').value = '10';
+                    const custom = app.getCustomReviewWords();
+
+                    const cloze = makeWord('cloze', {word:'目标词', examples:[{example:'这里有目标词可以填写。',trans:'这里有目标词。'}]});
+                    const fallback = makeWord('fallback', {word:'原形', examples:[{example:'这里只出现了活用形。',trans:'测试。'}]});
+                    app.reviewQuestionMode = 'example-cloze';
+                    app.reviewList = [cloze];
+                    app.currentReviewIndex = 0;
+                    app.renderCurrentCard();
+                    const clozeMode = app.reviewCurrentQuestionMode;
+                    const clozePrompt = document.getElementById('cardFrontWord')?.textContent || '';
+                    const fallbackMode = app.resolveReviewQuestionMode(fallback);
+
+                    const retryWords = Array.from({length:5}, (_, index) => makeWord(`retry-${index}`));
+                    app.reviewList = [...retryWords];
+                    app.currentReviewIndex = 0;
+                    app.reviewRetryCounts = new Map();
+                    app.reviewRetryTotal = 0;
+                    const retryOne = app.scheduleReviewRetry(retryWords[0]);
+                    const retryTwo = app.scheduleReviewRetry(retryWords[0]);
+                    const retryThree = app.scheduleReviewRetry(retryWords[0]);
+                    const retryAtExpectedPosition = app.reviewList[4]?.id === retryWords[0].id;
+                    const retryPositionAndLimit = retryOne && retryTwo && !retryThree
+                      && retryAtExpectedPosition && app.reviewRetryTotal === 2;
+
+                    const persistedWord = makeWord('persist-srs');
+                    app.words = [persistedWord];
+                    app.reviewList = [persistedWord];
+                    app.currentReviewIndex = 0;
+                    app.reviewRetryCounts = new Map();
+                    app.reviewRetryTotal = 0;
+                    if (app.refreshWordFingerprints) app.refreshWordFingerprints();
+                    const persisted = await app.persistReviewGrade('again', true);
+                    const stored = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]')[0];
+                    const pending = app.getPendingCloudChanges();
+                    const pendingMeta = app.getPendingCloudMeta(pending['persist-srs']);
+
+                    done({
+                      todayDueFirst:today.slice(0,2).map(word => word.id).join(',') === 'due-old,due-new',
+                      todayIncludesAllDueAndTenNew:today.length === 12 && today.filter(word => word.id.startsWith('new-')).length === 10,
+                      todayExcludesFutureAndMastered:!today.some(word => word.id === 'future' || word.id === 'mastered-new'),
+                      customCombinedFilter:custom.length === 1 && custom[0].id === 'custom-a',
+                      clozeExactOnly:clozeMode === 'example-cloze' && clozePrompt.includes('＿＿＿') && !clozePrompt.includes('目标词'),
+                      clozeFallback:fallbackMode === 'meaning-input',
+                      retryPositionAndLimit,
+                      srsPersisted:persisted && stored?.srs?.lastResult === 'again' && stored.srs.nextReviewAt > now,
+                      srsCloudPending:pendingMeta.changedAt > 0 && pendingMeta.fields.includes('srs'),
+                      normalizedAnswer:app.normalizeReviewAnswer('  ＡＢＣ  ') === 'abc'
+                    });
+                  } catch (error) {
+                    done({error:String(error && error.message || error)});
+                  } finally {
+                    app.words = original.words;
+                    app.reviewList = original.reviewList;
+                    app.currentReviewIndex = original.currentReviewIndex;
+                    app.reviewSessionKind = original.reviewSessionKind;
+                    app.reviewQuestionMode = original.reviewQuestionMode;
+                    app.reviewRetryCounts = original.retryCounts;
+                    app.reviewRetryTotal = original.retryTotal;
+                    if (original.storage === null) localStorage.removeItem(app.STORAGE_KEY);
+                    else localStorage.setItem(app.STORAGE_KEY, original.storage);
+                    if (original.pending === null) localStorage.removeItem(app.PENDING_CLOUD_KEY);
+                    else localStorage.setItem(app.PENDING_CLOUD_KEY, original.pending);
+                    if (app.refreshWordFingerprints) app.refreshWordFingerprints();
+                    app.renderCurrentCard();
+                  }
+                })();
+            """)
+            self.assert_true(
+                bool(review_training_runtime and not review_training_runtime.get('error') and all(review_training_runtime.values())),
+                f"[{lang_name}] 浏览器复习训练-今日队列、组合筛选、填空回退、错词回炉与 SRS 持久化",
+                f"新复习训练运行结果异常: {review_training_runtime}",
             )
 
             browser_logs = driver.get_log('browser')

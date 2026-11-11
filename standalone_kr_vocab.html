@@ -2682,6 +2682,45 @@ body::-webkit-scrollbar,
   max-width: 112px;
 }
 
+.review-session-setup {
+  width: 100%;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card-solid);
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.review-entry-row,
+.review-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  width: 100%;
+}
+
+.review-filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.review-setup-btn,
+.review-filter-select {
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.review-setup-btn { cursor: pointer; font-weight: 700; padding: 8px 10px; }
+.review-setup-btn.primary { border-color: rgba(236, 72, 153, 0.55); background: rgba(236, 72, 153, 0.14); color: var(--accent-primary); }
+.review-filter-select { padding: 6px 8px; }
+.review-session-summary { color: var(--text-muted); font-size: 11px; text-align: center; }
+
 @media (max-width: 480px) {
   .rating-star {
     width: 16px;
@@ -2876,8 +2915,8 @@ body::-webkit-scrollbar,
 
 .review-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
   width: 100%;
   margin-top: auto;
   padding-bottom: 0px;
@@ -2886,7 +2925,7 @@ body::-webkit-scrollbar,
 }
 
 .review-btn {
-  padding: 14px 8px;
+  padding: 10px 4px;
   border-radius: var(--radius-md);
   border: none;
   font-weight: 600;
@@ -2906,11 +2945,29 @@ body::-webkit-scrollbar,
 }
 
 .btn-easy-forget {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  background: linear-gradient(135deg, #ef4444 0%, #be123c 100%);
 }
+
+.btn-review-hard { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
 
 .btn-remembered {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.btn-review-easy { background: linear-gradient(135deg, #38bdf8 0%, #2563eb 100%); }
+
+.review-answer-area { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; flex-shrink: 0; }
+.review-answer-area[hidden] { display: none !important; }
+.review-answer-input { min-width: 0; border: 1px solid var(--border-color); border-radius: 9px; background: var(--bg-input); color: var(--text-primary); padding: 10px 12px; font: inherit; }
+.review-answer-submit { width: auto; min-width: 88px; padding: 10px 14px; }
+.review-answer-feedback { grid-column: 1 / -1; min-height: 18px; font-size: 12px; text-align: center; color: var(--text-muted); }
+.review-answer-feedback.correct { color: #34d399; }
+.review-answer-feedback.incorrect { color: #fb7185; }
+.card-answer-word { color: var(--accent-primary); font-size: 26px; font-weight: 800; }
+
+@media (max-width: 560px) {
+  .review-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .review-btn { font-size: 12px; }
 }
 
 .btn-primary {
@@ -17316,6 +17373,25 @@ body::-webkit-scrollbar,
 
     <section id="tab-review" class="tab-view">
         <div class="flashcard-container">
+          <div id="reviewSessionSetup" class="review-session-setup">
+            <div class="review-entry-row">
+              <button id="startTodayReviewBtn" type="button" class="review-setup-btn primary" onclick="if(window.app) window.app.startTodayReviewSession()">📅 今日复习 <span id="todayReviewCount">0</span></button>
+              <button id="startCustomReviewBtn" type="button" class="review-setup-btn" onclick="if(window.app) window.app.startCustomReviewSession()">▶ 开始自由复习</button>
+            </div>
+            <div class="review-filter-grid">
+              <select id="reviewQuestionModeSelect" class="review-filter-select" title="题型">
+                <option value="mixed" selected>题型：混合</option><option value="recognition">题型：翻卡</option><option value="meaning-input">题型：看释义写词</option><option value="dictation">题型：听写</option><option value="example-cloze">题型：例句填空</option>
+              </select>
+              <select id="reviewScopeSelect" class="review-filter-select" title="复习范围">
+                <option value="learning" selected>范围：学习中</option><option value="all">范围：全部</option><option value="mastered">范围：已掌握</option><option value="easy-forget">范围：易忘</option><option value="last-wrong">范围：上次答错</option><option value="recent">范围：近30天新增</option>
+              </select>
+              <select id="reviewTagSelect" class="review-filter-select" title="Tag"><option value="">Tag：全部</option></select>
+              <select id="reviewPartOfSpeechSelect" class="review-filter-select" title="词性"><option value="">词性：全部</option></select>
+              <select id="reviewRatingSelect" class="review-filter-select" title="星级"><option value="">星级：全部</option><option value="0">无星</option><option value="1">一星</option><option value="2">二星</option><option value="3">三星</option><option value="4">四星</option><option value="5">五星</option></select>
+              <select id="reviewCountSelect" class="review-filter-select" title="本轮数量"><option value="10">数量：10</option><option value="20" selected>数量：20</option><option value="50">数量：50</option><option value="all">数量：全部</option></select>
+            </div>
+            <div id="reviewSessionSummary" class="review-session-summary">今日队列会优先安排到期词，并加入最多 10 个新词</div>
+          </div>
           <div class="review-progress-bar">
             <div id="reviewProgressFill" class="review-progress-fill"></div>
           </div>
@@ -17342,6 +17418,7 @@ body::-webkit-scrollbar,
 
               <div class="card-face card-face-back">
                 <div id="cardBackRating" class="review-star-slot"></div>
+                <div id="cardBackAnswerWord" class="card-answer-word"></div>
                 <div class="card-meaning-text" id="cardBackMeaning">adv. 本来就，偏偏，再加上</div>
                 <div id="cardBackUserNote" class="review-user-note-slot"></div>
                 <div class="card-example-block" id="cardBackExampleBlock">
@@ -17356,14 +17433,28 @@ body::-webkit-scrollbar,
             </div>
           </div>
 
-          <div class="review-actions">
-            <button class="review-btn btn-easy-forget" id="btnEasyForget" onclick="if(window.app) window.app.assessReview('easy-forget')">
-              <span>📌</span>
-              <span>易忘</span>
+          <div id="reviewAnswerArea" class="review-answer-area" hidden>
+            <input id="reviewAnswerInput" class="review-answer-input" type="text" autocomplete="off" autocapitalize="off" placeholder="输入答案" onkeydown="if(event.key === 'Enter') { event.preventDefault(); if(window.app) window.app.handleReviewAnswerAction(); }">
+            <button id="reviewAnswerSubmitBtn" type="button" class="btn-primary review-answer-submit" onclick="if(window.app) window.app.handleReviewAnswerAction()">检查答案</button>
+            <div id="reviewAnswerFeedback" class="review-answer-feedback" aria-live="polite"></div>
+          </div>
+
+          <div id="reviewActions" class="review-actions">
+            <button class="review-btn btn-easy-forget" id="btnEasyForget" onclick="if(window.app) window.app.assessReview('again')">
+              <span>↩️</span>
+              <span>忘记</span>
             </button>
-            <button class="review-btn btn-remembered" id="btnRemembered" onclick="if(window.app) window.app.assessReview('remembered')">
+            <button class="review-btn btn-review-hard" id="btnReviewHard" onclick="if(window.app) window.app.assessReview('hard')">
+              <span>🤔</span>
+              <span>模糊</span>
+            </button>
+            <button class="review-btn btn-remembered" id="btnRemembered" onclick="if(window.app) window.app.assessReview('good')">
               <span>✅</span>
-              <span>记住了</span>
+              <span>记住</span>
+            </button>
+            <button class="review-btn btn-review-easy" id="btnReviewEasy" onclick="if(window.app) window.app.assessReview('easy')">
+              <span>⚡</span>
+              <span>熟练</span>
             </button>
           </div>
         </div>
@@ -21931,6 +22022,13 @@ class KrVocabApp {
     this.pageSize = 50;
     this.ratingSort = 'createdDesc';
     this.reviewRatingSort = 'createdDesc';
+    this.reviewSessionKind = 'today';
+    this.reviewQuestionMode = 'mixed';
+    this.reviewCurrentQuestionMode = 'recognition';
+    this.reviewAnswerChecked = false;
+    this.reviewRetryCounts = new Map();
+    this.reviewRetryTotal = 0;
+    this._reviewAssessmentInFlight = false;
     this.RESOURCE_DB_NAME = 'evie_vocab_resource_library_v1';
     this.RESOURCE_STORE_NAME = 'files';
     this.RESOURCE_DELETION_STORE_NAME = 'deletions';
@@ -22616,6 +22714,7 @@ class KrVocabApp {
   onReviewRatingSortChange(value) {
     const allowedSorts = ['createdDesc', 'createdAsc', 'desc', 'asc'];
     this.reviewRatingSort = allowedSorts.includes(value) ? value : 'createdDesc';
+    this.reviewSessionKind = 'custom';
     this.startReviewSession();
   }
 
@@ -24029,7 +24128,8 @@ class KrVocabApp {
       if (paginationBar) paginationBar.style.display = showListNavigation ? 'flex' : 'none';
 
       if (tabId === 'tab-review') {
-        this.startReviewSession();
+        this.refreshReviewSetupOptions();
+        this.startTodayReviewSession();
       }
 
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -24040,7 +24140,7 @@ class KrVocabApp {
 
   toggleCardFlip() {
     const flashcard = document.getElementById('flashcard');
-    if (flashcard) {
+    if (flashcard && (this.reviewCurrentQuestionMode === 'recognition' || this.reviewAnswerChecked)) {
       flashcard.classList.toggle('is-flipped');
     }
   }
@@ -26519,134 +26619,416 @@ class KrVocabApp {
     return result;
   }
 
-  startReviewSession() {
-    this.reviewList = this.words.filter(w => !w.mastered);
-    if (this.reviewList.length === 0) {
-      this.reviewList = [...this.words];
-    }
+  getNormalizedSrsState(word) {
+    const raw = word && word.srs && typeof word.srs === 'object' ? word.srs : {};
+    const finite = (value, fallback = 0, min = 0, max = Number.MAX_SAFE_INTEGER) => {
+      const number = Number(value);
+      return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;
+    };
+    return {
+      nextReviewAt: finite(raw.nextReviewAt),
+      lastReviewedAt: finite(raw.lastReviewedAt),
+      intervalDays: finite(raw.intervalDays, 0, 0, 36500),
+      ease: finite(raw.ease, 2.5, 1.3, 4),
+      repetitions: Math.round(finite(raw.repetitions, 0, 0, 100000)),
+      lapseCount: Math.round(finite(raw.lapseCount, 0, 0, 100000)),
+      correctStreak: Math.round(finite(raw.correctStreak, 0, 0, 100000)),
+      lastResult: ['again', 'hard', 'good', 'easy'].includes(raw.lastResult) ? raw.lastResult : ''
+    };
+  }
+
+  getTodayReviewWords(now = Date.now()) {
+    const scheduled = [];
+    const unscheduled = [];
+    (Array.isArray(this.words) ? this.words : []).forEach(word => {
+      if (!word || !word.id) return;
+      const state = this.getNormalizedSrsState(word);
+      if (state.nextReviewAt > 0 && state.nextReviewAt <= now) scheduled.push(word);
+      else if (state.lastReviewedAt === 0 && state.nextReviewAt === 0 && !word.mastered) unscheduled.push(word);
+    });
+    scheduled.sort((a, b) => this.getNormalizedSrsState(a).nextReviewAt - this.getNormalizedSrsState(b).nextReviewAt);
+    const newWords = this.sortWordsByCreatedAt(unscheduled, 'createdDesc').slice(0, 10);
+    return scheduled.concat(newWords);
+  }
+
+  refreshReviewSetupOptions() {
+    const fillSelect = (id, values, label) => {
+      const select = document.getElementById(id);
+      if (!select) return;
+      const previousValue = select.value;
+      const uniqueValues = [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+      select.innerHTML = `<option value="">${this.escapeHtml(label)}：全部</option>` + uniqueValues.map(value => `<option value="${this.escapeHtml(value)}">${this.escapeHtml(label)}：${this.escapeHtml(value)}</option>`).join('');
+      if (uniqueValues.includes(previousValue)) select.value = previousValue;
+    };
+    const words = Array.isArray(this.words) ? this.words : [];
+    fillSelect('reviewTagSelect', words.flatMap(word => Array.isArray(word?.tags) ? word.tags : []), 'Tag');
+    fillSelect('reviewPartOfSpeechSelect', words.map(word => word?.partOfSpeech), '词性');
+    const todayCount = document.getElementById('todayReviewCount');
+    if (todayCount) todayCount.textContent = `${this.getTodayReviewWords().length}`;
+  }
+
+  getCustomReviewWords() {
+    const scope = document.getElementById('reviewScopeSelect')?.value || 'learning';
+    const selectedTag = document.getElementById('reviewTagSelect')?.value || '';
+    const selectedPartOfSpeech = document.getElementById('reviewPartOfSpeechSelect')?.value || '';
+    const selectedRating = document.getElementById('reviewRatingSelect')?.value ?? '';
+    const countValue = document.getElementById('reviewCountSelect')?.value || '20';
+    const recentBoundary = Date.now() - 30 * 86400000;
+    let result = (Array.isArray(this.words) ? this.words : []).filter(word => {
+      if (!word) return false;
+      if (scope === 'learning' && word.mastered) return false;
+      if (scope === 'mastered' && !word.mastered) return false;
+      if (scope === 'easy-forget' && !(Array.isArray(word.tags) && word.tags.includes('易忘'))) return false;
+      if (scope === 'last-wrong' && !['again', 'hard'].includes(this.getNormalizedSrsState(word).lastResult)) return false;
+      if (scope === 'recent' && Number(word.createdAt || 0) < recentBoundary) return false;
+      if (selectedTag && !(Array.isArray(word.tags) && word.tags.includes(selectedTag))) return false;
+      if (selectedPartOfSpeech && String(word.partOfSpeech || '') !== selectedPartOfSpeech) return false;
+      if (selectedRating !== '' && this.normalizeRating(word.rating) !== Number(selectedRating)) return false;
+      return true;
+    });
     if (this.reviewRatingSort === 'createdAsc' || this.reviewRatingSort === 'createdDesc') {
-      this.reviewList = this.sortWordsByCreatedAt(this.reviewList, this.reviewRatingSort);
+      result = this.sortWordsByCreatedAt(result, this.reviewRatingSort);
     } else {
+      result = this.sortWordsByRating(result, this.reviewRatingSort);
+    }
+    const limit = countValue === 'all' ? result.length : Math.max(1, Number(countValue) || 20);
+    return result.slice(0, limit);
+  }
+
+  startTodayReviewSession() {
+    this.reviewSessionKind = 'today';
+    this.startReviewSession();
+  }
+
+  startCustomReviewSession() {
+    this.reviewSessionKind = 'custom';
+    this.startReviewSession();
+  }
+
+  syncReviewSessionControls() {
+    const todayButton = document.getElementById('startTodayReviewBtn');
+    const customButton = document.getElementById('startCustomReviewBtn');
+    if (todayButton) todayButton.classList.toggle('primary', this.reviewSessionKind === 'today');
+    if (customButton) customButton.classList.toggle('primary', this.reviewSessionKind === 'custom');
+    const summary = document.getElementById('reviewSessionSummary');
+    if (summary) summary.textContent = this.reviewSessionKind === 'today'
+      ? `今日队列 ${this.reviewList.length} 个：到期词优先，另含最多 10 个新词`
+      : `自由复习 ${this.reviewList.length} 个：筛选和四种显式顺序已应用`;
+    const sortSelect = document.getElementById('reviewRatingSortSelect');
+    if (sortSelect) {
+      sortSelect.disabled = this.reviewSessionKind === 'today';
+      sortSelect.title = this.reviewSessionKind === 'today' ? '今日复习固定按到期时间排序' : '安排自由复习卡片顺序';
+    }
+  }
+
+  startReviewSession() {
+    const modeSelect = document.getElementById('reviewQuestionModeSelect');
+    const allowedModes = ['mixed', 'recognition', 'meaning-input', 'dictation', 'example-cloze'];
+    this.reviewQuestionMode = allowedModes.includes(modeSelect?.value) ? modeSelect.value : 'mixed';
+    if (this.reviewSessionKind === 'today') {
+      this.reviewList = this.getTodayReviewWords();
+    } else {
+      this.reviewList = this.words.filter(w => !w.mastered);
+      this.reviewList = this.getCustomReviewWords();
+    }
+    if (this.reviewSessionKind === 'custom' && (this.reviewRatingSort === 'createdAsc' || this.reviewRatingSort === 'createdDesc')) {
+      this.reviewList = this.sortWordsByCreatedAt(this.reviewList, this.reviewRatingSort);
+    } else if (this.reviewSessionKind === 'custom') {
       this.reviewList = this.sortWordsByRating(this.reviewList, this.reviewRatingSort);
     }
     const reviewSortSelect = document.getElementById('reviewRatingSortSelect');
     if (reviewSortSelect) reviewSortSelect.value = this.reviewRatingSort;
     this.currentReviewIndex = 0;
+    this.reviewRetryCounts = new Map();
+    this.reviewRetryTotal = 0;
+    this.reviewAnswerChecked = false;
+    this.syncReviewSessionControls();
     this.renderCurrentCard();
   }
 
+  getReviewCloze(word) {
+    const target = String(word?.word || '');
+    if (!target) return null;
+    const examples = this.getParsedExamples(word);
+    for (const pair of examples) {
+      const source = String(pair?.example || '');
+      const index = source.indexOf(target);
+      if (index < 0) continue;
+      return {
+        prompt: `${source.slice(0, index)}＿＿＿${source.slice(index + target.length)}`,
+        translation: String(pair?.trans || '')
+      };
+    }
+    return null;
+  }
+
+  resolveReviewQuestionMode(word) {
+    const mixedModes = ['recognition', 'meaning-input', 'dictation', 'example-cloze'];
+    let mode = this.reviewQuestionMode === 'mixed'
+      ? mixedModes[this.currentReviewIndex % mixedModes.length]
+      : this.reviewQuestionMode;
+    if (mode === 'example-cloze' && !this.getReviewCloze(word)) mode = 'meaning-input';
+    return mode;
+  }
+
   renderCurrentCard() {
-    const flashcard = document.getElementById('flashcard');
-    flashcard.classList.remove('is-flipped');
-    const cardBackUserNote = document.getElementById('cardBackUserNote');
+    const byId = id => document.getElementById(id);
+    const setText = (id, value) => { const element = byId(id); if (element) element.textContent = String(value ?? ''); };
+    const flashcard = byId('flashcard');
+    if (flashcard) flashcard.classList.remove('is-flipped');
+    this.reviewAnswerChecked = false;
+    const answerArea = byId('reviewAnswerArea');
+    const actions = byId('reviewActions');
+    const answerInput = byId('reviewAnswerInput');
+    const answerButton = byId('reviewAnswerSubmitBtn');
+    const feedback = byId('reviewAnswerFeedback');
+    if (answerInput) { answerInput.value = ''; answerInput.disabled = false; }
+    if (answerButton) answerButton.textContent = '检查答案';
+    if (feedback) { feedback.textContent = ''; feedback.className = 'review-answer-feedback'; }
+    const cardBackUserNote = byId('cardBackUserNote');
     if (cardBackUserNote) cardBackUserNote.innerHTML = '';
 
-    if (this.reviewList.length === 0) {
-      const frontRating = document.getElementById('cardFrontRating');
-      const backRating = document.getElementById('cardBackRating');
-      if (frontRating) frontRating.innerHTML = '';
-      if (backRating) backRating.innerHTML = '';
-      document.getElementById('cardFrontWord').textContent = '🎉 韩语词库为空';
-      document.getElementById('cardFrontReading').textContent = '点击新增开始添加单词吧';
-      document.getElementById('reviewStatusText').textContent = '进度：0 / 0';
-      document.getElementById('reviewProgressFill').style.width = '0%';
-      return;
-    }
-
-    const word = this.reviewList[this.currentReviewIndex];
+    const word = Array.isArray(this.reviewList) ? this.reviewList[this.currentReviewIndex] : null;
     if (!word) {
-      const frontRating = document.getElementById('cardFrontRating');
-      const backRating = document.getElementById('cardBackRating');
+      this.reviewCurrentQuestionMode = 'complete';
+      const isEmpty = !Array.isArray(this.reviewList) || this.reviewList.length === 0;
+      setText('cardFrontWord', isEmpty && this.reviewSessionKind === 'today' ? '🎉 今天没有待复习词' : '✨ 本轮复习完成！');
+      setText('cardFrontReading', isEmpty ? '可以切换自由复习或调整筛选条件' : '做得很好，休息一下吧');
+      setText('cardBackAnswerWord', '');
+      setText('cardBackMeaning', isEmpty ? '当前范围内没有可用词条' : '本轮所有卡片已经完成');
+      setText('reviewStatusText', isEmpty ? '进度：0 / 0' : `进度：${this.reviewList.length} / ${this.reviewList.length}`);
+      const progress = byId('reviewProgressFill');
+      if (progress) progress.style.width = isEmpty ? '0%' : '100%';
+      const frontRating = byId('cardFrontRating');
+      const backRating = byId('cardBackRating');
       if (frontRating) frontRating.innerHTML = '';
       if (backRating) backRating.innerHTML = '';
-      document.getElementById('cardFrontWord').textContent = '✨ 韩语卡片复习完成！';
-      document.getElementById('cardFrontReading').textContent = '오늘도 수고하셨습니다!';
-      document.getElementById('cardBackMeaning').textContent = '所有韩语卡片已复习完毕';
-      document.getElementById('cardBackExampleBlock').style.display = 'none';
-      document.getElementById('cardBackNotes').style.display = 'none';
-      document.getElementById('reviewStatusText').textContent = `进度：${this.reviewList.length} / ${this.reviewList.length}`;
-      document.getElementById('reviewProgressFill').style.width = '100%';
+      if (answerArea) answerArea.hidden = true;
+      if (actions) actions.style.display = 'none';
+      const exampleBlock = byId('cardBackExampleBlock');
+      const tagsBlock = byId('cardBackTags');
+      const notesBlock = byId('cardBackNotes');
+      const similarBlock = byId('cardBackSimilarBlock');
+      if (exampleBlock) { exampleBlock.style.display = 'none'; exampleBlock.innerHTML = ''; }
+      if (tagsBlock) tagsBlock.innerHTML = '';
+      if (notesBlock) { notesBlock.style.display = 'none'; notesBlock.textContent = ''; }
+      if (similarBlock) similarBlock.innerHTML = '';
       return;
     }
 
     const total = this.reviewList.length;
-    const currentNum = this.currentReviewIndex + 1;
-    document.getElementById('reviewStatusText').textContent = `进度：${currentNum} / ${total}`;
-    document.getElementById('reviewProgressFill').style.width = `${(currentNum / total) * 100}%`;
+    const currentNumber = this.currentReviewIndex + 1;
+    setText('reviewStatusText', `进度：${currentNumber} / ${total}${this.reviewRetryTotal ? ` · 回炉 ${this.reviewRetryTotal}` : ''}`);
+    const progress = byId('reviewProgressFill');
+    if (progress) progress.style.width = `${Math.min(100, currentNumber / total * 100)}%`;
 
-    document.getElementById('cardFrontWord').textContent = word.word;
-    document.getElementById('cardFrontReading').textContent = word.reading || '';
-    const frontRating = document.getElementById('cardFrontRating');
-    const backRating = document.getElementById('cardBackRating');
+    this.reviewCurrentQuestionMode = this.resolveReviewQuestionMode(word);
+    const frontHint = document.querySelector('#flashcard .card-face-front .card-hint');
+    const cloze = this.reviewCurrentQuestionMode === 'example-cloze' ? this.getReviewCloze(word) : null;
+    if (this.reviewCurrentQuestionMode === 'recognition') {
+      setText('cardFrontWord', word.word);
+      setText('cardFrontReading', word.reading || '');
+      if (frontHint) frontHint.textContent = '先回忆释义，再点击翻卡 ↺';
+    } else if (this.reviewCurrentQuestionMode === 'dictation') {
+      setText('cardFrontWord', '🎧 听音写词');
+      setText('cardFrontReading', '点击扬声器，可重复播放');
+      if (frontHint) frontHint.textContent = '不要翻卡，直接输入听到的词';
+    } else if (this.reviewCurrentQuestionMode === 'example-cloze' && cloze) {
+      setText('cardFrontWord', cloze.prompt);
+      setText('cardFrontReading', cloze.translation);
+      if (frontHint) frontHint.textContent = '根据例句填写被遮盖的原词';
+    } else {
+      setText('cardFrontWord', word.meaning || '');
+      setText('cardFrontReading', '根据中文释义写出词条');
+      if (frontHint) frontHint.textContent = '主动回忆后输入答案';
+    }
+
+    setText('cardBackAnswerWord', word.word || '');
+    const frontRating = byId('cardFrontRating');
+    const backRating = byId('cardBackRating');
     if (frontRating) frontRating.innerHTML = this.renderStarRating(word, 'review-star-rating');
     if (backRating) backRating.innerHTML = this.renderStarRating(word, 'review-star-rating');
-
-    const cardBackMeaning = document.getElementById('cardBackMeaning');
+    const cardBackMeaning = byId('cardBackMeaning');
     if (cardBackMeaning) cardBackMeaning.innerHTML = this.renderPartOfSpeechLabel(word) + this.escapeHtml(word.meaning);
     if (cardBackUserNote) cardBackUserNote.innerHTML = this.renderUserNoteHtml(word, 'review');
-    const parsedExamples = this.getParsedExamples(word);
-    const exBlock = document.getElementById('cardBackExampleBlock');
-    if (parsedExamples.length > 0) {
-      exBlock.style.display = 'block';
-      exBlock.innerHTML = parsedExamples.map((exObj, idx) => `
-        <div class="word-example-item" data-example-index="${idx}" style="${idx > 0 ? 'margin-top:8px; padding-top:8px; border-top:1px dashed rgba(255,255,255,0.15);' : ''}">
-          <button type="button" class="example-drag-handle" aria-label="拖动例句 ${idx + 1} 排序" title="按住拖动排序" onpointerdown="(window.app||window.vocabApp).startExampleSort(event, 'review')" onkeydown="(window.app||window.vocabApp).handleExampleSortKey(event, 'review')" onclick="event.stopPropagation()">≡</button>
-          <div class="example-sort-number" style="font-size:11px; color:var(--accent-color); font-weight:700; margin-bottom:2px;">例句 ${idx + 1}</div>
-          <div class="word-example" style="font-size:14px; font-weight:600;">${this.escapeHtml(exObj.example)}</div>
-          ${exObj.trans ? `<div class="word-example-trans" style="font-size:13px;">${this.escapeHtml(exObj.trans)}</div>` : ''}
-        </div>
-      `).join('');
-    } else {
-      exBlock.style.display = 'none';
-    }
 
-    const cardBackTags = document.getElementById('cardBackTags');
-    if (cardBackTags) {
-      cardBackTags.innerHTML = this.renderWordTagsHtml(word);
+    const examples = this.getParsedExamples(word);
+    const exampleBlock = byId('cardBackExampleBlock');
+    if (exampleBlock) {
+      exampleBlock.style.display = examples.length ? 'block' : 'none';
+      exampleBlock.innerHTML = examples.map((pair, index) => `
+        <div class="word-example-item" data-example-index="${index}" style="${index > 0 ? 'margin-top:8px; padding-top:8px; border-top:1px dashed rgba(255,255,255,0.15);' : ''}">
+          <button type="button" class="example-drag-handle" aria-label="拖动例句 ${index + 1} 排序" title="按住拖动排序" onpointerdown="(window.app||window.vocabApp).startExampleSort(event, 'review')" onkeydown="(window.app||window.vocabApp).handleExampleSortKey(event, 'review')" onclick="event.stopPropagation()">≡</button>
+          <div class="example-sort-number" style="font-size:11px; color:var(--accent-color); font-weight:700; margin-bottom:2px;">例句 ${index + 1}</div>
+          <div class="word-example" style="font-size:14px; font-weight:600;">${this.escapeHtml(pair.example)}</div>
+          ${pair.trans ? `<div class="word-example-trans" style="font-size:13px;">${this.escapeHtml(pair.trans)}</div>` : ''}
+        </div>`).join('');
     }
-
-    const notesBlock = document.getElementById('cardBackNotes');
-    const cleanNotes = (word.notes || '').replace(/^Tag分类[：:].*$/gi, '').trim();
-    if (cleanNotes) {
-      notesBlock.style.display = 'block';
-      notesBlock.textContent = '💡 笔记：' + cleanNotes;
-    } else {
-      notesBlock.style.display = 'none';
+    const cardBackTags = byId('cardBackTags');
+    if (cardBackTags) cardBackTags.innerHTML = this.renderWordTagsHtml(word);
+    const notesBlock = byId('cardBackNotes');
+    const cleanNotes = String(word.notes || '').replace(/^Tag分类[：:].*$/gi, '').trim();
+    if (notesBlock) {
+      notesBlock.style.display = cleanNotes ? 'block' : 'none';
+      notesBlock.textContent = cleanNotes ? `💡 笔记：${cleanNotes}` : '';
     }
+    const similarBlock = byId('cardBackSimilarBlock');
+    if (similarBlock) similarBlock.innerHTML = this.renderSimilarBlockHtml(this.getSimilarWords(word, 3), word);
 
-    const cardBackSimilarBlock = document.getElementById('cardBackSimilarBlock');
-    if (cardBackSimilarBlock) {
-      const similarWords = this.getSimilarWords(word, 3);
-      cardBackSimilarBlock.innerHTML = this.renderSimilarBlockHtml(similarWords, word);
+    const requiresInput = this.reviewCurrentQuestionMode !== 'recognition';
+    if (answerArea) answerArea.hidden = !requiresInput;
+    if (actions) actions.style.display = requiresInput ? 'none' : 'grid';
+    const scene = byId('flashcardScene');
+    if (scene) scene.style.cursor = requiresInput ? 'default' : 'pointer';
+    if (requiresInput && answerInput) {
+      answerInput.placeholder = this.RESOURCE_LANGUAGE === 'jp' ? '输入日语词条' : '输入韩语词条';
+      setTimeout(() => { if (answerInput.isConnected) answerInput.focus(); }, 0);
     }
   }
 
-  assessReview(type) {
-    if (this.reviewList.length === 0 || this.currentReviewIndex >= this.reviewList.length) {
-      this.startReviewSession();
-      return;
+  normalizeReviewAnswer(value) {
+    const text = String(value || '').trim();
+    try {
+      return text.normalize('NFKC').toLocaleLowerCase();
+    } catch (error) {
+      return text.toLocaleLowerCase();
     }
+  }
 
-    const currentWord = this.reviewList[this.currentReviewIndex];
-    if (!currentWord.tags) currentWord.tags = [];
+  scheduleReviewRetry(word) {
+    if (!word || !word.id) return false;
+    const id = String(word.id);
+    const retryCount = Number(this.reviewRetryCounts.get(id) || 0);
+    if (retryCount >= 2) return false;
+    const insertAt = Math.min(this.reviewList.length, this.currentReviewIndex + 4);
+    this.reviewList.splice(insertAt, 0, word);
+    this.reviewRetryCounts.set(id, retryCount + 1);
+    this.reviewRetryTotal += 1;
+    return true;
+  }
 
-    if (type === 'remembered') {
-      currentWord.mastered = true;
-    } else if (type === 'easy-forget') {
-      currentWord.mastered = false;
-      if (!currentWord.tags.includes('易忘')) {
-        currentWord.tags.push('易忘');
+  updateWordSrs(word, grade, now = Date.now()) {
+    const previous = this.getNormalizedSrsState(word);
+    let intervalDays = previous.intervalDays;
+    let ease = previous.ease;
+    let repetitions = previous.repetitions;
+    let lapseCount = previous.lapseCount;
+    let correctStreak = previous.correctStreak;
+    if (grade === 'again') {
+      intervalDays = 0;
+      repetitions = 0;
+      lapseCount += 1;
+      correctStreak = 0;
+    } else if (grade === 'hard') {
+      intervalDays = previous.intervalDays > 1 ? Math.max(1, Math.ceil(previous.intervalDays * 1.2)) : 1;
+      repetitions = Math.max(1, repetitions);
+      correctStreak = 0;
+      ease = Math.max(1.3, ease - 0.15);
+    } else if (grade === 'easy') {
+      intervalDays = repetitions === 0 ? 4 : Math.max(4, Math.round(Math.max(1, intervalDays) * (ease + 0.3)));
+      repetitions += 1;
+      correctStreak += 1;
+      ease = Math.min(4, ease + 0.15);
+    } else {
+      intervalDays = repetitions === 0 ? 1 : repetitions === 1 ? 3 : Math.max(1, Math.round(Math.max(1, intervalDays) * ease));
+      repetitions += 1;
+      correctStreak += 1;
+    }
+    const nextReviewAt = grade === 'again' ? now + 10 * 60000 : now + intervalDays * 86400000;
+    word.srs = { nextReviewAt, lastReviewedAt: now, intervalDays, ease, repetitions, lapseCount, correctStreak, lastResult: grade };
+    word.reviewCount = Math.max(0, Number(word.reviewCount) || 0) + 1;
+    word.fieldUpdatedAt = word.fieldUpdatedAt && typeof word.fieldUpdatedAt === 'object' ? { ...word.fieldUpdatedAt } : {};
+    word.fieldUpdatedAt.srs = now;
+    word.fieldUpdatedAt.reviewCount = now;
+    const wasMastered = Boolean(word.mastered);
+    if (grade === 'again' || grade === 'hard') word.mastered = false;
+    if (grade === 'easy' && correctStreak >= 3) word.mastered = true;
+    if (wasMastered !== Boolean(word.mastered)) word.fieldUpdatedAt.mastered = now;
+    if (grade === 'again') {
+      word.tags = Array.isArray(word.tags) ? [...word.tags] : [];
+      if (!word.tags.includes('易忘')) {
+        word.tags.push('易忘');
+        word.fieldUpdatedAt.tags = now;
       }
     }
+    word.updatedAt = now;
+    word.userEditedAt = Math.max(now, Number(word.userEditedAt || 0));
+  }
 
-    if (!this.saveData()) return;
-    this.currentReviewIndex++;
+  async persistReviewGrade(grade, requeue = true) {
+    if (this._reviewAssessmentInFlight) return false;
+    const word = Array.isArray(this.reviewList) ? this.reviewList[this.currentReviewIndex] : null;
+    if (!word) return false;
+    this._reviewAssessmentInFlight = true;
+    const wordId = String(word.id);
+    const wordIndex = this.words.findIndex(item => item && String(item.id) === wordId);
+    const previousWord = JSON.parse(JSON.stringify(word));
+    const previousPending = this.getPendingCloudChanges ? this.getPendingCloudChanges() : null;
+    try {
+      this.updateWordSrs(word, grade);
+      let persisted = this.saveData({ reportFailure: false });
+      if (!persisted) persisted = await this.confirmLastSaveDataDurableFallback();
+      if (!persisted) {
+        if (wordIndex >= 0) this.words[wordIndex] = previousWord;
+        this.reviewList = this.reviewList.map(item => item && String(item.id) === wordId ? previousWord : item);
+        if (previousPending && this.savePendingCloudChanges) this.savePendingCloudChanges(previousPending);
+        if (this.refreshWordFingerprints) this.refreshWordFingerprints();
+        this.showToast('⚠️ 复习结果未能持久保存，请保留页面并重试');
+        return false;
+      }
+      if (requeue && (grade === 'again' || grade === 'hard')) this.scheduleReviewRetry(word);
+      this.refreshReviewSetupOptions();
+      return true;
+    } finally {
+      this._reviewAssessmentInFlight = false;
+    }
+  }
 
+  advanceReviewCard() {
+    this.currentReviewIndex += 1;
+    this.reviewAnswerChecked = false;
     const flashcard = document.getElementById('flashcard');
     if (flashcard) flashcard.classList.remove('is-flipped');
-    setTimeout(() => {
-      this.renderCurrentCard();
-    }, 200);
+    setTimeout(() => this.renderCurrentCard(), 160);
+  }
+
+  async assessReview(type) {
+    if (this.reviewCurrentQuestionMode !== 'recognition') return false;
+    const gradeMap = { 'easy-forget': 'again', remembered: 'good', again: 'again', hard: 'hard', good: 'good', easy: 'easy' };
+    const grade = gradeMap[type];
+    if (!grade || !await this.persistReviewGrade(grade, true)) return false;
+    this.advanceReviewCard();
+    return true;
+  }
+
+  async handleReviewAnswerAction() {
+    if (this.reviewAnswerChecked) {
+      this.advanceReviewCard();
+      return true;
+    }
+    const word = Array.isArray(this.reviewList) ? this.reviewList[this.currentReviewIndex] : null;
+    const input = document.getElementById('reviewAnswerInput');
+    const feedback = document.getElementById('reviewAnswerFeedback');
+    const button = document.getElementById('reviewAnswerSubmitBtn');
+    if (!word || !input) return false;
+    const answer = this.normalizeReviewAnswer(input.value);
+    if (!answer) {
+      if (feedback) { feedback.textContent = '请先输入答案'; feedback.className = 'review-answer-feedback incorrect'; }
+      input.focus();
+      return false;
+    }
+    const correct = answer === this.normalizeReviewAnswer(word.word);
+    if (!await this.persistReviewGrade(correct ? 'good' : 'again', true)) return false;
+    this.reviewAnswerChecked = true;
+    input.disabled = true;
+    if (feedback) {
+      feedback.textContent = correct ? '✅ 回答正确' : `❌ 正确答案：${word.word}`;
+      feedback.className = `review-answer-feedback ${correct ? 'correct' : 'incorrect'}`;
+    }
+    if (button) button.textContent = '下一张';
+    const flashcard = document.getElementById('flashcard');
+    if (flashcard) flashcard.classList.add('is-flipped');
+    return true;
   }
 
   speakWord(text) {
