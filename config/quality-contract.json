@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-11-12.1",
+  "contractVersion": "2026-11-12.2",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -25,7 +25,8 @@
       "docs/decisions/ADR-018-vocabulary-excel-roundtrip-import.md",
       "docs/decisions/ADR-019-search-defaults-to-all-statuses.md",
       "docs/decisions/ADR-020-word-copy-control.md",
-      "docs/decisions/ADR-021-spaced-active-recall.md"
+      "docs/decisions/ADR-021-spaced-active-recall.md",
+      "docs/decisions/ADR-022-word-part-of-speech-multi-select.md"
     ]
   },
   "mirroredApps": [
@@ -240,6 +241,18 @@
       "mirroredAcrossLanguages": true
     },
     "wordEditorPartOfSpeechDropdown": {
+      "selectionMode": "multiple",
+      "storageField": "partOfSpeech",
+      "storageType": "string",
+      "canonicalDelimiter": "、",
+      "legacySingleValueCompatible": true,
+      "minimumSelections": 1,
+      "optionActivation": "toggle-without-closing",
+      "selectedIndicator": "checkmark-and-aria-selected",
+      "customValuesAllowed": true,
+      "filterMatching": "word-matches-any-selected-part-of-speech",
+      "display": "one-badge-per-part-of-speech",
+      "excelRoundTrip": "canonical-delimited-string",
       "newWordFullListInitialScroll": "top",
       "resetOnEveryFullListOpenInNewMode": true,
       "resetAxes": [

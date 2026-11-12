@@ -883,7 +883,7 @@ class VocabAppTester:
 
         part_of_speech_filter_logic = all(token in content for token in (
             'if (this.selectedPartOfSpeech && this.selectedPartOfSpeech.size > 0)',
-            'this.normalizeTaxonomyText(w.partOfSpeech).toLowerCase()',
+            'this.wordHasPartOfSpeech(w, value)',
             'if (!matchesPartOfSpeech) return false;',
             "document.body.appendChild(menu)",
             "positionPartOfSpeechDropdownMenu(menu)",
@@ -949,12 +949,30 @@ class VocabAppTester:
             'normalizeWordTaxonomy(word)',
             'renderPartOfSpeechLabel(word)',
             'class="part-of-speech-label"',
-            "const partOfSpeech = this.normalizeTaxonomyText(String(draft.partOfSpeech || ''));",
-            "filter(tag => tag && tag !== partOfSpeech)",
+            'const partOfSpeech = this.formatPartOfSpeechValues(draft.partOfSpeech);',
+            '!partOfSpeechKeys.has(tag.toLowerCase())',
             'samples.forEach(item => this.normalizeWordTaxonomy(item));',
             'normalizeFallbackTaxonomy(fallbackWords);',
         )) and content.index('id="addWordPartOfSpeechGroup"') < content.index('id="addWordTagsGroup"')
         self.assert_true(taxonomy_structure, f"[{lang_name}] 词性结构-独立可编辑字段位于卡片标签上方并与 Tag 隔离", "缺少单词词性输入、迁移/归一化逻辑，或字段未放在卡片标签上方")
+
+        select_part_of_speech_start = content.find('selectPartOfSpeechOption(value) {')
+        select_part_of_speech_end = content.find('reconcilePartOfSpeechFilters() {', select_part_of_speech_start)
+        select_part_of_speech_source = content[select_part_of_speech_start:select_part_of_speech_end]
+        taxonomy_multi_select = all(token in content for token in (
+            'role="listbox" aria-multiselectable="true"',
+            'getPartOfSpeechValues(value) {',
+            "formatPartOfSpeechValues(value) {",
+            "return this.getPartOfSpeechValues(value).join('、');",
+            "option.setAttribute('aria-selected', isSelected ? 'true' : 'false');",
+            'part-of-speech-option-check',
+            "const existingIndex = selectedValues.findIndex(",
+            "this.renderPartOfSpeechOptions('');",
+            "words.flatMap(word => this.getPartOfSpeechValues(word?.partOfSpeech))",
+            "!this.wordHasPartOfSpeech(word, selectedPartOfSpeech)",
+            "value: word => this.formatPartOfSpeechValues(word?.partOfSpeech)",
+        )) and select_part_of_speech_start >= 0 and 'closePartOfSpeechOptions()' not in select_part_of_speech_source
+        self.assert_true(taxonomy_multi_select, f"[{lang_name}] 词性多选-勾选切换、保持展开、规范保存及筛选/Excel 全链路完整", "词性候选仍是单选，或多值没有贯通展示、筛选和 Excel 往返")
 
         new_word_part_of_speech_scroll_reset = all(token in content for token in (
             'resetPartOfSpeechOptionsScroll(optionsList) {',
@@ -987,7 +1005,11 @@ class VocabAppTester:
                 taxonomy_dataset_count += 1
                 if any(
                     not str(card.get('partOfSpeech') or '').strip()
-                    or str(card.get('partOfSpeech') or '').strip() in [str(tag).lstrip('#').strip() for tag in (card.get('tags') or [])]
+                    or any(
+                        part.strip().lower() in [str(tag).lstrip('#').strip().lower() for tag in (card.get('tags') or [])]
+                        for part in re.split(r'[、,，;；\n]+', str(card.get('partOfSpeech') or ''))
+                        if part.strip()
+                    )
                     for card in taxonomy_cards
                 ):
                     taxonomy_data_valid = False
@@ -1100,7 +1122,7 @@ class VocabAppTester:
             'addModalQuickTag(',
             'removeModalTag(',
             'const existingWord = id ? this.words.find(w => w.id === id) : null;',
-            'const tags = [...new Set((this.editingModalTags || []).map(tag => this.normalizeTaxonomyText(tag)).filter(tag => tag && tag !== partOfSpeech))];',
+            'const tags = [...new Set((this.editingModalTags || []).map(tag => this.normalizeTaxonomyText(tag)).filter(tag => tag && !partOfSpeechKeys.has(tag.toLowerCase())))];',
         )) and "const tags = existingWord && Array.isArray(existingWord.tags) ? [...existingWord.tags] : ['名词'];" not in content
         self.assert_true(shared_modal_tag_editor, f"[{lang_name}] 新建/编辑弹窗-共用可增改删 Tag 字段并回填旧值", "新建与编辑弹窗的 Tag 字段没有统一显示、回填或保存")
 
@@ -2969,7 +2991,7 @@ class VocabAppTester:
                   const hadOwnPicker = Object.prototype.hasOwnProperty.call(window, 'showSaveFilePicker');
                   const originalPicker = window.showSaveFilePicker;
                   const fixtures = [
-                    {id:'excel-a', word:'导出词甲', reading:'[发音甲]', pronunciationNote:'发音备注甲', userNote:'说明甲', partOfSpeech:'名词', meaning:'中文甲', krMeaning:'한국어 뜻 A', mastered:false, rating:4, tags:['重点'], manualSimilarWordIds:['excel-b','excel-c'], examples:[{example:'第一组原句甲', trans:'第一组翻译甲'}, {example:'第二组原句甲', trans:'第二组翻译甲'}]},
+                    {id:'excel-a', word:'导出词甲', reading:'[发音甲]', pronunciationNote:'发音备注甲', userNote:'说明甲', partOfSpeech:'名词、短语', meaning:'中文甲', krMeaning:'한국어 뜻 A', mastered:false, rating:4, tags:['重点'], manualSimilarWordIds:['excel-b','excel-c'], examples:[{example:'第一组原句甲', trans:'第一组翻译甲'}, {example:'第二组原句甲', trans:'第二组翻译甲'}]},
                     {id:'excel-b', word:'导出词乙', reading:'[不应导出的关联词发音乙]', pronunciationNote:'不应导出的关联词备注乙', userNote:'不应导出的关联词说明乙', partOfSpeech:'动词', meaning:'中文乙', krMeaning:'한국어 뜻 B', mastered:true, rating:5, tags:['重点','复习'], manualSimilarWordIds:['excel-a'], examples:[{example:'第一组原句乙', trans:'第一组翻译乙'}]},
                     {id:'excel-c', word:'导出词丙', reading:'[不应导出的关联词发音丙]', pronunciationNote:'不应导出的关联词备注丙', userNote:'不应导出的关联词说明丙', partOfSpeech:'形容词', meaning:'中文丙', krMeaning:'한국어 뜻 C', mastered:false, rating:4, tags:['其他'], manualSimilarWordIds:['excel-a'], examples:[]},
                     {id:'excel-d', word:'导出词丁', partOfSpeech:'副词', meaning:'中文丁', krMeaning:'한국어 뜻 D', mastered:true, rating:2, tags:[], examples:[]}
@@ -3098,6 +3120,7 @@ class VocabAppTester:
                     {'[Content_Types].xml', 'xl/workbook.xml', 'xl/worksheets/sheet1.xml', 'xl/styles.xml'}.issubset(workbook_names)
                     and sheet_xml.count('<row ') == 2
                     and header_ok and meaning_ok
+                    and '名词、短语' in sheet_xml
                     and '第一组原句甲\n第一组翻译甲' in sheet_xml
                     and '第二组原句甲' not in sheet_xml
                     and not any(title in sheet_xml for title in ('发音备注', '说明', '相近词汇'))
@@ -3252,6 +3275,14 @@ class VocabAppTester:
                       const plannedWord = plan.words.find(word => word.id === 'roundtrip-a');
                       return plannedWord?.meaning === '旧释义甲' && plannedWord?.krMeaning === '독립 수정 뜻';
                     })();
+                    const partOfSpeechTitle = app.getVocabularyExcelImportDefinitions().find(definition => definition.key === 'partOfSpeech')?.title;
+                    const multiPartOfSpeechPlan = app.prepareVocabularyExcelImport([
+                      [partOfSpeechTitle, '__EVIE_WORD_ID__'],
+                      ['名词, 短语；副词', 'roundtrip-a']
+                    ]);
+                    const plannedMultiPartOfSpeechWord = multiPartOfSpeechPlan.words.find(word => word.id === 'roundtrip-a');
+                    const multiPartOfSpeechNormalized = plannedMultiPartOfSpeechWord?.partOfSpeech === '名词、短语、副词'
+                      && !plannedMultiPartOfSpeechWord?.tags?.some(tag => ['名词', '短语', '副词'].includes(tag));
                     let legacyMissingWordRejected = false;
                     try {
                       app.prepareVocabularyExcelImport([[meaningTitle], ['legacy-without-word']]);
@@ -3338,7 +3369,7 @@ class VocabAppTester:
                       && JSON.stringify(app.getPendingCloudChanges()) === pendingBeforeFailure
                       && JSON.stringify(await app.getCloudSyncUndoHistory()) === historyBeforeFailure;
 
-                    done({hiddenStableIdPresent, separateMeaningColumns, customSubsetWithoutWordAccepted, independentKrMeaningImport, legacyMissingWordRejected, sharedStringsParsed, badHeaderRejected, badIdRejected, validImported, fieldUpdatesApplied, relationsApplied, pendingFieldsTracked, importSnapshotSaved, bothRestoreDisabled, importRollbackWorked, failedImportRolledBack});
+                    done({hiddenStableIdPresent, separateMeaningColumns, customSubsetWithoutWordAccepted, independentKrMeaningImport, multiPartOfSpeechNormalized, legacyMissingWordRejected, sharedStringsParsed, badHeaderRejected, badIdRejected, validImported, fieldUpdatesApplied, relationsApplied, pendingFieldsTracked, importSnapshotSaved, bothRestoreDisabled, importRollbackWorked, failedImportRolledBack});
                   } catch (error) {
                     done({error:String(error), stack:String(error?.stack || '')});
                   } finally {
@@ -4204,7 +4235,8 @@ class VocabAppTester:
                     {id:'pos_filter_noun', word:'词性名词', meaning:'名词测试', partOfSpeech:'名词', tags:['联合筛选'], mastered:false, rating:0, examples:[]},
                     {id:'pos_filter_verb', word:'词性动词', meaning:'动词测试', partOfSpeech:'动词', tags:['其他标签'], mastered:false, rating:0, examples:[]},
                     {id:'pos_filter_phrase', word:'词性短语', meaning:'短语测试', partOfSpeech:'短语', tags:['联合筛选'], mastered:false, rating:0, examples:[]},
-                    {id:'pos_filter_custom', word:'词性短副', meaning:'动态词性测试', partOfSpeech:'短副', tags:[], mastered:false, rating:0, examples:[]}
+                    {id:'pos_filter_custom', word:'词性短副', meaning:'动态词性测试', partOfSpeech:'短副', tags:[], mastered:false, rating:0, examples:[]},
+                    {id:'pos_filter_multi', word:'词性多选', meaning:'多个词性测试', partOfSpeech:'动词、短语', tags:['联合筛选'], mastered:false, rating:0, examples:[]}
                   ];
                   app.selectedPartOfSpeech = new Set();
                   app.selectedTags = new Set();
@@ -4215,15 +4247,24 @@ class VocabAppTester:
                   const available = app.getAllAvailablePartOfSpeech();
                   const rendered = Array.from(document.querySelectorAll('#partOfSpeechDropdownList .tag-name')).map(el => el.textContent.trim());
                   app.renderPartOfSpeechOptions();
-                  const suggested = Array.from(document.querySelectorAll('#partOfSpeechOptions .part-of-speech-option')).map(el => el.textContent.trim());
+                  const suggested = Array.from(document.querySelectorAll('#partOfSpeechOptions .part-of-speech-option')).map(el => el.querySelector('span:last-child')?.textContent.trim());
                   const partOfSpeechInput = document.getElementById('inputPartOfSpeech');
                   const partOfSpeechOptions = document.getElementById('partOfSpeechOptions');
                   app.openWordModal();
-                  partOfSpeechInput.value = '名词';
                   partOfSpeechInput.click();
                   const clickOpenedAllSuggestions = partOfSpeechOptions.hidden === false
                     && getComputedStyle(partOfSpeechOptions).display !== 'none'
-                    && Array.from(partOfSpeechOptions.querySelectorAll('.part-of-speech-option')).map(el => el.textContent.trim()).sort().join('|') === ['动词', '名词', '短副', '短语'].sort().join('|');
+                    && Array.from(partOfSpeechOptions.querySelectorAll('.part-of-speech-option')).map(el => el.querySelector('span:last-child')?.textContent.trim()).sort().join('|') === ['动词', '名词', '短副', '短语'].sort().join('|');
+                  app.selectPartOfSpeechOption('名词');
+                  app.selectPartOfSpeechOption('动词');
+                  const multiSelectKeepsOpen = partOfSpeechInput.value === '名词、动词'
+                    && partOfSpeechOptions.hidden === false
+                    && partOfSpeechOptions.querySelectorAll('.part-of-speech-option.selected').length === 2
+                    && Array.from(partOfSpeechOptions.querySelectorAll('.part-of-speech-option.selected')).every(option => option.getAttribute('aria-selected') === 'true');
+                  app.selectPartOfSpeechOption('名词');
+                  const secondClickCancelsOnlyTarget = partOfSpeechInput.value === '动词'
+                    && partOfSpeechOptions.hidden === false
+                    && partOfSpeechOptions.querySelectorAll('.part-of-speech-option.selected').length === 1;
                   app.closeWordModal();
                   app.togglePartOfSpeechFilter('名词');
                   const nounOnly = app.getSearchFilteredWords().map(word => word.id);
@@ -4237,6 +4278,9 @@ class VocabAppTester:
                   const activeBadgeCount = badge?.textContent;
                   const activeBadgeVisible = badge?.style.display === 'inline-flex';
                   const activeButton = button?.classList.contains('has-active-part-of-speech') === true;
+                  const multiWordBadges = Array.from(document.querySelector('[data-id="pos_filter_multi"]')?.querySelectorAll('.part-of-speech-label') || []).map(label => label.textContent.trim());
+                  const multiValueCountedPerPart = app.getPartOfSpeechCount('动词') === 2
+                    && app.getPartOfSpeechCount('短语') === 2;
 
                   const quickResetButton = document.getElementById('partOfSpeechQuickResetBtn');
                   const dropdownMenu = document.getElementById('partOfSpeechDropdownMenu');
@@ -4255,7 +4299,7 @@ class VocabAppTester:
                   const quickResetRestoredAllPartOfSpeech = app.selectedPartOfSpeech.size === 0
                     && app.selectedTags.has('联合筛选')
                     && app.currentPage === 1
-                    && idsAfterQuickReset.join('|') === ['pos_filter_noun', 'pos_filter_phrase'].join('|')
+                    && idsAfterQuickReset.join('|') === ['pos_filter_multi', 'pos_filter_noun', 'pos_filter_phrase'].join('|')
                     && badge?.style.display === 'none'
                     && badge?.textContent === '0'
                     && quickResetButton?.style.display === 'none'
@@ -4272,7 +4316,7 @@ class VocabAppTester:
                   const idsAfterReset = app.getSearchFilteredWords().map(word => word.id).sort();
                   const resetRestoredAll = app.selectedPartOfSpeech.size === 0
                     && app.currentPage === 1
-                    && idsAfterReset.join('|') === ['pos_filter_custom', 'pos_filter_noun', 'pos_filter_phrase', 'pos_filter_verb'].join('|')
+                    && idsAfterReset.join('|') === ['pos_filter_custom', 'pos_filter_multi', 'pos_filter_noun', 'pos_filter_phrase', 'pos_filter_verb'].join('|')
                     && badge?.style.display === 'none'
                     && badge?.textContent === '0'
                     && !button?.classList.contains('has-active-part-of-speech')
@@ -4287,15 +4331,19 @@ class VocabAppTester:
                     && badge?.style.display === 'none'
                     && !button?.classList.contains('has-active-part-of-speech')
                     && checkedAfterStaleState === 0
-                    && Number(document.getElementById('count-all')?.textContent) === 4;
+                    && Number(document.getElementById('count-all')?.textContent) === 5;
                   return {
                     available,
                     rendered,
                     suggested,
                     clickOpenedAllSuggestions,
+                    multiSelectKeepsOpen,
+                    secondClickCancelsOnlyTarget,
                     nounOnly,
                     nounOrVerb,
                     combined,
+                    multiWordBadges,
+                    multiValueCountedPerPart,
                     badgeCount: activeBadgeCount,
                     badgeVisible: activeBadgeVisible,
                     buttonActive: activeButton,
@@ -4320,8 +4368,8 @@ class VocabAppTester:
                 and sorted(part_of_speech_filter_result.get('available') or []) == ['动词', '名词', '短副', '短语']
                 and sorted(part_of_speech_filter_result.get('rendered') or []) == ['动词', '名词', '短副', '短语']
                 and part_of_speech_filter_result.get('nounOnly') == ['pos_filter_noun']
-                and part_of_speech_filter_result.get('nounOrVerb') == ['pos_filter_noun', 'pos_filter_verb']
-                and part_of_speech_filter_result.get('combined') == ['pos_filter_noun']
+                and part_of_speech_filter_result.get('nounOrVerb') == ['pos_filter_multi', 'pos_filter_noun', 'pos_filter_verb']
+                and part_of_speech_filter_result.get('combined') == ['pos_filter_noun', 'pos_filter_multi']
                 and part_of_speech_filter_result.get('badgeCount') == '2'
                 and part_of_speech_filter_result.get('badgeVisible')
                 and part_of_speech_filter_result.get('buttonActive')
@@ -4334,9 +4382,18 @@ class VocabAppTester:
             self.assert_true(
                 bool(part_of_speech_filter_result
                      and sorted(part_of_speech_filter_result.get('suggested') or []) == ['动词', '名词', '短副', '短语']
-                     and part_of_speech_filter_result.get('clickOpenedAllSuggestions')),
-                f"[{lang_name}] 新增/编辑弹窗-点击词性框立即展开当前词库全部动态词性",
+                     and part_of_speech_filter_result.get('clickOpenedAllSuggestions')
+                     and part_of_speech_filter_result.get('multiSelectKeepsOpen')
+                     and part_of_speech_filter_result.get('secondClickCancelsOnlyTarget')),
+                f"[{lang_name}] 新增/编辑弹窗-词性候选可连续多选、保持展开并再次点击取消",
                 f"弹窗词性建议未随当前词库同步：{part_of_speech_filter_result}",
+            )
+            self.assert_true(
+                bool(part_of_speech_filter_result
+                     and sorted(part_of_speech_filter_result.get('multiWordBadges') or []) == ['动词', '短语']
+                     and part_of_speech_filter_result.get('multiValueCountedPerPart')),
+                f"[{lang_name}] 浏览器词性多值-卡片独立 Badge 且各筛选计数分别命中",
+                f"多词性展示或包含计数异常：{part_of_speech_filter_result}",
             )
             self.assert_true(
                 bool(part_of_speech_filter_result and part_of_speech_filter_result.get('staleStateSelfHealed')),
@@ -6102,7 +6159,7 @@ class VocabAppTester:
                   const values = {
                     reading: '[first-save-reading]',
                     pronunciationNote: '第一次保存发音备注',
-                    partOfSpeech: '测试词性',
+                    partOfSpeech: '测试词性、第二词性',
                     meaning: '第一次按下保存时的最新释义',
                     krMeaning: '첫 누름 저장 최신 뜻',
                     userNote: '说明输入框仍聚焦时的最新内容',
@@ -6136,6 +6193,12 @@ class VocabAppTester:
                   const savedWord = matches[0];
                   const storedWords = JSON.parse(localStorage.getItem(app.STORAGE_KEY) || '[]');
                   const storedWord = storedWords.find(word => word.word === testWord);
+                  app.renderWordList();
+                  const savedCard = savedWord ? document.querySelector(`[data-id="${savedWord.id}"]`) : null;
+                  const savedPartOfSpeechBadges = Array.from(savedCard?.querySelectorAll('.part-of-speech-label') || []).map(label => label.textContent.trim());
+                  if (savedWord) app.openWordModal(savedWord);
+                  const editModalRefilledAllPartOfSpeech = partOfSpeechInput.value === values.partOfSpeech;
+                  app.closeWordModal();
                   const allFieldsSaved = Boolean(savedWord && storedWord)
                     && savedWord.reading === values.reading
                     && savedWord.pronunciationNote === values.pronunciationNote
@@ -6145,6 +6208,7 @@ class VocabAppTester:
                     && savedWord.examples?.[0]?.example === values.example
                     && savedWord.examples?.[0]?.trans === values.trans
                     && storedWord.userNote === values.userNote
+                    && storedWord.partOfSpeech === values.partOfSpeech
                     && storedWord.examples?.[0]?.example === values.example
                     && (!krMeaningInput || (savedWord.krMeaning === values.krMeaning && storedWord.krMeaning === values.krMeaning));
                   const result = {
@@ -6152,6 +6216,8 @@ class VocabAppTester:
                     pointerHandled: dispatchAccepted === false,
                     savedOnPointerDownWithoutClick: matches.length === 1,
                     allFieldsSaved,
+                    multiPartOfSpeechRendered: savedPartOfSpeechBadges.join('|') === '测试词性|第二词性',
+                    editModalRefilledAllPartOfSpeech,
                     persistedAfterInputCommit: Boolean(storedWord),
                     modalClosed: modal.classList.contains('active') === false,
                   };

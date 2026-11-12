@@ -3174,7 +3174,9 @@ body::-webkit-scrollbar,
 }
 
 .part-of-speech-option {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 9px;
   width: 100%;
   padding: 9px 12px;
   border: 0;
@@ -3184,6 +3186,30 @@ body::-webkit-scrollbar,
   text-align: left;
   font: inherit;
   cursor: pointer;
+}
+
+.part-of-speech-option.selected {
+  background: rgba(236, 72, 153, 0.14);
+  color: var(--accent-primary);
+}
+
+.part-of-speech-option-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.part-of-speech-option.selected .part-of-speech-option-check {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary);
+  color: #ffffff;
 }
 
 .part-of-speech-option:hover,
@@ -17538,11 +17564,11 @@ body::-webkit-scrollbar,
           </div>
 
           <div id="addWordPartOfSpeechGroup" class="form-group required-field">
-            <label class="form-label" for="inputPartOfSpeech">单词词性 * <span class="required-badge">必填</span></label>
+            <label class="form-label" for="inputPartOfSpeech">单词词性 *（可多选） <span class="required-badge">必填</span></label>
             <div id="partOfSpeechInputWrapper" class="part-of-speech-input-wrapper">
-              <input type="text" id="inputPartOfSpeech" class="form-input" placeholder="如：动词、名词、短语（可自定义）" autocomplete="off" aria-controls="partOfSpeechOptions" aria-expanded="false" onclick="if(window.app) window.app.openPartOfSpeechOptions(true)" oninput="if(window.app) { window.app.renderModalTags(); window.app.filterPartOfSpeechOptions(this.value); }" onblur="setTimeout(() => { if(window.app) window.app.closePartOfSpeechOptions(); }, 120)" required>
+              <input type="text" id="inputPartOfSpeech" class="form-input" placeholder="如：动词、短语（可多选/自定义）" autocomplete="off" aria-controls="partOfSpeechOptions" aria-expanded="false" onclick="if(window.app) window.app.openPartOfSpeechOptions(true)" oninput="if(window.app) { window.app.renderModalTags(); window.app.filterPartOfSpeechOptions(this.value); }" onblur="setTimeout(() => { if(window.app) window.app.closePartOfSpeechOptions(); }, 120)" required>
               <button id="partOfSpeechOptionsToggle" type="button" class="part-of-speech-options-toggle" aria-label="展开词性建议" aria-expanded="false" onpointerdown="event.preventDefault()" onclick="if(window.app) window.app.togglePartOfSpeechOptions(event)">▼</button>
-              <div id="partOfSpeechOptions" class="part-of-speech-options-menu" role="listbox" hidden></div>
+              <div id="partOfSpeechOptions" class="part-of-speech-options-menu" role="listbox" aria-multiselectable="true" hidden></div>
             </div>
           </div>
 
@@ -22529,6 +22555,29 @@ class KrVocabApp {
     return String(value || '').replace(/^#/, '').trim();
   }
 
+  getPartOfSpeechValues(value) {
+    const sources = Array.isArray(value) ? value : String(value || '').split(/[、,，;；\n]+/);
+    const seen = new Set();
+    const values = [];
+    sources.forEach(item => {
+      const cleanValue = this.normalizeTaxonomyText(item);
+      const key = cleanValue.toLowerCase();
+      if (!cleanValue || seen.has(key)) return;
+      seen.add(key);
+      values.push(cleanValue);
+    });
+    return values;
+  }
+
+  formatPartOfSpeechValues(value) {
+    return this.getPartOfSpeechValues(value).join('、');
+  }
+
+  wordHasPartOfSpeech(word, partOfSpeech) {
+    const target = this.normalizeTaxonomyText(partOfSpeech).toLowerCase();
+    return Boolean(target) && this.getPartOfSpeechValues(word?.partOfSpeech).some(value => value.toLowerCase() === target);
+  }
+
   ensurePronunciationNoteTag(word) {
     if (!word || typeof word !== 'object' || !String(word.pronunciationNote || '').trim()) return false;
     const pronunciationTag = '发音';
@@ -22575,11 +22624,13 @@ class KrVocabApp {
     const sourceTags = Array.isArray(word.tags)
       ? word.tags.map(tag => this.normalizeTaxonomyText(tag)).filter(Boolean)
       : [];
-    const existingPartOfSpeech = this.normalizeTaxonomyText(word.partOfSpeech);
-    const partOfSpeech = existingPartOfSpeech || sourceTags[0] || '';
-    const customTagSource = existingPartOfSpeech ? sourceTags : sourceTags.slice(1);
+    const existingPartOfSpeechValues = this.getPartOfSpeechValues(word.partOfSpeech);
+    const partOfSpeechValues = existingPartOfSpeechValues.length ? existingPartOfSpeechValues : sourceTags.slice(0, 1);
+    const partOfSpeech = this.formatPartOfSpeechValues(partOfSpeechValues);
+    const partOfSpeechKeys = new Set(partOfSpeechValues.map(value => value.toLowerCase()));
+    const customTagSource = existingPartOfSpeechValues.length ? sourceTags : sourceTags.slice(1);
     word.partOfSpeech = partOfSpeech;
-    word.tags = [...new Set(customTagSource.filter(tag => tag !== partOfSpeech && tag !== '\u6613\u6df7'))];
+    word.tags = [...new Set(customTagSource.filter(tag => !partOfSpeechKeys.has(tag.toLowerCase()) && tag !== '\u6613\u6df7'))];
     this.ensurePronunciationNoteTag(word);
     return word;
   }
@@ -22600,8 +22651,9 @@ class KrVocabApp {
   }
 
   renderPartOfSpeechLabel(word) {
-    const partOfSpeech = this.normalizeTaxonomyText(word && word.partOfSpeech);
-    return partOfSpeech ? `<span class="part-of-speech-label">${this.escapeHtml(partOfSpeech)}</span>` : '';
+    return this.getPartOfSpeechValues(word?.partOfSpeech)
+      .map(partOfSpeech => `<span class="part-of-speech-label">${this.escapeHtml(partOfSpeech)}</span>`)
+      .join('');
   }
 
   refreshRatingTagViews(wordId) {
@@ -24261,7 +24313,7 @@ class KrVocabApp {
       readingInput.value = this.normalizeBracketedReading(word.reading);
       pronunciationNoteInput.value = typeof word.pronunciationNote === 'string' ? word.pronunciationNote : '';
       meaningInput.value = word.meaning || '';
-      partOfSpeechInput.value = this.normalizeTaxonomyText(word.partOfSpeech);
+      partOfSpeechInput.value = this.formatPartOfSpeechValues(word.partOfSpeech);
       userNoteInput.value = typeof word.userNote === 'string' ? word.userNote : '';
     } else {
       title.textContent = '添加韩语单词';
@@ -24348,8 +24400,8 @@ class KrVocabApp {
     const container = document.getElementById('modalTagsContainer');
     if (!container) return;
     const partOfSpeechInput = document.getElementById('inputPartOfSpeech');
-    const partOfSpeech = this.normalizeTaxonomyText(partOfSpeechInput && partOfSpeechInput.value);
-    this.editingModalTags = [...new Set((this.editingModalTags || []).map(tag => this.normalizeTaxonomyText(tag)).filter(tag => tag && tag !== partOfSpeech))];
+    const partOfSpeechKeys = new Set(this.getPartOfSpeechValues(partOfSpeechInput?.value).map(value => value.toLowerCase()));
+    this.editingModalTags = [...new Set((this.editingModalTags || []).map(tag => this.normalizeTaxonomyText(tag)).filter(tag => tag && !partOfSpeechKeys.has(tag.toLowerCase())))];
     const pronunciationNoteInput = document.getElementById('inputPronunciationNote');
     if (String(pronunciationNoteInput?.value || '').trim() && !this.editingModalTags.includes('发音')) {
       this.editingModalTags.push('发音');
@@ -24484,10 +24536,10 @@ class KrVocabApp {
     input.dataset.committed = 'true';
     const nextTag = String(input.value || '').replace(/^#/, '').trim();
     const previousTag = String(originalTag || '').replace(/^#/, '').trim();
-    const partOfSpeech = this.normalizeTaxonomyText(document.getElementById('inputPartOfSpeech')?.value);
+    const partOfSpeechKeys = new Set(this.getPartOfSpeechValues(document.getElementById('inputPartOfSpeech')?.value).map(value => value.toLowerCase()));
     let tags = [...(this.editingModalTags || [])];
     if (previousTag) tags = tags.filter(tag => tag !== previousTag);
-    if (nextTag && nextTag !== partOfSpeech && nextTag !== '\u6613\u6df7' && !tags.includes(nextTag)) tags.push(nextTag);
+    if (nextTag && !partOfSpeechKeys.has(nextTag.toLowerCase()) && nextTag !== '\u6613\u6df7' && !tags.includes(nextTag)) tags.push(nextTag);
     this.editingModalTags = tags;
     this.renderModalTags();
   }
@@ -24495,9 +24547,9 @@ class KrVocabApp {
   addModalQuickTag(event, tagName) {
     if (event) event.stopPropagation();
     const cleanTag = String(tagName || '').replace(/^#/, '').trim();
-    const partOfSpeech = this.normalizeTaxonomyText(document.getElementById('inputPartOfSpeech')?.value);
+    const partOfSpeechKeys = new Set(this.getPartOfSpeechValues(document.getElementById('inputPartOfSpeech')?.value).map(value => value.toLowerCase()));
     if (!Array.isArray(this.editingModalTags)) this.editingModalTags = [];
-    if (cleanTag && cleanTag !== partOfSpeech && cleanTag !== '\u6613\u6df7' && !(this.editingModalTags || []).includes(cleanTag)) {
+    if (cleanTag && !partOfSpeechKeys.has(cleanTag.toLowerCase()) && cleanTag !== '\u6613\u6df7' && !(this.editingModalTags || []).includes(cleanTag)) {
       this.editingModalTags.push(cleanTag);
     }
     this.renderModalTags();
@@ -25566,7 +25618,7 @@ class KrVocabApp {
     readingInput.value = reading;
     const pronunciationNote = String(draft.pronunciationNote || '').trim();
     const meaning = String(draft.meaning || '').trim();
-    const partOfSpeech = this.normalizeTaxonomyText(String(draft.partOfSpeech || ''));
+    const partOfSpeech = this.formatPartOfSpeechValues(draft.partOfSpeech);
     partOfSpeechInput.value = partOfSpeech;
     const userNote = String(draft.userNote || '').trim();
     const collectedExamplePairs = Array.isArray(draft.examplePairs)
@@ -25588,7 +25640,8 @@ class KrVocabApp {
     const examplePairs = collectedExamplePairs.filter(pair => pair.example && pair.trans);
 
     const existingWord = id ? this.words.find(w => w.id === id) : null;
-    const tags = [...new Set((this.editingModalTags || []).map(tag => this.normalizeTaxonomyText(tag)).filter(tag => tag && tag !== partOfSpeech))];
+    const partOfSpeechKeys = new Set(this.getPartOfSpeechValues(partOfSpeech).map(value => value.toLowerCase()));
+    const tags = [...new Set((this.editingModalTags || []).map(tag => this.normalizeTaxonomyText(tag)).filter(tag => tag && !partOfSpeechKeys.has(tag.toLowerCase())))];
     const draftRating = this.normalizeRating(this.editingModalRating);
     const draftMastered = Boolean(this.editingModalMastered);
     const previousSimilarWordIds = existingWord ? this.getSimilarWords(existingWord).map(similarWord => String(similarWord.id)) : [];
@@ -25718,9 +25771,8 @@ class KrVocabApp {
     return this.words.filter(w => {
       // 独立词性筛选：同组词性取并集，并与 Tag/关键词筛选叠加。
       if (this.selectedPartOfSpeech && this.selectedPartOfSpeech.size > 0) {
-        const wordPartOfSpeech = this.normalizeTaxonomyText(w.partOfSpeech).toLowerCase();
         const matchesPartOfSpeech = Array.from(this.selectedPartOfSpeech).some(value =>
-          wordPartOfSpeech === this.normalizeTaxonomyText(value).toLowerCase()
+          this.wordHasPartOfSpeech(w, value)
         );
         if (!matchesPartOfSpeech) return false;
       }
@@ -25966,7 +26018,7 @@ class KrVocabApp {
       const word = this.words.find(w => w.id === wordId);
       if (word) {
         if (!word.tags) word.tags = [];
-        if (tagVal !== this.normalizeTaxonomyText(word.partOfSpeech) && !word.tags.includes(tagVal)) {
+        if (!this.wordHasPartOfSpeech(word, tagVal) && !word.tags.includes(tagVal)) {
           word.tags.push(tagVal);
           this.saveData();
         }
@@ -25990,7 +26042,7 @@ class KrVocabApp {
     const word = this.words.find(w => w.id === wordId);
     if (word) {
       if (!word.tags) word.tags = [];
-      if (tagType !== this.normalizeTaxonomyText(word.partOfSpeech) && !word.tags.includes(tagType)) {
+      if (!this.wordHasPartOfSpeech(word, tagType) && !word.tags.includes(tagType)) {
         word.tags.push(tagType);
         this.saveData();
       }
@@ -26156,8 +26208,7 @@ class KrVocabApp {
   getAllAvailablePartOfSpeech() {
     const values = new Set();
     (this.words || []).forEach(word => {
-      const value = this.normalizeTaxonomyText(word && word.partOfSpeech);
-      if (value) values.add(value);
+      this.getPartOfSpeechValues(word?.partOfSpeech).forEach(value => values.add(value));
     });
     return Array.from(values).sort((a, b) => a.localeCompare(b, 'zh'));
   }
@@ -26165,7 +26216,9 @@ class KrVocabApp {
   renderPartOfSpeechOptions(query = '') {
     const optionsList = document.getElementById('partOfSpeechOptions');
     if (!optionsList) return;
-    const normalizedQuery = this.normalizeTaxonomyText(query).toLowerCase();
+    const queryParts = String(query || '').split(/[、,，;；\n]/);
+    const normalizedQuery = this.normalizeTaxonomyText(queryParts[queryParts.length - 1]).toLowerCase();
+    const selectedKeys = new Set(this.getPartOfSpeechValues(document.getElementById('inputPartOfSpeech')?.value).map(value => value.toLowerCase()));
     const values = this.getAllAvailablePartOfSpeech().filter(value =>
       !normalizedQuery || this.normalizeTaxonomyText(value).toLowerCase().includes(normalizedQuery)
     );
@@ -26173,9 +26226,11 @@ class KrVocabApp {
     values.forEach(value => {
       const option = document.createElement('button');
       option.type = 'button';
-      option.className = 'part-of-speech-option';
+      const isSelected = selectedKeys.has(value.toLowerCase());
+      option.className = `part-of-speech-option${isSelected ? ' selected' : ''}`;
       option.setAttribute('role', 'option');
-      option.textContent = value;
+      option.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+      option.innerHTML = `<span class="part-of-speech-option-check" aria-hidden="true">${isSelected ? '✓' : ''}</span><span>${this.escapeHtml(value)}</span>`;
       option.addEventListener('pointerdown', event => {
         event.preventDefault();
       });
@@ -26248,9 +26303,14 @@ class KrVocabApp {
   selectPartOfSpeechOption(value) {
     const input = document.getElementById('inputPartOfSpeech');
     if (!input) return;
-    input.value = this.normalizeTaxonomyText(value);
+    const cleanValue = this.normalizeTaxonomyText(value);
+    const selectedValues = this.getPartOfSpeechValues(input.value);
+    const existingIndex = selectedValues.findIndex(item => item.toLowerCase() === cleanValue.toLowerCase());
+    if (existingIndex >= 0) selectedValues.splice(existingIndex, 1);
+    else if (cleanValue) selectedValues.push(cleanValue);
+    input.value = this.formatPartOfSpeechValues(selectedValues);
     this.renderModalTags();
-    this.closePartOfSpeechOptions();
+    this.renderPartOfSpeechOptions('');
     input.focus({ preventScroll: true });
   }
 
@@ -26273,9 +26333,7 @@ class KrVocabApp {
 
   getPartOfSpeechCount(partOfSpeech) {
     const target = this.normalizeTaxonomyText(partOfSpeech).toLowerCase();
-    return (this.words || []).filter(word =>
-      this.normalizeTaxonomyText(word && word.partOfSpeech).toLowerCase() === target
-    ).length;
+    return (this.words || []).filter(word => this.wordHasPartOfSpeech(word, target)).length;
   }
 
   togglePartOfSpeechDropdown(event) {
@@ -26586,8 +26644,8 @@ class KrVocabApp {
     if (items.length <= 1) return items;
     const getSimilarity = (a, b) => {
       let score = 0;
-      const tagsA = [...(a.tags || []), ...(a.partOfSpeech ? [`词性:${a.partOfSpeech}`] : [])];
-      const tagsB = [...(b.tags || []), ...(b.partOfSpeech ? [`词性:${b.partOfSpeech}`] : [])];
+      const tagsA = [...(a.tags || []), ...this.getPartOfSpeechValues(a.partOfSpeech).map(value => `词性:${value}`)];
+      const tagsB = [...(b.tags || []), ...this.getPartOfSpeechValues(b.partOfSpeech).map(value => `词性:${value}`)];
       const commonTags = tagsA.filter(t => tagsB.includes(t));
       score += commonTags.length * 3;
 
@@ -26662,7 +26720,7 @@ class KrVocabApp {
     };
     const words = Array.isArray(this.words) ? this.words : [];
     fillSelect('reviewTagSelect', words.flatMap(word => Array.isArray(word?.tags) ? word.tags : []), 'Tag');
-    fillSelect('reviewPartOfSpeechSelect', words.map(word => word?.partOfSpeech), '词性');
+    fillSelect('reviewPartOfSpeechSelect', words.flatMap(word => this.getPartOfSpeechValues(word?.partOfSpeech)), '词性');
     const todayCount = document.getElementById('todayReviewCount');
     if (todayCount) todayCount.textContent = `${this.getTodayReviewWords().length}`;
   }
@@ -26682,7 +26740,7 @@ class KrVocabApp {
       if (scope === 'last-wrong' && !['again', 'hard'].includes(this.getNormalizedSrsState(word).lastResult)) return false;
       if (scope === 'recent' && Number(word.createdAt || 0) < recentBoundary) return false;
       if (selectedTag && !(Array.isArray(word.tags) && word.tags.includes(selectedTag))) return false;
-      if (selectedPartOfSpeech && String(word.partOfSpeech || '') !== selectedPartOfSpeech) return false;
+      if (selectedPartOfSpeech && !this.wordHasPartOfSpeech(word, selectedPartOfSpeech)) return false;
       if (selectedRating !== '' && this.normalizeRating(word.rating) !== Number(selectedRating)) return false;
       return true;
     });
@@ -27154,10 +27212,10 @@ class KrVocabApp {
   getExcelExportAvailableTags() {
     const tags = new Set();
     (Array.isArray(this.words) ? this.words : []).forEach(word => {
-      const partOfSpeech = this.normalizeTaxonomyText(word?.partOfSpeech).toLowerCase();
+      const partOfSpeechKeys = new Set(this.getPartOfSpeechValues(word?.partOfSpeech).map(value => value.toLowerCase()));
       (Array.isArray(word?.tags) ? word.tags : []).forEach(tag => {
         const cleanTag = String(tag || '').replace(/^#/, '').trim();
-        if (cleanTag && cleanTag.toLowerCase() !== partOfSpeech) tags.add(cleanTag);
+        if (cleanTag && !partOfSpeechKeys.has(cleanTag.toLowerCase())) tags.add(cleanTag);
       });
     });
     return [...tags].sort((a, b) => a.localeCompare(b, 'zh-CN'));
@@ -27339,7 +27397,7 @@ class KrVocabApp {
     const isJapanese = this.RESOURCE_LANGUAGE === 'jp';
     const defaultColumns = [
       { key: 'word', title: '单词', width: 24, value: word => String(word?.word || '').trim() },
-      { key: 'partOfSpeech', title: '词性', width: 16, value: word => this.normalizeTaxonomyText(word?.partOfSpeech) },
+      { key: 'partOfSpeech', title: '词性', width: 16, value: word => this.formatPartOfSpeechValues(word?.partOfSpeech) },
       { key: 'meaning', title: isJapanese ? '中文释义' : '中文意思', width: 42, value: word => String(word?.meaning || '').trim() }
     ];
     if (isJapanese) {
@@ -27664,10 +27722,11 @@ class KrVocabApp {
           if (!word) throw new Error(`第 ${instruction.excelRow} 行的单词不能为空`);
           target.word = word;
         } else if (key === 'partOfSpeech') {
-          const partOfSpeech = this.normalizeTaxonomyText(value);
+          const partOfSpeech = this.formatPartOfSpeechValues(value);
           if (!partOfSpeech) throw new Error(`第 ${instruction.excelRow} 行的词性不能为空`);
           target.partOfSpeech = partOfSpeech;
-          target.tags = Array.isArray(target.tags) ? target.tags.filter(tag => this.normalizeTaxonomyText(tag) !== partOfSpeech) : [];
+          const partOfSpeechKeys = new Set(this.getPartOfSpeechValues(partOfSpeech).map(item => item.toLowerCase()));
+          target.tags = Array.isArray(target.tags) ? target.tags.filter(tag => !partOfSpeechKeys.has(this.normalizeTaxonomyText(tag).toLowerCase())) : [];
         } else if (key === 'meaning') {
           const meaning = value.trim();
           if (!meaning) throw new Error(`第 ${instruction.excelRow} 行的中文释义不能为空`);
@@ -70057,11 +70116,12 @@ document.addEventListener('DOMContentLoaded', () => {
           words.forEach(function(word) {
             if (!word || typeof word !== 'object') return;
             var sourceTags = Array.isArray(word.tags) ? word.tags.map(function(tag) { return String(tag || '').replace(/^#/, '').trim(); }).filter(Boolean) : [];
-            var existingPartOfSpeech = String(word.partOfSpeech || '').replace(/^#/, '').trim();
-            var partOfSpeech = existingPartOfSpeech || sourceTags[0] || '';
-            var customTags = existingPartOfSpeech ? sourceTags : sourceTags.slice(1);
-            word.partOfSpeech = partOfSpeech;
-            word.tags = Array.from(new Set(customTags.filter(function(tag) { return tag !== partOfSpeech && tag !== '\u6613\u6df7'; })));
+            var existingPartOfSpeechValues = String(word.partOfSpeech || '').split(/[、,，;；\n]+/).map(function(value) { return value.replace(/^#/, '').trim(); }).filter(Boolean);
+            var partOfSpeechValues = existingPartOfSpeechValues.length ? Array.from(new Set(existingPartOfSpeechValues)) : sourceTags.slice(0, 1);
+            var partOfSpeechKeys = new Set(partOfSpeechValues.map(function(value) { return value.toLowerCase(); }));
+            var customTags = existingPartOfSpeechValues.length ? sourceTags : sourceTags.slice(1);
+            word.partOfSpeech = partOfSpeechValues.join('、');
+            word.tags = Array.from(new Set(customTags.filter(function(tag) { return !partOfSpeechKeys.has(tag.toLowerCase()) && tag !== '\u6613\u6df7'; })));
           });
         }
         normalizeFallbackTaxonomy(fallbackWords);
@@ -70080,7 +70140,7 @@ document.addEventListener('DOMContentLoaded', () => {
               var html = fallbackWords.slice(0, 20).map(function(w) {
                 var readingHtml = w.reading ? '<span class="word-reading">' + (w.reading) + '</span>' : '';
                 var krBadgeHtml = w.krMeaning ? '<span class="kr-badge">' + (w.krMeaning) + '</span>' : '';
-                var partOfSpeechHtml = w.partOfSpeech ? '<span class="part-of-speech-label">' + w.partOfSpeech + '</span>' : '';
+                var partOfSpeechHtml = String(w.partOfSpeech || '').split('、').filter(Boolean).map(function(value) { return '<span class="part-of-speech-label">' + value + '</span>'; }).join('');
                 return '<div class="word-card" onclick="if(window.app) window.app.showDetailModal(w.id)">' +
                   '<div class="word-header"><div class="word-title-group"><span class="word-text">' + w.word + '</span></div></div>' +
                   '<div class="word-pronunciation-row">' + readingHtml + '</div>' +
