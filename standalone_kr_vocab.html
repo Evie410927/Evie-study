@@ -26938,7 +26938,7 @@ class KrVocabApp {
     word.fieldUpdatedAt.reviewCount = now;
     const wasMastered = Boolean(word.mastered);
     if (grade === 'again' || grade === 'hard') word.mastered = false;
-    if (grade === 'easy' && correctStreak >= 3) word.mastered = true;
+    if (grade === 'easy') word.mastered = true;
     if (wasMastered !== Boolean(word.mastered)) word.fieldUpdatedAt.mastered = now;
     if (grade === 'again') {
       word.tags = Array.isArray(word.tags) ? [...word.tags] : [];

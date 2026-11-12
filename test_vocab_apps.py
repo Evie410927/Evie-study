@@ -2138,6 +2138,12 @@ class VocabAppTester:
         ))
         self.assert_true(review_srs_contract, f"[{lang_name}] 今日复习-SRS 到期排序、新词上限、四级调度及双层耐久保存", "SRS 字段、到期队列、新词上限或持久化回退不完整")
 
+        review_grade_status_mapping = all(token in content for token in (
+            "if (grade === 'again' || grade === 'hard') word.mastered = false;",
+            "if (grade === 'easy') word.mastered = true;",
+        )) and "grade === 'easy' && correctStreak" not in content
+        self.assert_true(review_grade_status_mapping, f"[{lang_name}] 四级反馈-单次熟练立即已掌握且其余状态映射固定", "熟练仍有连续正确次数门槛，或忘记/模糊未立即回到学习中")
+
         review_custom_scope = all(token in content for token in (
             '<option value="learning" selected>范围：学习中</option>', '<option value="all">范围：全部</option>',
             '<option value="mastered">范围：已掌握</option>', '<option value="easy-forget">范围：易忘</option>',
@@ -5672,6 +5678,21 @@ class VocabAppTester:
                     const retryPositionAndLimit = retryOne && retryTwo && !retryThree
                       && retryAtExpectedPosition && app.reviewRetryTotal === 2;
 
+                    const againStatus = makeWord('grade-again', {mastered:true});
+                    const hardStatus = makeWord('grade-hard', {mastered:true});
+                    const goodLearningStatus = makeWord('grade-good-learning');
+                    const goodMasteredStatus = makeWord('grade-good-mastered', {mastered:true});
+                    const easyStatus = makeWord('grade-easy');
+                    app.updateWordSrs(againStatus, 'again', now);
+                    app.updateWordSrs(hardStatus, 'hard', now);
+                    app.updateWordSrs(goodLearningStatus, 'good', now);
+                    app.updateWordSrs(goodMasteredStatus, 'good', now);
+                    app.updateWordSrs(easyStatus, 'easy', now);
+                    const gradeStateMapping = !againStatus.mastered && !hardStatus.mastered
+                      && !goodLearningStatus.mastered && goodMasteredStatus.mastered
+                      && easyStatus.mastered && easyStatus.srs.correctStreak === 1
+                      && easyStatus.fieldUpdatedAt.mastered === now;
+
                     const persistedWord = makeWord('persist-srs');
                     app.words = [persistedWord];
                     app.reviewList = [persistedWord];
@@ -5692,6 +5713,7 @@ class VocabAppTester:
                       clozeExactOnly:clozeMode === 'example-cloze' && clozePrompt.includes('＿＿＿') && !clozePrompt.includes('目标词'),
                       clozeFallback:fallbackMode === 'meaning-input',
                       retryPositionAndLimit,
+                      gradeStateMapping,
                       srsPersisted:persisted && stored?.srs?.lastResult === 'again' && stored.srs.nextReviewAt > now,
                       srsCloudPending:pendingMeta.changedAt > 0 && pendingMeta.fields.includes('srs'),
                       normalizedAnswer:app.normalizeReviewAnswer('  ＡＢＣ  ') === 'abc'
@@ -5717,7 +5739,7 @@ class VocabAppTester:
             """)
             self.assert_true(
                 bool(review_training_runtime and not review_training_runtime.get('error') and all(review_training_runtime.values())),
-                f"[{lang_name}] 浏览器复习训练-今日队列、组合筛选、填空回退、错词回炉与 SRS 持久化",
+                f"[{lang_name}] 浏览器复习训练-今日队列、组合筛选、填空回退、四级状态映射、错词回炉与 SRS 持久化",
                 f"新复习训练运行结果异常: {review_training_runtime}",
             )
 

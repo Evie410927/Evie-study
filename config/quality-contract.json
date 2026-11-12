@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contractVersion": "2026-11-11.2",
+  "contractVersion": "2026-11-12.1",
   "authority": {
     "qualityContract": "config/quality-contract.json",
     "architecture": "docs/architecture.md",
@@ -70,6 +70,12 @@
       "legacyUnscheduledNewWordLimit": 10,
       "questionModes": ["recognition", "meaning-input", "example-cloze", "mixed"],
       "grades": ["again", "hard", "good", "easy"],
+      "gradeStateEffects": {
+        "again": "set-learning",
+        "hard": "set-learning",
+        "good": "keep-current-status",
+        "easy": "set-mastered-immediately"
+      },
       "customScopes": ["all", "learning", "mastered", "easy-forget", "last-wrong", "recent"],
       "customFilters": ["tag", "part-of-speech", "exact-rating", "count"],
       "allowedCounts": [10, 20, 50, "all"],
