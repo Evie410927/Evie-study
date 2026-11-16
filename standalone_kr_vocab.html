@@ -26310,7 +26310,7 @@ class KrVocabApp {
     else if (cleanValue) selectedValues.push(cleanValue);
     input.value = this.formatPartOfSpeechValues(selectedValues);
     this.renderModalTags();
-    this.renderPartOfSpeechOptions('');
+    this.closePartOfSpeechOptions();
     input.focus({ preventScroll: true });
   }
 

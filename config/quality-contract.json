@@ -247,7 +247,7 @@
       "canonicalDelimiter": "、",
       "legacySingleValueCompatible": true,
       "minimumSelections": 1,
-      "optionActivation": "toggle-without-closing",
+      "optionActivation": "toggle-then-close",
       "selectedIndicator": "checkmark-and-aria-selected",
       "customValuesAllowed": true,
       "filterMatching": "word-matches-any-selected-part-of-speech",

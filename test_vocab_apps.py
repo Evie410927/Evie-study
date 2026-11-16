@@ -967,12 +967,12 @@ class VocabAppTester:
             "option.setAttribute('aria-selected', isSelected ? 'true' : 'false');",
             'part-of-speech-option-check',
             "const existingIndex = selectedValues.findIndex(",
-            "this.renderPartOfSpeechOptions('');",
+            'this.closePartOfSpeechOptions();',
             "words.flatMap(word => this.getPartOfSpeechValues(word?.partOfSpeech))",
             "!this.wordHasPartOfSpeech(word, selectedPartOfSpeech)",
             "value: word => this.formatPartOfSpeechValues(word?.partOfSpeech)",
-        )) and select_part_of_speech_start >= 0 and 'closePartOfSpeechOptions()' not in select_part_of_speech_source
-        self.assert_true(taxonomy_multi_select, f"[{lang_name}] 词性多选-勾选切换、保持展开、规范保存及筛选/Excel 全链路完整", "词性候选仍是单选，或多值没有贯通展示、筛选和 Excel 往返")
+        )) and select_part_of_speech_start >= 0 and "this.renderPartOfSpeechOptions('');" not in select_part_of_speech_source
+        self.assert_true(taxonomy_multi_select, f"[{lang_name}] 词性多选-勾选切换后折叠、规范保存及筛选/Excel 全链路完整", "词性候选选择后未折叠，或多值没有贯通展示、筛选和 Excel 往返")
 
         new_word_part_of_speech_scroll_reset = all(token in content for token in (
             'resetPartOfSpeechOptionsScroll(optionsList) {',
@@ -4256,14 +4256,24 @@ class VocabAppTester:
                     && getComputedStyle(partOfSpeechOptions).display !== 'none'
                     && Array.from(partOfSpeechOptions.querySelectorAll('.part-of-speech-option')).map(el => el.querySelector('span:last-child')?.textContent.trim()).sort().join('|') === ['动词', '名词', '短副', '短语'].sort().join('|');
                   app.selectPartOfSpeechOption('名词');
+                  const firstSelectionCloses = partOfSpeechInput.value === '名词'
+                    && partOfSpeechOptions.hidden === true
+                    && partOfSpeechInput.getAttribute('aria-expanded') === 'false';
+                  app.openPartOfSpeechOptions(true);
+                  const firstSelectionRestored = partOfSpeechOptions.querySelectorAll('.part-of-speech-option.selected').length === 1
+                    && partOfSpeechOptions.querySelector('.part-of-speech-option.selected')?.getAttribute('aria-selected') === 'true';
                   app.selectPartOfSpeechOption('动词');
-                  const multiSelectKeepsOpen = partOfSpeechInput.value === '名词、动词'
-                    && partOfSpeechOptions.hidden === false
+                  const multiSelectClosesAfterEach = partOfSpeechInput.value === '名词、动词'
+                    && partOfSpeechOptions.hidden === true;
+                  app.openPartOfSpeechOptions(true);
+                  const multiSelectionRestored = partOfSpeechOptions.hidden === false
                     && partOfSpeechOptions.querySelectorAll('.part-of-speech-option.selected').length === 2
                     && Array.from(partOfSpeechOptions.querySelectorAll('.part-of-speech-option.selected')).every(option => option.getAttribute('aria-selected') === 'true');
                   app.selectPartOfSpeechOption('名词');
-                  const secondClickCancelsOnlyTarget = partOfSpeechInput.value === '动词'
-                    && partOfSpeechOptions.hidden === false
+                  const secondClickCancelsAndCloses = partOfSpeechInput.value === '动词'
+                    && partOfSpeechOptions.hidden === true;
+                  app.openPartOfSpeechOptions(true);
+                  const cancellationRestored = partOfSpeechOptions.hidden === false
                     && partOfSpeechOptions.querySelectorAll('.part-of-speech-option.selected').length === 1;
                   app.closeWordModal();
                   app.togglePartOfSpeechFilter('名词');
@@ -4337,8 +4347,12 @@ class VocabAppTester:
                     rendered,
                     suggested,
                     clickOpenedAllSuggestions,
-                    multiSelectKeepsOpen,
-                    secondClickCancelsOnlyTarget,
+                    firstSelectionCloses,
+                    firstSelectionRestored,
+                    multiSelectClosesAfterEach,
+                    multiSelectionRestored,
+                    secondClickCancelsAndCloses,
+                    cancellationRestored,
                     nounOnly,
                     nounOrVerb,
                     combined,
@@ -4383,9 +4397,13 @@ class VocabAppTester:
                 bool(part_of_speech_filter_result
                      and sorted(part_of_speech_filter_result.get('suggested') or []) == ['动词', '名词', '短副', '短语']
                      and part_of_speech_filter_result.get('clickOpenedAllSuggestions')
-                     and part_of_speech_filter_result.get('multiSelectKeepsOpen')
-                     and part_of_speech_filter_result.get('secondClickCancelsOnlyTarget')),
-                f"[{lang_name}] 新增/编辑弹窗-词性候选可连续多选、保持展开并再次点击取消",
+                     and part_of_speech_filter_result.get('firstSelectionCloses')
+                     and part_of_speech_filter_result.get('firstSelectionRestored')
+                     and part_of_speech_filter_result.get('multiSelectClosesAfterEach')
+                     and part_of_speech_filter_result.get('multiSelectionRestored')
+                     and part_of_speech_filter_result.get('secondClickCancelsAndCloses')
+                     and part_of_speech_filter_result.get('cancellationRestored')),
+                f"[{lang_name}] 新增/编辑弹窗-词性候选每次选择后折叠且再次展开可多选或取消",
                 f"弹窗词性建议未随当前词库同步：{part_of_speech_filter_result}",
             )
             self.assert_true(
